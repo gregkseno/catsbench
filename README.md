@@ -29,13 +29,13 @@ This paper proposes the Schrödinger Bridge problem to work with discrete time a
 |-- configs     # hydra configs
 |-- logs        # experiment logs
 |-- notebooks   # experiments & analysis
-|-- src         
-|   |-- bench   # bencmark package code
-|   |-- data    # lightning datamodules
-|   |-- methods # e.g. CSBM, DDSBM, etc.
-|   |-- metrics # non-benchmark metrics
-|   |-- utils   # e.g. for logging, data
-|   `-- run.py  # main entrypoint for training & testing
+`-- src         
+    |-- bench   # bencmark package code
+    |-- data    # lightning datamodules
+    |-- methods # e.g. CSBM, DDSBM, etc.
+    |-- metrics # non-benchmark metrics
+    |-- utils   # e.g. for logging, data
+    `-- run.py  # main entrypoint for training & testing
 ```
 
 ## 📦 Dependencies
