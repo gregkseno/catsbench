@@ -1,0 +1,5 @@
+metric_callback:
+  _target_: src.utils.ToyLogger
+  num_trajectories: 4
+  num_translations: 3
+  axlim: [7, 43]

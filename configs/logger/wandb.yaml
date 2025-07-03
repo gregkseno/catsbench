@@ -1,0 +1,7 @@
+wandb:
+  _target_: lightning.pytorch.loggers.wandb.WandbLogger
+  name: ${hydra:runtime.choices.data}_${prior.prior_type}_dim_${data.dim}_alpha_${prior.alpha}
+  save_dir: ${paths.output_dir}
+  project: dot-bench
+  entity: gregkseno # set to name of your wandb team
+  job_type: ${task_name}

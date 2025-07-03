@@ -1,0 +1,13 @@
+_target_: lightning.pytorch.trainer.Trainer
+
+default_root_dir: ${paths.output_dir}
+
+limit_train_batches: 20000
+val_check_interval: 1000
+
+strategy: ddp
+accelerator: gpu
+devices: 4
+num_nodes: 1
+sync_batchnorm: true
+deterministic: false

@@ -1,0 +1,37 @@
+# @package _global_
+
+defaults:
+  - override /data: gaussian_to_swiss_roll
+  - override /model: simple_mlp
+  - override /method: csbm
+  - override /callbacks: [rich_progress_bar, model_summary, toy_metric_callback]
+  - override /logger: wandb
+  - override /trainer: gpu
+  - _self_
+
+data:
+  num_categories: 50
+  train_val_test_split: [0.8, 0.1, 0.1]
+  batch_size: 512 
+  num_workers: 0
+  pin_memory: false
+
+prior:
+  alpha: 0.02
+  prior_type: gaussian
+  num_timesteps: 10
+  num_skip_steps: 10
+
+method:
+  use_mini_batch: false
+  num_first_iterations: 10
+  kl_loss_coeff: 1.0
+  ce_loss_coeff: 0.001
+  mse_loss_coeff: 0
+  gradient_accumulation_steps: 1
+  gradient_clip_val: null
+  ignore_index: -100
+
+trainer:
+  limit_train_batches: 20000 # controls number of IMF inner iterations
+  val_check_interval: 1000

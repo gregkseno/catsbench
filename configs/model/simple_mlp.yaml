@@ -1,0 +1,6 @@
+_target_: src.methods.models.simple_mlp.SimpleMLP
+input_dim: ${data.dim}
+num_categories: ${data.num_categories}
+num_timesteps: ${prior.num_timesteps}
+timestep_dim: 2
+layers: [128, 128, 128]
