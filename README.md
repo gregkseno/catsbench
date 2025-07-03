@@ -50,6 +50,5 @@ conda env update -f environment.yml
 ## 🙏 Credits
 
 - [Weights & Biases](https://wandb.ai) — experiment-tracking and visualization toolkit;
-- [Hugging Face](https://huggingface.co) — Tokenizers and Accelerate libraries for tokenizer implementation, parallel training, and checkpoint hosting on the Hub;
 - [Inkscape](https://inkscape.org/) — an excellent open-source editor for vector graphics;
 - [Hydra/Lightning template](https://github.com/ashleve/lightning-hydra-template) - cool.
