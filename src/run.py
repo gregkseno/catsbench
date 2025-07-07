@@ -1,12 +1,13 @@
 from typing import List
 
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 import hydra
 from hydra.utils import instantiate
 
 import lightning as L
 from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
+from lightning.pytorch.loggers.wandb import WandbLogger
 
 from src.utils.logging.console import RankedLogger
 from src.utils import instantiate_callbacks, instantiate_loggers
@@ -32,6 +33,9 @@ def main(config: DictConfig):
 
     log.info('Instantiating loggers...')
     loggers: List[Logger] = instantiate_loggers(config.get('logger'))
+    for logger in loggers:
+        if isinstance(logger, WandbLogger):
+            logger.experiment.config.update(OmegaConf.to_container(config))
 
     log.info(f'Instantiating trainer <{config.trainer._target_}>...')
     trainer: Trainer = instantiate(config.trainer, callbacks=callbacks, logger=loggers)
