@@ -16,6 +16,10 @@ data:
   num_workers: 0
   pin_memory: false
 
+model:
+  timestep_dim: 2
+  layers: [128, 128, 128]
+
 prior:
   alpha: 0.02
   prior_type: gaussian

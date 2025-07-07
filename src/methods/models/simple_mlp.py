@@ -6,12 +6,12 @@ from torch.nn import functional as F
 
 class SimpleMLP(nn.Module):
     def __init__(
-         self,
-         input_dim: int,
-         num_categories: int, 
-         num_timesteps: int,
-         timestep_dim: int = 2, 
-         layers: List[int] = [128, 128, 128],
+        self,
+        input_dim: int,
+        num_categories: int, 
+        num_timesteps: int,
+        timestep_dim: int = 2, 
+        layers: List[int] = [128, 128, 128],
      ) -> None: 
         super().__init__()
         self.input_dim = input_dim

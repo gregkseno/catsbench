@@ -52,6 +52,10 @@ conda env update -f environment.yml
 
 ## 🏋️‍♂️ Training
 
+```bash
+python -m src.run experiment=csbm_gaussian_to_swiss_roll
+```
+
 ## 📊 Evaluation
 
 ## 🎓 Citation

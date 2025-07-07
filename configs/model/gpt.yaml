@@ -1,6 +1,9 @@
-_target_: src.methods.models.made_mlp.MADE
+_target_: src.methods.models.gpt.GPT
 input_dim: ${data.dim}
 num_categories: ${data.num_categories}
 num_timesteps: ${prior.num_timesteps}
-timestep_dim: 2
-layers: [128, 128, 128]
+n_layer: 12
+n_head: 12
+n_embd: 768
+dropout: 0.0
+bias: true

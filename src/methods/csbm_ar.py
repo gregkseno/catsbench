@@ -22,7 +22,7 @@ HPARAMS = (
 
 # NOTE: start and end is swapped because CSBM uses 
 # reverse diffusion notation
-class CSBM(LightningModule):
+class CSBM_AR(LightningModule):
     def __init__(
         self,
         prior: Prior,
@@ -117,6 +117,25 @@ class CSBM(LightningModule):
         # twice, for each direction
         self.first_iteration = self.current_epoch + 1 < (2 * self.hparams.num_first_iterations)
 
+    def forward(
+        self, 
+        x: torch.Tensor, 
+        t: torch.Tensor,
+        fb: Literal['forward', 'backward'], 
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        seq_lenght = x.shape[1]
+        preds, pred_logits = [], []
+        for _ in range(seq_lenght):
+            logits = self.models[fb](x, t)
+            pred_logits.append(logits)
+            next_token = F.gumbel_softmax(logits, dim=-1)
+            preds.append(next_token)
+            x = torch.cat([x, next_token.argmax(dim=-1).detach()], dim=1)
+
+        preds = torch.cat(preds, dim=1)
+        pred_logits = torch.cat(pred_logits, dim=1)
+        return preds, pred_logits
+    
     def markovian_projection(
         self,
         fb: Literal['forward', 'backward'],
@@ -130,9 +149,9 @@ class CSBM(LightningModule):
         )
         x_t = self.prior.sample_bridge(true_x_start, true_x_end, t)
 
-        pred_x_start_logits = self.models[fb](x_t, t)
+        pred_x_start, pred_x_start_logits = self.forward(x_t, t, fb)
         true_q_posterior_logits = self.prior.posterior_logits(true_x_start, x_t, t, logits=False)
-        pred_q_posterior_logits = self.prior.posterior_logits(pred_x_start_logits, x_t, t, logits=True)
+        pred_q_posterior_logits = self.prior.posterior_logits(pred_x_start, x_t, t, logits=True)
 
         kl = self.kl_loss(true_q_posterior_logits, pred_q_posterior_logits)
         ce = self.ce_loss(true_x_start, pred_x_start_logits)
@@ -237,16 +256,15 @@ class CSBM(LightningModule):
                 {'optimizer': optimizer_backward, 'lr_scheduler': scheduler_backward}
             ]
         return [{'optimizer': optimizer_forward}, {'optimizer': optimizer_backward}]
-    
-  
+
     def markov_sample(
         self, x: torch.Tensor, t: torch.Tensor, fb: Literal['forward', 'backward']
     ) -> torch.Tensor:
         first_step = (t == 1).long().view((x.shape[0], *[1] * (x.dim() - 1)))
         
         with self.emas[fb].average_parameters():
-            pred_x_start_logits = self.models[fb](x, t)
-        pred_q_posterior_logits = self.prior.posterior_logits(pred_x_start_logits, x, t, logits=True)
+            pred_x_start, _ = self.forward(x, t, fb)
+        pred_q_posterior_logits = self.prior.posterior_logits(pred_x_start, x, t, logits=True)
         noise = torch.rand_like(pred_q_posterior_logits)
         noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
         gumbel_noise = -torch.log(-torch.log(noise))
@@ -286,4 +304,4 @@ class CSBM(LightningModule):
         return trajectory
 
 if __name__ == '__main__':
-    _ = CSBM(None, None, None, None)
+    _ = CSBM_AR(None, None, None, None)
