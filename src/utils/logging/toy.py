@@ -28,28 +28,28 @@ class ToyLogger(Callback):
             'dpi': dpi,
         }
         self.samples_start_config = {
-            'label': r'$p_{start}$', 'c': 'g', 's': 30, 'edgecolor': 'black'
+            'label': r'$p_{start}$', 'c': 'g', 's': 35, 'edgecolor': 'black'
         }
         self.samples_end_config = {
-            'label': r'$p_{end}$', 'c': 'orange', 's': 30, 'edgecolor': 'black'
+            'label': r'$p_{end}$', 'c': 'orange', 's': 35, 'edgecolor': 'black'
         }
         self.samples_pred_config = {
-            'label': r'$p_{\theta}$', 'c': 'yellow', 's': 30, 'edgecolor': 'black'
+            'label': r'$p_{\theta}$', 'c': 'yellow', 's': 35, 'edgecolor': 'black'
         }
         self.trajectories_fig_config = {
             'figsize': (8, 8) if trajectories_figsize is None else trajectories_figsize,
             'dpi': dpi,
         }
         self.trajectories_pred_config = {
-            'c': 'salmon', 's': 40, 'edgecolors': 'black', 
+            'c': 'salmon', 's': 120, 'edgecolors': 'black', 
             'label': 'Fitted distribution', 'zorder': 1, 'linewidth': 0.8
         }
         self.trajectories_start_config = {
-            'c': 'lime', 's': 96, 'edgecolors': 'black', 
+            'c': 'lime', 's': 180, 'edgecolors': 'black', 
             'label': r'Trajectory start ($x \sim p_0$)', 'zorder': 3
         }
         self.trajectories_end_config = {
-            'c': 'yellow', 's': 35, 'edgecolors': 'black', 
+            'c': 'yellow', 's': 100, 'edgecolors': 'black', 
             'label': r'Trajectory end (fitted)', 'zorder': 3
         }
         self.trajectory_lines_config = {
@@ -67,7 +67,7 @@ class ToyLogger(Callback):
         fb, bf = 'forward', 'backward'
         if pl_module.bidirectional and pl_module.current_epoch % 2 != 0:
             fb, bf = 'backward', 'forward'
-        pl_module.models[fb].eval()
+        pl_module.eval()
 
         if fb == 'forward': x_start, x_end = batch
         else: x_end, x_start = batch
@@ -76,13 +76,13 @@ class ToyLogger(Callback):
         if pl_module.first_iteration and pl_module.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
         # otherwise generate samples from reverse model
-        if not pl_module.first_iteration:
-            x_start, x_end = x_start, pl_module.sample(x_end, fb=bf)
+        if not pl_module.first_iteration and pl_module.bidirectional:
+            x_start, x_end = pl_module.sample(x_end, fb=bf), x_end 
 
         if batch_idx == 0:
             self._log_smaples(x_start, x_end, fb, pl_module, 'train')
             if getattr(pl_module, 'sample_trajectory', None) is not None:
-                self._log_trajectories(x_start, x_end, fb, pl_module, stage='train')
+                self._log_trajectories(x_start, fb, pl_module, stage='train')
 
     def on_validation_batch_start(
         self,
@@ -94,13 +94,15 @@ class ToyLogger(Callback):
         fb = 'forward'
         if pl_module.bidirectional and pl_module.current_epoch % 2 != 0:
             fb = 'backward'
+        pl_module.eval()
+
         if fb == 'forward': x_start, x_end = batch
         else: x_end, x_start = batch
 
         if batch_idx == 0:
             self._log_smaples(x_start, x_end, fb, pl_module, 'val')
             if getattr(pl_module, 'sample_trajectory', None) is not None:
-                self._log_trajectories(x_start, x_end, fb, pl_module, stage='val')
+                self._log_trajectories(x_start, fb, pl_module, stage='val')
 
     def on_test_batch_start(
         self,
@@ -112,32 +114,34 @@ class ToyLogger(Callback):
         fb = 'forward'
         if pl_module.bidirectional and pl_module.current_epoch % 2 != 0:
             fb = 'backward'
+        pl_module.eval()
+
         if fb == 'forward': x_start, x_end = batch
         else: x_end, x_start = batch
 
         if batch_idx == 0:
             self._log_smaples(x_start, x_end, fb, pl_module, 'test')
             if getattr(pl_module, 'sample_trajectory', None) is not None:
-                self._log_trajectories(x_start, x_end, fb, pl_module, stage='test')
+                self._log_trajectories(x_start, fb, pl_module, stage='test')
 
     @rank_zero_only
     def _log_smaples(
         self,
-        x_end: torch.Tensor | np.ndarray, 
         x_start: torch.Tensor | np.ndarray, 
+        x_end: torch.Tensor | np.ndarray, 
         fb: Literal['forward', 'backward'],
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
-        pred_x_end = convert_to_numpy(pl_module.sample(x_start, fb))
+        pred_x_end = convert_to_numpy(pl_module.sample(x_start, fb=fb))
         x_start = convert_to_numpy(x_start)
         x_end = convert_to_numpy(x_end)
 
         fig, axes = plt.subplots(1, 3, **self.samples_fig_config)
         fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.imf_iteration}')
 
-        axes[0].scatter(x_end[:, 0], x_end[:, 1], **self.samples_end_config)
-        axes[1].scatter(x_start[:, 0], x_start[:, 1], **self.samples_start_config) 
+        axes[0].scatter(x_start[:, 0], x_start[:, 1], **self.samples_start_config) 
+        axes[1].scatter(x_end[:, 0], x_end[:, 1], **self.samples_end_config)
         axes[2].scatter(pred_x_end[:, 0], pred_x_end[:, 1], **self.samples_pred_config) 
         
         for i in range(3):
@@ -155,7 +159,6 @@ class ToyLogger(Callback):
     @rank_zero_only
     def _log_trajectories(
         self,
-        x_end: torch.Tensor | np.ndarray, 
         x_start: torch.Tensor | np.ndarray, 
         fb: Literal['forward', 'backward'],
         pl_module: LightningModule,
@@ -166,7 +169,7 @@ class ToyLogger(Callback):
         ax.get_yaxis().set_ticklabels([])
         fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.imf_iteration}')
         
-        pred_x_end = convert_to_numpy(pl_module.sample(x_start, fb))
+        pred_x_end = convert_to_numpy(pl_module.sample(x_start, fb=fb))
         traj_start = x_start[:self.num_trajectories]
         repeats = [self.num_translations] + [1] * traj_start.dim()
         traj_start = traj_start.unsqueeze(0).repeat(*repeats)
