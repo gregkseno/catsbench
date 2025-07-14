@@ -3,7 +3,5 @@
 **/.virtual_documents
 **/__pycache__
 logs
-**/data/*
 notebooks/*
-!notebooks/LightSB_D.ipynb
 **/*.pt
