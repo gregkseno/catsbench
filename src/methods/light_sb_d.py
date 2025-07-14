@@ -50,7 +50,7 @@ class LightSB_D(LightningModule):
 
         self.bidirectional = True
         self.first_iteration = True
-        self.ipf_iteration = 1
+        self.iteration = 1
         self.prior = prior
         
         self.log_alpha = nn.Parameter(torch.zeros(num_potentials))
@@ -149,12 +149,12 @@ class LightSB_D(LightningModule):
             f"train/log_c": log_c.mean()
         }
         self.log_dict(info, prog_bar=True, sync_dist=True) 
-        self.log('train/ipf_iteration', self.ipf_iteration, prog_bar=True)
+        self.log('train/iteration', self.iteration, prog_bar=True)
         return loss
 
     def on_train_epoch_end(self) -> None:
         # if self.current_epoch >= self.hparams.num_first_iterations:
-        self.ipf_iteration += 1
+        self.iteration += 1
 
     def validation_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
@@ -171,7 +171,7 @@ class LightSB_D(LightningModule):
             f"val/log_c": log_c.mean()
         }
         self.log_dict(info, prog_bar=True, sync_dist=True) 
-        self.log('val/ipf_iteration', self.ipf_iteration, prog_bar=True)
+        self.log('val/iteration', self.iteration, prog_bar=True)
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer  = self.hparams.optimizer(params=self.parameters())

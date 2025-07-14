@@ -46,7 +46,7 @@ class CSBM(LightningModule):
         self.save_hyperparameters(*HPARAMS, logger=False)
         self.bidirectional = True
         self.first_iteration = True
-        self.imf_iteration = 1
+        self.iteration = 1
         self.prior = prior
         
         # models explicitly stated to be able log parameters
@@ -178,7 +178,7 @@ class CSBM(LightningModule):
             # logs step-wise loss, `add_dataloader_idx=False` is used to have custom fb prefix
             info = {f"train/{k}": v for k, v in info.items()}
             self.log_dict(info, prog_bar=True, sync_dist=True) 
-            self.log('train/imf_iteration', self.imf_iteration, prog_bar=True)
+            self.log('train/iteration', self.iteration, prog_bar=True)
 
             loss = loss / self.trainer.accumulate_grad_batches
             self.manual_backward(loss)
@@ -200,7 +200,7 @@ class CSBM(LightningModule):
         if fb == 'backward' and not self.first_iteration: 
             # if the ended epoch corresponds to `backward`` 
             # then in next itreation we will be a new iteration
-            self.imf_iteration += 1
+            self.iteration += 1
 
     def validation_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
@@ -222,7 +222,7 @@ class CSBM(LightningModule):
         _, info = self.markovian_projection(fb, x_start, x_end)
         info = {f"val/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
-        self.log('val/imf_iteration', self.imf_iteration, prog_bar=True)
+        self.log('val/iteration', self.iteration, prog_bar=True)
 
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
