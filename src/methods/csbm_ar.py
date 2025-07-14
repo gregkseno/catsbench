@@ -44,7 +44,6 @@ class CSBM_AR(LightningModule):
         # the method arguments and put to `self.hparams`
         # save only `HPARAMS` for memory efficiency (probably :))
         self.save_hyperparameters(*HPARAMS, logger=False)
-        self.bidirectional = True
         self.first_iteration = True
         self.iteration = 1
         self.prior = prior
