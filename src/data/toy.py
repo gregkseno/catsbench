@@ -1,4 +1,4 @@
-from typing import Any, Literal, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import numpy as np
 from sklearn.datasets import make_swiss_roll
@@ -130,8 +130,8 @@ class ToyDataModule(LightningDataModule):
             ###################### TRAINING DATASET ######################
             size_train = int(self.hparams.num_samples * self.hparams.train_val_test_split[0])
             self.data_train = CoupleDataset(
-                input_dataset=self.hparams.input_dataset(num_samples=size_train), 
-                target_dataset=self.hparams.target_dataset(num_samples=size_train)
+                input_dataset=torch.load('data/benchmark/dim_2/gaussian.pt'), # self.hparams.input_dataset(num_samples=size_train), 
+                target_dataset=torch.load('data/benchmark/dim_2/swiss_roll.pt') # self.hparams.target_dataset(num_samples=size_train)
             )
 
             ####################### VALIDATION DATASET ######################

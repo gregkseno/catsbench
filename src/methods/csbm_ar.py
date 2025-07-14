@@ -199,11 +199,11 @@ class CSBM_AR(LightningModule):
             self.log_dict(info, prog_bar=True, sync_dist=True) 
             self.log('train/imf_iteration', self.imf_iteration, prog_bar=True)
 
-            loss = loss / self.hparams.gradient_accumulation_steps
+            loss = loss / self.trainer.accumulate_grad_batches
             self.manual_backward(loss)
 
             # do gradient accumulation and clipping
-            if (batch_idx + 1) % self.hparams.gradient_accumulation_steps == 0:
+            if (batch_idx + 1) % self.trainer.accumulate_grad_batches == 0:
                 self.clip_gradients(
                     optimizers[fb], gradient_clip_val=self.hparams.gradient_clip_val
                 )

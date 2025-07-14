@@ -1,5 +1,5 @@
 defaults:
-  - data: gaussian_to_swiss_roll
+  - data: toy
   - prior: default
   - model: simple_mlp 
   - method: csbm

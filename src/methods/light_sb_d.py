@@ -12,7 +12,7 @@ from src.data.prior import Prior
 
 HPARAMS = (
     'dim', 'num_potentials', 'distr_init', 
-    'num_first_iterations', 'optimizer', 'scheduler'
+    'optimizer', 'scheduler'
 )
 
 def create_dimensional_points(
@@ -39,7 +39,6 @@ class LightSB_D(LightningModule):
         dim: int,
         num_potentials: int, 
         optimizer: Optimizer, # partially initialized 
-        num_first_iterations: int,
         scheduler: Optional[LRScheduler] = None, # partially initialized 
         distr_init: Literal['uniform', 'gaussian', 'poisson'] = 'uniform', 
     ):
@@ -134,9 +133,6 @@ class LightSB_D(LightningModule):
         log_c = torch.logsumexp(self.log_alpha[None, :] + log_z, dim=1) #(K,) + (batch_size, K) -> (batch_size,)
         return log_c
     
-    def on_train_epoch_start(self) -> None:
-        self.first_iteration = self.current_epoch + 1 < self.hparams.num_first_iterations
-    
     def training_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
@@ -157,8 +153,8 @@ class LightSB_D(LightningModule):
         return loss
 
     def on_train_epoch_end(self) -> None:
-        if self.current_epoch >= self.hparams.num_first_iterations:
-            self.ipf_iteration += 1
+        # if self.current_epoch >= self.hparams.num_first_iterations:
+        self.ipf_iteration += 1
 
     def validation_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
