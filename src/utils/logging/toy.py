@@ -155,23 +155,25 @@ class ToyLogger(Callback):
 
         # Reduce number of timesteps for visualization
         num_timesteps = trajectories.shape[0]
-        trajectories = convert_to_numpy(torch.stack([
-                trajectories[0], 
-                trajectories[num_timesteps // 8], 
-                trajectories[num_timesteps // 2], 
-                trajectories[(num_timesteps * 7) // 8], 
-                trajectories[-1]
-            ], dim=0
-        ))
+        if num_timesteps > 10:
+            trajectories = torch.stack([
+                    trajectories[0], 
+                    trajectories[num_timesteps // 8], 
+                    trajectories[num_timesteps // 2], 
+                    trajectories[(num_timesteps * 7) // 8], 
+                    trajectories[-1]
+                ], dim=0
+            )
+        trajectories = convert_to_numpy(trajectories)
 
         ax.scatter(pred_x_end[:, 0], pred_x_end[:, 1], **self.trajectories_pred_config)
         ax.scatter(trajectories[0, :, 0], trajectories[0, :, 1], **self.trajectories_start_config)
         ax.scatter(trajectories[-1, :, 0], trajectories[-1, :, 1], **self.trajectories_end_config)
-        for i in range(self.num_trajectories):
+        for i in range(self.num_trajectories * self.num_translations):
             ax.plot(trajectories[:, i, 0], trajectories[:, i, 1], **self.trajectory_lines_config['back'])
             ax.plot(
                 trajectories[:, i, 0], trajectories[:, i, 1], **self.trajectory_lines_config['front'], 
-                label='Intermediate predictions' if i == 0 else None
+                label='Intermediate predictions' if i == 0 else ''
             )
         ax.legend(loc='lower left')
         ax.set_xlim(self.axlim)
