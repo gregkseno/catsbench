@@ -25,17 +25,17 @@ def make_infinite_dataloader(dataloader: DataLoader[Any]) -> Any:
 
 class CoupleDataset(Dataset):
     """A dataset that couples two datasets together, allowing for paired sampling."""
-    def __init__(self, dataset_0, dataset_1):
-        self.dataset_0, self.dataset_1 = dataset_0, dataset_1
-        self.len_0, self.len_1 = len(dataset_0), len(dataset_1)
-        self.length = max(self.len_0, self.len_1)
+    def __init__(self, input_dataset: Dataset, target_dataset: Dataset):
+        self.input_dataset, self.target_dataset = input_dataset, target_dataset
+        self.len_input, self.len_target = len(input_dataset), len(target_dataset)
+        self.length = max(self.len_input, self.len_target)
 
     def __len__(self):
         return self.length
 
     def __getitem__(self, idx):
-        return (self.dataset_0[idx % self.len_0],
-                self.dataset_1[idx % self.len_1])
+        return (self.input_dataset[idx % self.len_input],
+                self.target_dataset[idx % self.len_target])
 
 
 def optimize_coupling(x: torch.Tensor, y: torch.Tensor):

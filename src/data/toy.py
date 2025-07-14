@@ -1,5 +1,4 @@
-from copy import deepcopy
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Literal, Optional, Tuple, Union
 
 import numpy as np
 from sklearn.datasets import make_swiss_roll
@@ -27,13 +26,27 @@ def _continuous_to_discrete(
     discrete_batch = torch.bucketize(batch, bin_edges)
     return discrete_batch
 
+class DiscreteUniformDataset(Dataset):
+    def __init__(
+        self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True
+    ):
+        dataset = 6 * torch.rand(size=(num_samples, dim)) - 3
+        if not train:
+            dataset[:4] = torch.tensor([[0.0, 0.0], [1.75, -1.75], [-1.5, 1.5], [2, 2]])
+            
+        dataset = _continuous_to_discrete(dataset, num_categories)
+        self.dataset = dataset  
+
+    def __getitem__(self, idx):
+        return self.dataset[idx]
+    
+    def __len__(self):
+        return len(self.dataset)
 
 class DiscreteGaussianDataset(Dataset):
-    def __init__(self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True, seed = None):
-        if seed is not None:
-            torch.manual_seed(seed)  
-            torch.cuda.manual_seed_all(seed)
-            
+    def __init__(
+        self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True
+    ):          
         dataset = torch.randn(size=[num_samples, dim])
         if not train:
             dataset[:4] = torch.tensor([[0.0, 0.0], [1.75, -1.75], [-1.5, 1.5], [2, 2]])
@@ -48,7 +61,9 @@ class DiscreteGaussianDataset(Dataset):
         return len(self.dataset)
     
 class DiscreteSwissRollDataset(Dataset):
-    def __init__(self, num_samples: int, noise: float = 0.8, num_categories: int = 100, train: bool = True):
+    def __init__(
+            self, num_samples: int, noise: float = 0.8, num_categories: int = 100, train: bool = True
+        ):
         dataset = make_swiss_roll(
             n_samples=num_samples,
             noise=noise
@@ -64,24 +79,11 @@ class DiscreteSwissRollDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-class DiscreteUniformDataset(Dataset):
-    def __init__(self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True):
-        dataset = 6 * torch.rand(size=(num_samples, dim)) - 3
-        if not train:
-            dataset[:4] = torch.tensor([[0.0, 0.0], [1.75, -1.75], [-1.5, 1.5], [2, 2]])
-            
-        dataset = _continuous_to_discrete(dataset, num_categories)
-        self.dataset = dataset  
-
-    def __getitem__(self, idx):
-        return self.dataset[idx]
-    
-    def __len__(self):
-        return len(self.dataset)
-
-class Gaussian2SwissRollDataModule(LightningDataModule):
+class ToyDataModule(LightningDataModule):
     def __init__(
         self,
+        input_dataset: Union[DiscreteUniformDataset, DiscreteGaussianDataset, DiscreteSwissRollDataset],
+        target_dataset: Union[DiscreteUniformDataset, DiscreteGaussianDataset, DiscreteSwissRollDataset],
         dim: int,
         num_categories: int,
         num_samples: int,
@@ -127,39 +129,23 @@ class Gaussian2SwissRollDataModule(LightningDataModule):
         if not self.data_train and not self.data_val and not self.data_test:
             ###################### TRAINING DATASET ######################
             size_train = int(self.hparams.num_samples * self.hparams.train_val_test_split[0])
-            gaussian_train = DiscreteGaussianDataset(
-                num_samples=size_train, dim=2, train=True,
-                num_categories=self.hparams.num_categories
+            self.data_train = CoupleDataset(
+                input_dataset=self.hparams.input_dataset(num_samples=size_train), 
+                target_dataset=self.hparams.target_dataset(num_samples=size_train)
             )
-            swiss_roll_train = DiscreteSwissRollDataset(
-                num_samples=size_train, train=True,
-                num_categories=self.hparams.num_categories
-            )
-            self.data_train = CoupleDataset(dataset_0=gaussian_train, dataset_1=swiss_roll_train)
 
             ####################### VALIDATION DATASET ######################
             size_val = int(self.hparams.num_samples * self.hparams.train_val_test_split[0])
-            gaussian_val = DiscreteGaussianDataset(
-                num_samples=size_val, dim=2, train=False,
-                num_categories=self.hparams.num_categories
+            self.data_val = CoupleDataset(
+                input_dataset=self.hparams.input_dataset(num_samples=size_val, train=False), 
+                target_dataset=self.hparams.target_dataset(num_samples=size_val, train=False)
             )
-            swiss_roll_val = DiscreteSwissRollDataset(
-                num_samples=size_val, train=False,
-                num_categories=self.hparams.num_categories
-            )
-            self.data_val = CoupleDataset(dataset_0=gaussian_val, dataset_1=swiss_roll_val)
-
             ######################### TEST DATASET #########################
             size_test = int(self.hparams.num_samples * self.hparams.train_val_test_split[0])
-            gaussian_test = DiscreteGaussianDataset(
-                num_samples=size_test, dim=2, train=False,
-                num_categories=self.hparams.num_categories
+            self.data_test = CoupleDataset(
+                input_dataset=self.hparams.input_dataset(num_samples=size_test, train=False), 
+                target_dataset=self.hparams.target_dataset(num_samples=size_test, train=False)
             )
-            swiss_roll_test = DiscreteSwissRollDataset(
-                num_samples=size_test, train=False,
-                num_categories=self.hparams.num_categories
-            )
-            self.data_test = CoupleDataset(dataset_0=gaussian_test, dataset_1=swiss_roll_test)
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader."""
@@ -190,19 +176,3 @@ class Gaussian2SwissRollDataModule(LightningDataModule):
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
         )
-
-
-if __name__ == "__main__":
-    datamodule = Gaussian2SwissRollDataModule(
-        num_categories=100,
-        num_samples=1000,
-        train_val_test_split=(0.8, 0.1, 0.1),
-        batch_size=32,
-        num_workers=0,
-        pin_memory=False
-    )
-    datamodule.setup()
-    train_loader = datamodule.train_dataloader()
-    for batch in train_loader:
-        print(batch[0].shape, batch[1].shape)
-        break  # just to check the first batch  
