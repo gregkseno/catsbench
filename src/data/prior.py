@@ -104,10 +104,12 @@ class Prior(nn.Module):
         self.num_skip_steps = num_skip_steps
         self.eps = eps
         self.prior_type = prior_type
+
         if isinstance(dtype, str):
             self.dtype: torch.dtype = getattr(torch, dtype)
         else:
             self.dtype: torch.dtype = dtype
+
 
         if prior_type == 'gaussian':
             p_onestep, p_cum = gaussian_prior(alpha, num_categories, num_timesteps, num_skip_steps)
