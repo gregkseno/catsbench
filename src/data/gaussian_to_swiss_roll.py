@@ -29,7 +29,11 @@ def _continuous_to_discrete(
 
 
 class DiscreteGaussianDataset(Dataset):
-    def __init__(self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True):
+    def __init__(self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True, seed = None):
+        if seed is not None:
+            torch.manual_seed(seed)  
+            torch.cuda.manual_seed_all(seed)
+            
         dataset = torch.randn(size=[num_samples, dim])
         if not train:
             dataset[:4] = torch.tensor([[0.0, 0.0], [1.75, -1.75], [-1.5, 1.5], [2, 2]])
@@ -61,7 +65,11 @@ class DiscreteSwissRollDataset(Dataset):
         return len(self.dataset)
 
 class DiscreteUniformDataset(Dataset):
-    def __init__(self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True):
+    def __init__(self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True, seed = None):
+        if seed is not None:
+            torch.manual_seed(seed)  
+            torch.cuda.manual_seed_all(seed)
+            
         dataset = np.random.uniform(low=-3.01, high=3, size=(n_samples, dim))
 
         dataset = torch.tensor(dataset)

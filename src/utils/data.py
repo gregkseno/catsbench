@@ -2,8 +2,59 @@ from typing import Any
 import numpy as np
 import ot
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import TensorDataset, Dataset, DataLoader
 
+
+class Sampler:
+    def __init__(
+        self, device='cuda',
+    ):
+        self.device = device
+    
+    def sample(self, size=5):
+        pass
+        
+class LoaderSampler(Sampler):
+    def __init__(self, loader, device='cuda'):
+        super(LoaderSampler, self).__init__(device)
+        self.loader = loader
+        self.it = iter(self.loader)
+        
+    def __len__(self):
+        return len(self.loader)
+    
+    def reset_sampler(self):
+        self.it = iter(self.loader)
+        
+    def sample(self, size=5):
+        if size <= self.loader.batch_size:
+            try:
+                batch = next(self.it)
+            except StopIteration:
+                self.it = iter(self.loader)
+                return self.sample(size)
+            if len(batch) < size:
+                return self.sample(size)
+                
+            return batch[:size].to(self.device)
+            
+        elif size > self.loader.batch_size:
+            samples = []
+            cur_size = 0
+            
+            while cur_size < size:
+                try:
+                    batch = next(self.it)
+                    samples.append(batch)
+                    cur_size += batch.shape[0]
+                except StopIteration:
+                    self.it = iter(self.loader)
+                    print(f'Maximum size allowed exceeded, returning {cur_size} samples...')
+                    samples = torch.cat(samples, dim=0)
+                    return samples[:cur_size].to(self.device)
+                
+            samples = torch.cat(samples, dim=0)
+            return samples[:size].to(self.device)
 
 def broadcast(t: torch.Tensor, num_add_dims: int) -> torch.Tensor:
     shape = [t.shape[0]] + [1] * num_add_dims

@@ -1,44 +1,90 @@
 from math import log
 import torch.nn as nn
 import torch
+from ..data import prior
 
+def create_dimensional_points(d, min_val=10.0, max_val=40.0, device='cpu'):
+
+    base_points = torch.tensor([
+        [min_val, min_val, max_val, max_val],  
+        [min_val, max_val, max_val, min_val]   
+    ], device=device)
+    
+    full_points = torch.full((d, 4), min_val, device=device)
+    full_points[:2] = base_points
+    
+    if d >= 3:
+        
+        full_points[2, 1] = max_val  
+        full_points[2, 2] = max_val  
+    
+    return full_points
+    
 class LightSB_D(nn.Module):
-    def __init__(self, dim, n_cat, n_potentials, beta=1e-5, device='cuda', distr_init='randn', transition='uniform'):
+    def __init__(self, dim, n_cat, n_potentials, n_steps=1, beta=1e-5, device='cuda', distr_init='randn', prior_type='uniform'):
         super().__init__()
         self.dim = dim
         self.n_cat = n_cat
         self.n_potentials = n_potentials
         self.device = device
+        self.n_steps = n_steps
         
         self.log_alpha = nn.Parameter(torch.zeros(n_potentials, device=device))
-        self.log_cp_cores = nn.ParameterList([
-            nn.Parameter(torch.zeros(n_potentials, n_cat, device=device))
-            for _ in range(dim)
-        ])
-
-        self.transition = transition
+        #self.log_cp_cores = nn.ParameterList([nn.Parameter(torch.zeros(n_potentials, n_cat, device=device)) for _ in range(dim)])
+        self.prior_type = prior_type
         self.beta  = beta
+        self.distr_init = distr_init
+        
         self._initialize_parameters(distr_init)
-        
-        if transition == 'uniform':
-            #According to https://arxiv.org/pdf/2107.03006
-            self.log_diff  = log(beta/n_cat + 1e-15) #log((1 - self.beta)/(self.n_cat - 1) + 1e-12)
-            self.log_equal = log(1 - ((n_cat - 1)/n_cat)*beta + 1e-15)#log(self.beta + (1 - self.beta)/(self.n_cat - 1) + 1e-12)
-        
-        if transition == 'gaussian':
-            sum_aux = -4 * torch.arange(-self.n_cat + 1, self.n_cat, device=self.device).float()**2 / (self.n_cat - 1)**2
-            self.log_Z = torch.logsumexp(sum_aux, dim=0)
 
-    def _initialize_parameters(self, distr_init):
+        self.prior = prior.Prior(beta, n_cat, n_steps, num_skip_steps=1, prior_type=prior_type).to(device)
+
+            
+    def _initialize_parameters_old(self, distr_init):
         nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
         for core in self.log_cp_cores:
-            if distr_init == 'randn':
+            if distr_init == 'gaussian':
                 nn.init.normal_(core, mean=-1.0, std=0.5)
             elif distr_init == 'uniform':
                 nn.init.constant_(core, -torch.log(torch.tensor(self.n_cat * 1.0)))
             else:
                 raise ValueError(f"Invalid distr_init: {distr_init}")
+
+    def _initialize_parameters(self, distr_init):
+        nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
+
+        self.log_cp_cores = []
+        
+        if self.distr_init == 'poisson':
+            rates = create_dimensional_points(self.dim, 10, self.n_cat-10).to(self.device)
+            y_d   = torch.arange(self.n_cat, device=self.device)  #(D, S)
             
+        for d in range(self.dim):
+        
+            if self.distr_init == 'gaussian':
+                cur_core = (-1.0 + 0.5**2*torch.randn(self.n_potentials, self.n_cat))/(self.n_cat * self.n_potentials)
+                cur_log_core = torch.log(cur_core**2)
+                
+            elif self.distr_init == 'uniform':
+                cur_log_core = torch.log(torch.ones(self.n_potentials, self.n_cat)/(self.n_cat * self.n_potentials))
+                    
+            elif self.distr_init == 'poisson':
+                rate = rates[d] # (K,)
+                cur_log_core = y_d[None, :] * torch.log(rate[:, None]) - rate[:, None] - torch.lgamma(y_d[None, :] + 1) #(K, S)
+                
+            cur_log_core = cur_log_core.to(self.device)
+            self.log_cp_cores.append(nn.Parameter(cur_log_core))
+
+        self._make_model_parameters()
+
+    def _make_model_parameters(self):
+        parameters = []
+
+        for core in self.log_cp_cores:
+            parameters.append(core)
+
+        self.parameters = nn.ParameterList(parameters)
+                
     def get_log_v(self, y):
         batch_size = y.shape[0]
         log_terms = self.log_alpha[None, :]  # (1, K)
@@ -57,33 +103,9 @@ class LightSB_D(nn.Module):
         
         for d in range(self.dim):
             x_d        = x[:, d]
-
-            if self.transition == 'uniform':
-                log_pi_ref = torch.full((batch_size, self.n_cat), self.log_diff, device=x_d.device)  #(batch_size, S)
-                rows = torch.arange(batch_size, device=x_d.device) # (batch_size,)
-                log_pi_ref[rows, x_d] = self.log_equal # (batch_size, S)
-                
-            if self.transition == 'gaussian':
-                y_aux = torch.arange(self.n_cat, device=x_d.device)
-                diff = x_d[:, None] - y_aux[None, :]
-                exp_argument = -4*(diff)**2/((self.n_cat-1)**2 * self.beta)
-                
-                log_pi_vals = exp_argument - self.log_Z
-                
-                off_diag_mask = (diff != 0)
-
-                off_diag_probs = torch.exp(log_pi_vals) * off_diag_mask.float()
-                diag_probs = 1 - off_diag_probs.sum(dim=1, keepdim=True)
-                
-                diag_probs = torch.clamp(diag_probs, min=1e-8)
-                diag_log = torch.log(diag_probs)
             
-                log_pi_ref = torch.full((batch_size, self.n_cat), -1e8, device=self.device)  # -inf
-                
-                log_pi_ref[off_diag_mask] = log_pi_vals[off_diag_mask]
-                
-                rows = torch.arange(batch_size, device=self.device)
-                log_pi_ref[rows, x_d] = diag_log.squeeze(1)
+            t = torch.randint(low=1, high=self.n_steps + 2, size=(batch_size,), device=self.device)
+            log_pi_ref = self.prior.extract('cumulative', t, row_id=x_d)
             
             log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
             log_inner = torch.logsumexp(log_joint, dim=2)  # (batch_size, K)
@@ -93,37 +115,15 @@ class LightSB_D(nn.Module):
         return log_c
         
     @torch.no_grad()
-    def forward(self, x):
+    def sample(self, x):
 
         num_samples = x.shape[0]
         log_z = torch.zeros(num_samples, self.n_potentials, device=self.device)
         log_pi_ref_list = []
         for d in range(self.dim):
             x_d        = x[:, d]
-            if self.transition == 'uniform':
-                log_pi_ref = torch.full((num_samples, self.n_cat), self.log_diff, device=x_d.device)  #(batch_size, S)
-                rows = torch.arange(num_samples, device=x_d.device) # (batch_size,)
-                log_pi_ref[rows, x_d] = self.log_equal # (batch_size, S)
-                
-            if self.transition == 'gaussian':
-                y_aux = torch.arange(self.n_cat, device=x_d.device)
-                diff = x_d[:, None] - y_aux[None, :]
-                exp_argument = -4*(diff)**2/((self.n_cat-1)**2 * self.beta)
-                
-                log_pi_vals = exp_argument - self.log_Z
-                off_diag_mask = (diff != 0)
-
-                off_diag_probs = torch.exp(log_pi_vals) * off_diag_mask.float()
-                diag_probs = 1 - off_diag_probs.sum(dim=1, keepdim=True)
-                
-                diag_probs = torch.clamp(diag_probs, min=1e-8)
-                diag_log = torch.log(diag_probs)
-            
-                log_pi_ref = torch.full((num_samples, self.n_cat), -1e8, device=self.device)  # -inf
-                log_pi_ref[off_diag_mask] = log_pi_vals[off_diag_mask]
-                
-                rows = torch.arange(num_samples, device=self.device)
-                log_pi_ref[rows, x_d] = diag_log.squeeze(1)
+            t = torch.randint(low=1, high=self.n_steps + 2, size=(num_samples,), device=self.device)
+            log_pi_ref = self.prior.extract('cumulative', t, row_id=x_d)
 
             log_pi_ref_list.append(log_pi_ref)
                 
@@ -151,3 +151,43 @@ class LightSB_D(nn.Module):
             y_samples[:, d] = y_d
         
         return y_samples
+
+    def get_log_probs(self):
+        if self.dist_type == 'categorical':
+            probs = F.softmax(self.cp_cores, dim=-1)
+        
+        elif self.dist_type == 'poisson_old':
+            rates = torch.tensor() 
+            y = torch.arange(self.n_cat, device=rates.device)
+            log_probs = y * torch.log(rates.unsqueeze(-1)) - rates.unsqueeze(-1)
+            log_probs -= torch.lgamma(y + 1)
+            probs = torch.exp(log_probs)
+            probs = probs / probs.sum(dim=-1, keepdim=True)
+
+        elif self.dist_type == 'poisson':
+            
+            rates = create_dimensional_points(self.dim, 10, self.n_cat-10).to(self.device)
+            
+            y     = [torch.arange(self.n_cat, device=self.device) for _ in range(self.dim)]
+            
+            for d in range(self.dim):
+                y_d  = y[d]     
+                rate = rates[d] 
+                log_prob_d = y_d[None, :] * torch.log(rate[:, None]) - rate[:, None] - torch.lgamma(y_d[None, :] + 1) 
+                self.log_cp_cores.append(log_prob_d)
+
+        elif self.dist_type == 'negbinomial':
+            r = 1 + 9 * torch.sigmoid(self.r_r)  
+            p = torch.sigmoid(self.r_p)          
+            y = torch.arange(self.n_cat, device=r.device)
+
+            log_binom = torch.lgamma(y + r.unsqueeze(-1)) - torch.lgamma(r.unsqueeze(-1))
+            log_binom -= torch.lgamma(y + 1)
+            log_probs = log_binom + r.unsqueeze(-1) * torch.log(p.unsqueeze(-1))
+            log_probs += y * torch.log(1 - p.unsqueeze(-1))
+            probs = torch.exp(log_probs)
+            probs = probs / probs.sum(dim=-1, keepdim=True)
+        
+        elif self.dist_type == 'bernoulli':
+            p = torch.sigmoid(self.cp_cores)  
+            probs = torch.stack([1 - p, p], dim=-1)
