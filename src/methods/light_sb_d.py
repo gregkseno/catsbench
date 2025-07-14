@@ -203,7 +203,7 @@ class LightSB_D(LightningModule):
         return {'optimizer': optimizer}
 
     @torch.no_grad()
-    def sample(self, x: torch.Tensor, **kwargs) -> torch.Tensor: # kwargs for Logger
+    def sample(self, x: torch.Tensor) -> torch.Tensor:
         log_z = torch.zeros(x.shape[0], self.hparams.num_potentials, device=self.device)
         log_pi_ref_list = []
         for d in range(self.hparams.dim):
@@ -241,6 +241,10 @@ class LightSB_D(LightningModule):
             y_samples[:, d] = y_d
         
         return y_samples
+    
+    @torch.no_grad()
+    def sample_trajectory(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.stack(x, self.sample(x), dim=0)
 
     def get_log_probs(self) -> None:
         if self.dist_type == 'categorical':

@@ -86,8 +86,7 @@ class ToyLogger(Callback):
 
         if batch_idx == 0:
             self._log_smaples(x_start, x_end, pl_module, 'val')
-            if getattr(pl_module, 'sample_trajectory', None) is not None:
-                self._log_trajectories(x_start, pl_module, stage='val')
+            self._log_trajectories(x_start, pl_module, stage='val')
 
     def on_test_batch_end(
         self,
@@ -102,8 +101,7 @@ class ToyLogger(Callback):
 
         if batch_idx == 0:
             self._log_smaples(x_start, x_end, pl_module, 'test')
-            if getattr(pl_module, 'sample_trajectory', None) is not None:
-                self._log_trajectories(x_start, pl_module, stage='test')
+            self._log_trajectories(x_start, pl_module, stage='test')
 
     @rank_zero_only
     def _log_smaples(
