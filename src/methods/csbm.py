@@ -163,6 +163,7 @@ class CSBM(LightningModule):
         # otherwise generate samples from reverse model
         if not self.first_iteration:
             x_start, x_end = x_start, self.sample(x_start, fb=bf) 
+        outputs = {'x_start': x_end, 'x_end': x_start} # For Logger
 
         optimizers = {
             'forward': self.optimizers()[0],
@@ -194,6 +195,7 @@ class CSBM(LightningModule):
                     schedulers[fb].step(loss.detach()) 
                 self.emas[fb].update()
                 optimizers[fb].zero_grad()
+        return outputs
 
     def on_train_epoch_end(self) -> None:
         fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
@@ -211,6 +213,7 @@ class CSBM(LightningModule):
         # DataLoader have the x_0, x_1 order so we need to swap
         if fb == 'forward': x_end, x_start = batch
         else: x_start, x_end = batch
+        outputs = {'x_start': x_end, 'x_end': x_start} # For logger
 
         # if first iteration apply optional mini-batch sampling
         if self.first_iteration and self.hparams.use_mini_batch:
@@ -223,7 +226,31 @@ class CSBM(LightningModule):
         info = {f"val/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('val/iteration', self.iteration, prog_bar=True)
+        return outputs
+    
+    def test_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
+        fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
+        bf = 'backward' if fb == 'forward' else 'forward'
+        
+        # DataLoader have the x_0, x_1 order so we need to swap
+        if fb == 'forward': x_end, x_start = batch
+        else: x_start, x_end = batch
+        outputs = {'x_start': x_end, 'x_end': x_start} # For logger
 
+        # if first iteration apply optional mini-batch sampling
+        if self.first_iteration and self.hparams.use_mini_batch:
+            x_start, x_end = optimize_coupling(x_start, x_end)
+        # otherwise generate samples from reverse model
+        if not self.first_iteration:
+            x_start, x_end = x_start, self.sample(x_start, fb=bf)
+
+        _, info = self.markovian_projection(fb, x_start, x_end)
+        info = {f"test/{k}": v for k, v in info.items()}
+        self.log_dict(info, prog_bar=True, sync_dist=True) 
+        self.log('test/iteration', self.iteration, prog_bar=True)
+        return outputs
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer_forward  = self.hparams.optimizer(params=self.models['forward'].parameters())
@@ -262,9 +289,12 @@ class CSBM(LightningModule):
         
     @torch.no_grad()
     def sample(
-        self, x: torch.Tensor, fb: Literal['forward', 'backward'] = 'forward'
+        self, x: torch.Tensor, fb: Optional[Literal['forward', 'backward']] = None
     ) -> torch.Tensor:
         """Sample from the model starting from `x` returning the final sample."""
+        if fb is None:
+            fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
+
         self.models[fb].eval()
         for t in reversed(range(1, self.prior.num_timesteps + 2)):
             t = torch.tensor([t] * x.shape[0], device=self.device)
@@ -273,9 +303,12 @@ class CSBM(LightningModule):
     
     @torch.no_grad()
     def sample_trajectory(
-        self, x: torch.Tensor, fb: Literal['forward', 'backward'] = 'forward'
+        self, x: torch.Tensor, fb: Optional[Literal['forward', 'backward']] = None
     ) -> torch.Tensor:
         """Sample from the model starting from `x` returning the full trajectory."""
+        if fb is None:
+            fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
+        
         self.models[fb].eval()
         trajectory = [x]
         for t in reversed(range(1, self.prior.num_timesteps + 2)):

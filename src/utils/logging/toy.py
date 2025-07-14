@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -57,88 +57,68 @@ class ToyLogger(Callback):
             'front': {'c': 'grey', 'markeredgecolor': 'black', 'linewidth': 1, 'zorder': 2}
         }
 
-    def on_train_batch_start(
+    def on_train_batch_end(
         self,
         trainer: Trainer,
         pl_module: LightningModule,
+        outputs: Dict[str, Any],
         batch: Tuple[torch.Tensor, torch.Tensor],
         batch_idx: int,
     ) -> None:
-        fb, bf = 'forward', 'backward'
-        if pl_module.bidirectional and pl_module.current_epoch % 2 != 0:
-            fb, bf = 'backward', 'forward'
         pl_module.eval()
-
-        if fb == 'forward': x_start, x_end = batch
-        else: x_end, x_start = batch
-
-        # if first iteration apply optional mini-batch sampling
-        if pl_module.first_iteration and pl_module.hparams.use_mini_batch:
-            x_start, x_end = optimize_coupling(x_start, x_end)
-        # otherwise generate samples from reverse model
-        if not pl_module.first_iteration and pl_module.bidirectional:
-            x_start, x_end = pl_module.sample(x_end, fb=bf), x_end 
+        x_start, x_end = outputs['x_start'], outputs['x_end']
 
         if batch_idx == 0:
-            self._log_smaples(x_start, x_end, fb, pl_module, 'train')
+            self._log_smaples(x_start, x_end, pl_module, 'train')
             if getattr(pl_module, 'sample_trajectory', None) is not None:
-                self._log_trajectories(x_start, fb, pl_module, stage='train')
+                self._log_trajectories(x_start, pl_module, stage='train')
 
-    def on_validation_batch_start(
+    def on_validation_batch_end(
         self,
         trainer: Trainer,
         pl_module: LightningModule,
+        outputs: Dict[str, Any],
         batch: Tuple[torch.Tensor, torch.Tensor],
         batch_idx: int,
     ) -> None:
-        fb = 'forward'
-        if pl_module.bidirectional and pl_module.current_epoch % 2 != 0:
-            fb = 'backward'
         pl_module.eval()
-
-        if fb == 'forward': x_start, x_end = batch
-        else: x_end, x_start = batch
+        x_start, x_end = outputs['x_start'], outputs['x_end']
 
         if batch_idx == 0:
-            self._log_smaples(x_start, x_end, fb, pl_module, 'val')
+            self._log_smaples(x_start, x_end, pl_module, 'val')
             if getattr(pl_module, 'sample_trajectory', None) is not None:
-                self._log_trajectories(x_start, fb, pl_module, stage='val')
+                self._log_trajectories(x_start, pl_module, stage='val')
 
-    def on_test_batch_start(
+    def on_test_batch_end(
         self,
         trainer: Trainer,
         pl_module: LightningModule,
+        outputs: Dict[str, Any],
         batch: Tuple[torch.Tensor, torch.Tensor],
         batch_idx: int,
     ) -> None:
-        fb = 'forward'
-        if pl_module.bidirectional and pl_module.current_epoch % 2 != 0:
-            fb = 'backward'
         pl_module.eval()
-
-        if fb == 'forward': x_start, x_end = batch
-        else: x_end, x_start = batch
+        x_start, x_end = outputs['x_start'], outputs['x_end']
 
         if batch_idx == 0:
-            self._log_smaples(x_start, x_end, fb, pl_module, 'test')
+            self._log_smaples(x_start, x_end, pl_module, 'test')
             if getattr(pl_module, 'sample_trajectory', None) is not None:
-                self._log_trajectories(x_start, fb, pl_module, stage='test')
+                self._log_trajectories(x_start, pl_module, stage='test')
 
     @rank_zero_only
     def _log_smaples(
         self,
         x_start: torch.Tensor | np.ndarray, 
         x_end: torch.Tensor | np.ndarray, 
-        fb: Literal['forward', 'backward'],
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
-        pred_x_end = convert_to_numpy(pl_module.sample(x_start, fb=fb))
+        pred_x_end = convert_to_numpy(pl_module.sample(x_start))
         x_start = convert_to_numpy(x_start)
         x_end = convert_to_numpy(x_end)
 
         fig, axes = plt.subplots(1, 3, **self.samples_fig_config)
-        fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.imf_iteration}')
+        fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.iteration}')
 
         axes[0].scatter(x_start[:, 0], x_start[:, 1], **self.samples_start_config) 
         axes[1].scatter(x_end[:, 0], x_end[:, 1], **self.samples_end_config)
@@ -152,7 +132,7 @@ class ToyLogger(Callback):
         fig.tight_layout(pad=0.5)
         img = fig2img(fig)
         pl_module.logger.log_image(
-            key=f'{stage}/samples_{fb}', images=[img], step=pl_module.global_step
+            key=f'{stage}/samples', images=[img], step=pl_module.global_step
         )
         plt.close()
 
@@ -160,21 +140,20 @@ class ToyLogger(Callback):
     def _log_trajectories(
         self,
         x_start: torch.Tensor | np.ndarray, 
-        fb: Literal['forward', 'backward'],
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
         fig, ax = plt.subplots(1, 1, **self.trajectories_fig_config)
         ax.get_xaxis().set_ticklabels([])
         ax.get_yaxis().set_ticklabels([])
-        fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.imf_iteration}')
+        fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.iteration}')
         
-        pred_x_end = convert_to_numpy(pl_module.sample(x_start, fb=fb))
+        pred_x_end = convert_to_numpy(pl_module.sample(x_start))
         traj_start = x_start[:self.num_trajectories]
         repeats = [self.num_translations] + [1] * traj_start.dim()
         traj_start = traj_start.unsqueeze(0).repeat(*repeats)
         traj_start = traj_start.reshape(-1, *x_start.shape[1:])
-        trajectories = pl_module.sample_trajectory(traj_start, fb)
+        trajectories = pl_module.sample_trajectory(traj_start)
 
         # Reduce number of timesteps for visualization
         num_timesteps = trajectories.shape[0]
@@ -202,6 +181,6 @@ class ToyLogger(Callback):
         fig.tight_layout(pad=0.5)
         img = fig2img(fig)
         pl_module.logger.log_image(
-            key=f'{stage}/trajectories_{fb}', images=[img], step=pl_module.global_step
+            key=f'{stage}/trajectories', images=[img], step=pl_module.global_step
         )
         plt.close()

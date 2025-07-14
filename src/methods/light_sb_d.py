@@ -48,11 +48,11 @@ class LightSB_D(LightningModule):
         # save only `HPARAMS` for memory efficiency (probably :))
         self.save_hyperparameters(*HPARAMS, logger=False)        
 
-        self.bidirectional = True
-        self.first_iteration = True
+        self.bidirectional = False
         self.iteration = 1
         self.prior = prior
         
+        # TODO: Add names to parameters
         self.log_alpha = nn.Parameter(torch.zeros(num_potentials))
         self._initialize_parameters(distr_init)
             
@@ -114,13 +114,12 @@ class LightSB_D(LightningModule):
         return log_v
 
     def get_log_c(self, x: torch.Tensor) -> torch.Tensor:
-        batch_size = x.shape[0], x.shape
-        log_z = torch.zeros(batch_size, self.hparams.num_potentials, device=self.device)
+        log_z = torch.zeros(x.shape[0], self.hparams.num_potentials, device=self.device)
         
         for d in range(self.hparams.dim):
             x_d = x[:, d]
             last_timestep = torch.full(
-                size=(batch_size,), 
+                size=(x.shape[0],), 
                 fill_value=self.prior.num_timesteps+1, 
                 device=self.device
             )
@@ -137,29 +136,31 @@ class LightSB_D(LightningModule):
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         x_start, x_end = batch
+        outputs = {'x_start': x_start, 'x_end': x_end} # For logger
 
         log_v = self.get_log_v(x_end)
         log_c = self.get_log_c(x_start)
-        loss = (-log_v + log_c).mean()
+        outputs['loss'] = (-log_v + log_c).mean()
 
         # logs step-wise loss
         info = {
-            f"train/loss": loss, 
+            f"train/loss": outputs['loss'], 
             f"train/log_v": log_v.mean(), 
             f"train/log_c": log_c.mean()
         }
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('train/iteration', self.iteration, prog_bar=True)
-        return loss
+        return outputs
 
     def on_train_epoch_end(self) -> None:
-        # if self.current_epoch >= self.hparams.num_first_iterations:
         self.iteration += 1
 
     def validation_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         x_start, x_end = batch
+        outputs = {'x_start': x_start, 'x_end': x_end} # For logger
+
         log_v = self.get_log_v(x_end)
         log_c = self.get_log_c(x_start)
         loss = (-log_v + log_c).mean()
@@ -172,6 +173,27 @@ class LightSB_D(LightningModule):
         }
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('val/iteration', self.iteration, prog_bar=True)
+        return outputs
+
+    def test_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
+        x_start, x_end = batch
+        outputs = {'x_start': x_start, 'x_end': x_end} # For logger
+
+        log_v = self.get_log_v(x_end)
+        log_c = self.get_log_c(x_start)
+        loss = (-log_v + log_c).mean()
+
+        # logs step-wise loss
+        info = {
+            f"test/loss": loss, 
+            f"test/log_v": log_v.mean(), 
+            f"test/log_c": log_c.mean()
+        }
+        self.log_dict(info, prog_bar=True, sync_dist=True) 
+        self.log('test/iteration', self.iteration, prog_bar=True)
+        return outputs
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer  = self.hparams.optimizer(params=self.parameters())
@@ -182,13 +204,12 @@ class LightSB_D(LightningModule):
 
     @torch.no_grad()
     def sample(self, x: torch.Tensor, **kwargs) -> torch.Tensor: # kwargs for Logger
-        batch_size = x.shape[0]
-        log_z = torch.zeros(batch_size, self.hparams.num_potentials, device=self.device)
+        log_z = torch.zeros(x.shape[0], self.hparams.num_potentials, device=self.device)
         log_pi_ref_list = []
         for d in range(self.hparams.dim):
             x_d = x[:, d]
             last_timestep = torch.full(
-                size=(batch_size,), 
+                size=(x.shape[0],), 
                 fill_value=self.prior.num_timesteps+1, 
                 device=self.device
             )
@@ -206,13 +227,13 @@ class LightSB_D(LightningModule):
         p_k = torch.exp(log_p_k) # (batch_size, K)
         k_stars = torch.multinomial(p_k, num_samples=1).squeeze(1)  # (batch_size,)
     
-        y_samples = torch.zeros(batch_size, self.hparams.dim, dtype=torch.long, device=self.device)
+        y_samples = torch.zeros(x.shape[0], self.hparams.dim, dtype=torch.long, device=self.device)
     
         for d in range(self.hparams.dim):
             log_pi_ref = log_pi_ref_list[d]
                 
             log_p_d_all = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(batch_size, K, S)
-            batch_idx = torch.arange(batch_size, device=k_stars.device)
+            batch_idx = torch.arange(x.shape[0], device=k_stars.device)
             log_p_d_selected = log_p_d_all[batch_idx, k_stars, :] #(batch_size, S)
             
             p_d = torch.softmax(log_p_d_selected, dim=1)
