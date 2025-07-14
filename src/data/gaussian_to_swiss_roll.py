@@ -65,20 +65,19 @@ class DiscreteSwissRollDataset(Dataset):
         return len(self.dataset)
 
 class DiscreteUniformDataset(Dataset):
-    def __init__(self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True, seed = None):
-        if seed is not None:
-            torch.manual_seed(seed)  
-            torch.cuda.manual_seed_all(seed)
-            
-        dataset = np.random.uniform(low=-3.01, high=3, size=(n_samples, dim))
-
-        dataset = torch.tensor(dataset)
+    def __init__(self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True):
+        dataset = 6 * torch.rand(size=(num_samples, dim)) - 3
         if not train:
             dataset[:4] = torch.tensor([[0.0, 0.0], [1.75, -1.75], [-1.5, 1.5], [2, 2]])
             
-        dataset = _continuous_to_discrete(dataset, num_categories+1)
-        
+        dataset = _continuous_to_discrete(dataset, num_categories)
         self.dataset = dataset  
+
+    def __getitem__(self, idx):
+        return self.dataset[idx]
+    
+    def __len__(self):
+        return len(self.dataset)
 
 class Gaussian2SwissRollDataModule(LightningDataModule):
     def __init__(
