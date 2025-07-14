@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional, Tuple, Union
 
 import numpy as np
 from scipy.special import softmax
@@ -95,7 +95,7 @@ class Prior(nn.Module):
             'von_mises',
         ] = 'uniform',
         eps: float = 1e-20,
-        dtype: torch.dtype = torch.float32
+        dtype: Union[str, torch.dtype] = torch.float32
     ) -> None:
         super().__init__()
         self.alpha = alpha
@@ -104,7 +104,10 @@ class Prior(nn.Module):
         self.num_skip_steps = num_skip_steps
         self.eps = eps
         self.prior_type = prior_type
-        self.dtype: torch.dtype = getattr(torch, dtype.split(".")[-1])
+        if isinstance(dtype, str):
+            self.dtype: torch.dtype = getattr(torch, dtype)
+        else:
+            self.dtype: torch.dtype = dtype
 
         if prior_type == 'gaussian':
             p_onestep, p_cum = gaussian_prior(alpha, num_categories, num_timesteps, num_skip_steps)

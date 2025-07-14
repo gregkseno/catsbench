@@ -5,4 +5,4 @@
   num_skip_steps: 10
   prior_type: gaussian # choices: "uniform", "gaussian", "von_mises"
   eps: 1e-20
-  dtype: torch.float32
+  dtype: float32
