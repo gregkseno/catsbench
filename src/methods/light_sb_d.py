@@ -40,7 +40,7 @@ class LightSB_D(LightningModule):
         num_potentials: int, 
         optimizer: Optimizer, # partially initialized 
         scheduler: Optional[LRScheduler] = None, # partially initialized 
-        distr_init: Literal['uniform', 'gaussian', 'poisson'] = 'uniform', 
+        distr_init: Literal['uniform', 'gaussian', 'benchmark'] = 'gaussian', 
     ):
         super().__init__()
         # somehow this function is able to load all 
@@ -55,7 +55,7 @@ class LightSB_D(LightningModule):
         self._initialize_parameters(distr_init)
             
     def _initialize_parameters_old(
-        self, distr_init: Literal['uniform', 'gaussian', 'poisson']
+        self, distr_init: Literal['uniform', 'gaussian', 'benchmark']
     ) -> None:
         nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
         for core in self.log_cp_cores:
@@ -67,12 +67,12 @@ class LightSB_D(LightningModule):
                 raise ValueError(f"Invalid distr_init: {distr_init}")
 
     def _initialize_parameters(
-        self, distr_init: Literal['uniform', 'gaussian', 'poisson']
+        self, distr_init: Literal['uniform', 'gaussian', 'benchmark']
     ) -> None:
         nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
         self.log_cp_cores = []
         
-        if distr_init == 'poisson':
+        if distr_init == 'benchmark':
             rates = create_dimensional_points(self.hparams.dim, 10, self.prior.num_categories-10).to(self.device)
             y_d   = torch.arange(self.prior.num_categories, device=self.device)  #(D, S)
             
@@ -84,7 +84,7 @@ class LightSB_D(LightningModule):
             elif distr_init == 'uniform':
                 cur_log_core = torch.log(torch.ones(self.hparams.num_potentials, self.prior.num_categories) \
                                         / (self.prior.num_categories * self.hparams.num_potentials))
-            elif distr_init == 'poisson':
+            elif distr_init == 'benchmark':
                 rate = rates[d] # (K,)
                 cur_log_core = y_d[None, :] * torch.log(rate[:, None]) - rate[:, None] - torch.lgamma(y_d[None, :] + 1) #(K, S)
             else:
@@ -244,42 +244,3 @@ class LightSB_D(LightningModule):
     def sample_trajectory(self, x: torch.Tensor) -> torch.Tensor:
         return torch.stack([x, self.sample(x)], dim=0)
 
-    def get_log_probs(self) -> None:
-        if self.dist_type == 'categorical':
-            probs = F.softmax(self.cp_cores, dim=-1)
-        
-        elif self.hparams.dist_type == 'poisson_old':
-            rates = torch.tensor() 
-            y = torch.arange(self.num_categories, device=rates.device)
-            log_probs = y * torch.log(rates.unsqueeze(-1)) - rates.unsqueeze(-1)
-            log_probs -= torch.lgamma(y + 1)
-            probs = torch.exp(log_probs)
-            probs = probs / probs.sum(dim=-1, keepdim=True)
-
-        elif self.dist_type == 'poisson':
-            
-            rates = create_dimensional_points(self.hparams.dim, 10, self.num_categories-10).to(self.device)
-            
-            y     = [torch.arange(self.num_categories, device=self.device) for _ in range(self.hparams.dim)]
-            
-            for d in range(self.hparams.dim):
-                y_d  = y[d]     
-                rate = rates[d] 
-                log_prob_d = y_d[None, :] * torch.log(rate[:, None]) - rate[:, None] - torch.lgamma(y_d[None, :] + 1) 
-                self.log_cp_cores.append(log_prob_d)
-
-        elif self.dist_type == 'negbinomial':
-            r = 1 + 9 * torch.sigmoid(self.r_r)  
-            p = torch.sigmoid(self.r_p)          
-            y = torch.arange(self.num_categories, device=r.device)
-
-            log_binom = torch.lgamma(y + r.unsqueeze(-1)) - torch.lgamma(r.unsqueeze(-1))
-            log_binom -= torch.lgamma(y + 1)
-            log_probs = log_binom + r.unsqueeze(-1) * torch.log(p.unsqueeze(-1))
-            log_probs += y * torch.log(1 - p.unsqueeze(-1))
-            probs = torch.exp(log_probs)
-            probs = probs / probs.sum(dim=-1, keepdim=True)
-        
-        elif self.dist_type == 'bernoulli':
-            p = torch.sigmoid(self.cp_cores)  
-            probs = torch.stack([1 - p, p], dim=-1)
