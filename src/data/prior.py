@@ -8,6 +8,12 @@ from torch import nn
 from src.utils import broadcast
 
 
+def log_space_product(A, B):
+    A_exp = A.unsqueeze(2)  
+    B_exp = B.unsqueeze(0)  
+
+    return torch.logsumexp(A_exp + B_exp, dim=1)
+
 def get_cum_matrices(num_timesteps: int, onestep_matrix: torch.Tensor) -> torch.Tensor:
     num_categories = onestep_matrix.shape[0]
     cum_matrices = torch.empty(size=(num_timesteps, num_categories, num_categories), dtype=onestep_matrix.dtype)
@@ -18,6 +24,17 @@ def get_cum_matrices(num_timesteps: int, onestep_matrix: torch.Tensor) -> torch.
     
     assert onestep_matrix.shape == cum_matrices[0].shape, f'Wrong shape!'
     return cum_matrices
+
+def get_log_cum_matrices(num_timesteps: int, log_onestep_matrix: torch.Tensor) -> torch.Tensor:
+    num_categories = log_onestep_matrix.shape[0]
+    log_cum_matrices = torch.empty(size=(num_timesteps, num_categories, num_categories), dtype=log_onestep_matrix.dtype)
+    log_cum_matrices[0] = torch.clone(log_onestep_matrix)
+    
+    for timestep in range(1, num_timesteps):
+        log_cum_matrices[timestep] = log_space_product(log_cum_matrices[timestep-1], log_onestep_matrix)
+
+    assert log_onestep_matrix.shape == log_cum_matrices[0].shape, f'Wrong shape!'
+    return log_cum_matrices
 
 
 def uniform_prior(
@@ -49,7 +66,7 @@ def gaussian_prior(
     max_distance = num_categories - 1
     if not use_doubly_stochastic:
         indices = np.arange(num_categories)[None, ...]
-        values = (-4 * (indices - indices.T)**2) / ((alpha * max_distance)**2)
+        values = (-4 * (indices - indices.T)**2) / ((alpha *max_distance)**2)
         p_onestep_mat = softmax(values, axis=1)
     else: # this logic mathcing D3PM article
         norm_const = -4 * (np.arange(-max_distance, max_distance+2, step=1, dtype=np.float64) ** 2)
@@ -70,7 +87,50 @@ def gaussian_prior(
 
     return p_onestep_mat.transpose(0, 1), p_cum_mats
 
+def gaussian_prior_log(
+    alpha: float,
+    num_categories: int, 
+    num_timesteps: int, 
+    num_skip_steps: int,
+    use_doubly_stochastic: bool = True
+) -> Tuple[torch.Tensor, torch.Tensor]:
 
+    max_distance = num_categories - 1
+    if not use_doubly_stochastic:
+        indices = np.arange(num_categories)[None, ...]
+        values = (-4 * (indices - indices.T)**2) / ((alpha *max_distance)**2)
+        p_onestep_mat = softmax(values, axis=1)
+    else: # this logic mathcing D3PM article
+
+        sum_aux = -4 * torch.arange(-num_categories + 1, num_categories+1, dtype=torch.float64)**2 / (alpha * max_distance)**2
+        log_Z   = torch.logsumexp(sum_aux, dim=0)
+
+        indices = torch.arange(num_categories, dtype=torch.float64)
+        diff = indices[:, None] - indices[None, :]
+        exp_argument = -4*(diff)**2/(alpha * max_distance)**2
+        log_pi_vals = exp_argument - log_Z
+
+        off_diag_mask = (diff != 0)
+
+        off_diag_probs = torch.exp(log_pi_vals) * off_diag_mask.float()
+        diag_log = torch.log1p(-off_diag_probs.sum(dim=1, keepdim=True))
+        
+        log_p_onestep_mat = torch.full((num_categories, num_categories), -1e8, dtype=torch.float64)  # -inf
+        
+        log_p_onestep_mat[off_diag_mask] = log_pi_vals[off_diag_mask]
+        
+        rows = torch.arange(num_categories)
+        log_p_onestep_mat[rows, indices.to(torch.int32)] = diag_log.squeeze(1)
+
+    p_onestep_mat = torch.exp(log_p_onestep_mat)
+
+    if num_skip_steps > 1:
+        p_onestep_mat = torch.linalg.matrix_power(p_onestep_mat, n=num_skip_steps)
+        log_p_onestep_mat = torch.log(p_onestep_mat)
+
+    log_p_cum_mats = get_log_cum_matrices(num_timesteps + 1, log_p_onestep_mat)
+
+    return log_p_onestep_mat.transpose(0, 1), log_p_cum_mats
 
 # Cumulative returns with following pattern
 # 0         1           2           ...         N           N+1
@@ -112,7 +172,9 @@ class Prior(nn.Module):
 
 
         if prior_type == 'gaussian':
-            p_onestep, p_cum = gaussian_prior(alpha, num_categories, num_timesteps, num_skip_steps)
+            p_onestep, p_cum = gaussian_prior(alpha, num_categories, num_timesteps, num_skip_steps, use_doubly_stochastic=True)
+        elif prior_type == 'gaussian_log':
+            p_onestep, p_cum = gaussian_prior_log(alpha, num_categories, num_timesteps, num_skip_steps, use_doubly_stochastic=True)
         elif prior_type == 'uniform':
             p_onestep, p_cum = uniform_prior(alpha, num_categories, num_timesteps, num_skip_steps)
         else:

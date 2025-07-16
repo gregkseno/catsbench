@@ -58,6 +58,11 @@ class LightSB_D(LightningModule):
         self, distr_init: Literal['uniform', 'gaussian', 'benchmark']
     ) -> None:
         nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
+        self.log_cp_cores = nn.ParameterList([
+            nn.Parameter(torch.zeros(self.hparams.num_potentials, self.prior.num_categories))
+            for _ in range(self.hparams.dim)
+        ])
+
         for core in self.log_cp_cores:
             if distr_init == 'gaussian':
                 nn.init.normal_(core, mean=-1.0, std=0.5)
@@ -112,16 +117,19 @@ class LightSB_D(LightningModule):
         return log_v
 
     def get_log_c(self, x: torch.Tensor) -> torch.Tensor:
+        
         log_z = torch.zeros(x.shape[0], self.hparams.num_potentials, device=self.device)
         
         for d in range(self.hparams.dim):
             x_d = x[:, d]
+
             last_timestep = torch.full(
                 size=(x.shape[0],), 
-                fill_value=self.prior.num_timesteps+1, 
+                fill_value=self.prior.num_timesteps, 
                 device=self.device
             )
             log_pi_ref = self.prior.extract('cumulative', last_timestep, row_id=x_d)
+            #log_pi_ref = torch.log(pi_ref)
             
             log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
             log_inner = torch.logsumexp(log_joint, dim=2)  # (batch_size, K)
@@ -208,11 +216,12 @@ class LightSB_D(LightningModule):
             x_d = x[:, d]
             last_timestep = torch.full(
                 size=(x.shape[0],), 
-                fill_value=self.prior.num_timesteps+1, 
+                fill_value=self.prior.num_timesteps, 
                 device=self.device
             )
             log_pi_ref = self.prior.extract('cumulative', last_timestep, row_id=x_d)
-
+            #log_pi_ref = torch.log(pi_ref)
+            
             log_pi_ref_list.append(log_pi_ref)
                 
             log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
