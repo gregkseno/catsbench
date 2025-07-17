@@ -6,6 +6,7 @@ from torch.nn import functional as F
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from lightning import LightningModule
+import numpy as np
 
 from src.data.prior import Prior
 
@@ -250,6 +251,10 @@ class LightSB_D(LightningModule):
         return y_samples
     
     @torch.no_grad()
-    def sample_trajectory(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.stack([x, self.sample(x)], dim=0)
+    def sample_trajectory(self, x: torch.Tensor, pca=None) -> torch.Tensor:
+        if pca is None:
+            out = torch.stack([x, self.sample(x)], dim=0)
+        else:
+            out = np.stack([pca.transform(x), pca.transform(self.sample(x))], axis=0)
+        return out
 
