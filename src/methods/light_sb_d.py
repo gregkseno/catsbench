@@ -48,6 +48,7 @@ class LightSB_D(LightningModule):
         # the method arguments and put to `self.hparams`
         # save only `HPARAMS` for memory efficiency (probably :))
         self.save_hyperparameters(*HPARAMS, logger=False)        
+        self.bidirectional = False  
         self.iteration = 1
         self.prior = prior
         

@@ -110,6 +110,7 @@ class ToyLogger(Callback):
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
+        fb = 'forward' if not pl_module.bidirectional or self.current_epoch % 2 == 0 else 'backward'
         pred_x_end = convert_to_numpy(pl_module.sample(x_start))
         x_start = convert_to_numpy(x_start)
         x_end = convert_to_numpy(x_end)
@@ -129,7 +130,7 @@ class ToyLogger(Callback):
         fig.tight_layout(pad=0.5)
         img = fig2img(fig)
         pl_module.logger.log_image(
-            key=f'{stage}/samples', images=[img], step=pl_module.global_step
+            key=f'{stage}/samples_{fb}', images=[img], step=pl_module.global_step
         )
         plt.close()
 
@@ -140,6 +141,7 @@ class ToyLogger(Callback):
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
+        fb = 'forward' if not pl_module.bidirectional or self.current_epoch % 2 == 0 else 'backward'
         fig, ax = plt.subplots(1, 1, **self.trajectories_fig_config)
         ax.get_xaxis().set_ticklabels([])
         ax.get_yaxis().set_ticklabels([])
@@ -180,6 +182,6 @@ class ToyLogger(Callback):
         fig.tight_layout(pad=0.5)
         img = fig2img(fig)
         pl_module.logger.log_image(
-            key=f'{stage}/trajectories', images=[img], step=pl_module.global_step
+            key=f'{stage}/trajectories_{fb}', images=[img], step=pl_module.global_step
         )
         plt.close()
