@@ -31,7 +31,7 @@ class DiscreteUniformDataset(Dataset):
         self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True
     ):
         dataset = 6 * torch.rand(size=(num_samples, dim)) - 3
-        if not train:
+        if not train and dim == 2:
             dataset[:4] = torch.tensor([[0.0, 0.0], [1.75, -1.75], [-1.5, 1.5], [2, 2]])
             
         dataset = _continuous_to_discrete(dataset, num_categories)
@@ -48,7 +48,7 @@ class DiscreteGaussianDataset(Dataset):
         self, num_samples: int, dim: int, num_categories: int = 100, train: bool = True
     ):          
         dataset = torch.randn(size=[num_samples, dim])
-        if not train:
+        if not train and dim == 2:
             dataset[:4] = torch.tensor([[0.0, 0.0], [1.75, -1.75], [-1.5, 1.5], [2, 2]])
             
         dataset = _continuous_to_discrete(dataset, num_categories)
@@ -92,7 +92,7 @@ class ToyDataModule(LightningDataModule):
         num_workers: int = 0,
         pin_memory: bool = False,
     ) -> None:
-        assert dim == 2, "This datamodule is designed for 2D data only."
+        # assert dim == 2, "This datamodule is designed for 2D data only."
         assert len(train_val_test_split) == 3, ( 
             "train_val_test_split must be a tuple of three floats "
             "representing the proportions for train, val, and test sets."
@@ -130,8 +130,8 @@ class ToyDataModule(LightningDataModule):
             ###################### TRAINING DATASET ######################
             size_train = int(self.hparams.num_samples * self.hparams.train_val_test_split[0])
             self.data_train = CoupleDataset(
-                input_dataset=torch.load('data/benchmark/dim_2/gaussian.pt'), # self.hparams.input_dataset(num_samples=size_train), 
-                target_dataset=torch.load('data/benchmark/dim_2/swiss_roll.pt') # self.hparams.target_dataset(num_samples=size_train)
+                input_dataset=self.hparams.input_dataset(num_samples=size_train), 
+                target_dataset=self.hparams.target_dataset(num_samples=size_train)
             )
 
             ####################### VALIDATION DATASET ######################

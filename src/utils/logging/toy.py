@@ -6,7 +6,7 @@ import torch
 from lightning.pytorch import Callback, Trainer, LightningModule
 from lightning.pytorch.utilities import rank_zero_only
 
-from src.utils import convert_to_numpy, fig2img, optimize_coupling
+from src.utils import convert_to_numpy, fig2img
 
 
 class ToyLogger(Callback):
