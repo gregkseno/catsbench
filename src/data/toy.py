@@ -92,7 +92,7 @@ class ToyDataModule(LightningDataModule):
         num_workers: int = 0,
         pin_memory: bool = False,
     ) -> None:
-        # assert dim == 2, "This datamodule is designed for 2D data only."
+        assert dim == 2, "This datamodule is designed for 2D data only."
         assert len(train_val_test_split) == 3, ( 
             "train_val_test_split must be a tuple of three floats "
             "representing the proportions for train, val, and test sets."

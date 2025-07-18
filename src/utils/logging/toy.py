@@ -70,8 +70,7 @@ class ToyLogger(Callback):
 
         if batch_idx == 0:
             self._log_smaples(x_start, x_end, pl_module, 'train')
-            if getattr(pl_module, 'sample_trajectory', None) is not None:
-                self._log_trajectories(x_start, pl_module, stage='train')
+            self._log_trajectories(x_start, pl_module, stage='train')
 
     def on_validation_batch_end(
         self,
