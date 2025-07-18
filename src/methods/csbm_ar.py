@@ -161,7 +161,7 @@ class CSBM_AR(LightningModule):
                self.hparams.ce_loss_coeff * ce + \
                self.hparams.mse_loss_coeff * mse
         
-        info = {f'{fb}_kl_loss': kl, f'{fb}_ce_loss': ce, f'{fb}_mse_loss': mse}
+        info = {f'kl_loss_{fb}': kl, f'ce_loss_{fb}': ce, f'mse_loss_{fb}': mse}
         return loss, info
 
     def training_step(
