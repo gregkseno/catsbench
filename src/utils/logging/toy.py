@@ -68,7 +68,7 @@ class ToyLogger(Callback):
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
-        if batch_idx == 0:
+        if trainer.is_last_batch:
             self._log_smaples(x_start, x_end, pl_module, 'train')
             self._log_trajectories(x_start, pl_module, stage='train')
 
@@ -83,7 +83,7 @@ class ToyLogger(Callback):
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
-        if batch_idx == 0:
+        if trainer.is_last_batch:
             self._log_smaples(x_start, x_end, pl_module, 'val')
             self._log_trajectories(x_start, pl_module, stage='val')
 
@@ -98,7 +98,7 @@ class ToyLogger(Callback):
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
-        if batch_idx == 0:
+        if trainer.is_last_batch:
             self._log_smaples(x_start, x_end, pl_module, 'test')
             self._log_trajectories(x_start, pl_module, stage='test')
 
