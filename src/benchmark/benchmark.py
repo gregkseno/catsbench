@@ -6,11 +6,11 @@ from src.data.prior import Prior
 from src.methods.light_sb_d import LightSB_D
 
 class BenchmarkDiscreteEOT():
-    def __init__(self, source_dist, dim, prior, num_potentials=4, compute_benchmark=True, X0_full=None,
+    def __init__(self, source_dist, dim, prior, num_potentials=4, compute_benchmark=True, input_dataset=None,
                  batch_size=512, save_path=None, device='cpu'):
 
         super().__init__()
-        self.X0_full           = X0_full
+        self.input_dataset     = input_dataset
         self.dim               = dim
         self.source_dist       = source_dist
         self.num_potentials    = num_potentials
@@ -20,33 +20,31 @@ class BenchmarkDiscreteEOT():
         self.device            = device
 
         if compute_benchmark is False:
-            self.X0_full = torch.load(f'benchmark_data/X0_benchmark_dim_{dim}_P0_{source_dist}.pt')
-            self.X1_full = torch.load(f'benchmark_data/X1_benchmark_dim_{dim}_P0_{source_dist}_prior_{prior.prior_type}_beta_{prior.beta}.pt')
+            self.input_dataset = torch.load(f'benchmark_data/X0_benchmark_dim_{dim}_P0_{source_dist}.pt')
+            self.target_dataset = torch.load(f'benchmark_data/X1_benchmark_dim_{dim}_P0_{source_dist}_prior_{prior.prior_type}_beta_{prior.beta}.pt')
             
         else:
-            #print(X0_full)
-            #assert X0_full is None, 'X0_full must be provided to get new benchmarks...'
-            D     = LightSB_D(prior=prior, dim=dim, num_potentials=num_potentials, distr_init='benchmark', optimizer=None).to(device)
+            D = LightSB_D(prior=prior, dim=dim, num_potentials=num_potentials, distr_init='benchmark', optimizer=None).to(device)
     
-            self.X1_full = D.sample(self.X0_full).cpu()
+            self.target_dataset = D.sample(self.input_dataset).cpu()
 
             if save_path is not None:
-                torch.save(self.X1_full, os.path.join(save_path, f'X1_benchmark_dim_{dim}_P0_{source_dist}_prior_{prior.prior_type}_beta_{prior.alpha}.pt'))
+                torch.save(self.target_dataset, os.path.join(save_path, f'X1_benchmark_dim_{dim}_P0_{source_dist}_prior_{prior.prior_type}_beta_{prior.alpha}.pt'))
 
-        X0_dataloader   = DataLoader(self.X0_full, batch_size=batch_size, shuffle=False)
-        self.X0_sampler = LoaderSampler(X0_dataloader, self.device)
+        input_dataloader   = DataLoader(self.input_dataset, batch_size=batch_size, shuffle=False)
+        self.input_sampler = LoaderSampler(input_dataloader, self.device)
             
-        X1_dataloader   = DataLoader(self.X1_full, batch_size=batch_size, shuffle=False)
-        self.X1_sampler = LoaderSampler(X1_dataloader, self.device)
+        target_dataloader   = DataLoader(self.target_dataset, batch_size=batch_size, shuffle=False)
+        self.target_sampler = LoaderSampler(target_dataloader, self.device)
 
-    def sample_X0(self, n_samples):
-        return self.X0_sampler.sample(n_samples)
+    def sample_input(self, n_samples):
+        return self.input_sampler.sample(n_samples)
 
-    def sample_X1(self, n_samples):
-        return self.X1_sampler.sample(n_samples)
+    def sample_target(self, n_samples):
+        return self.target_sampler.sample(n_samples)
     
-    def sample_X1_given_X0(self, X0):
+    def sample_target_given_input(self, x):
         D = LightSB_D(prior=self.prior, dim=self.dim, num_potentials=self.num_potentials, distr_init='benchmark', optimizer=None).to(self.device)
         
-        X1 = D.sample(X0).cpu()
+        X1 = D.sample(x).cpu()
         return X1
