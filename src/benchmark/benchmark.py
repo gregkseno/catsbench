@@ -20,7 +20,7 @@ from prior import Prior
 
 
 class BenchmarkDiscreteEOT():
-    def __init__(self, prior_params, solver_params, dataset_params, save_path, save_benchmark=False, device='cpu'):
+    def __init__(self, prior_params, solver_params, dataset_params, save_path, device='cpu'):
 
         super().__init__()
         prior_space     = SimpleNamespace(**prior_params)
@@ -29,26 +29,26 @@ class BenchmarkDiscreteEOT():
         self.device = device
 
         config_name_solver = f'D_benchmark_dim_{dataset_space.dim}_P0_{dataset_space.source_dist}_prior_{prior_space.prior_type}_num_categories_{prior_space.num_categories}_alpha_{prior_space.alpha}.pth'
-        config_name_source = f'X0_benchmark_dim_{dataset_space.dim}_P0_{dataset_space.source_dist}_num_categories_{prior_space.num_categories}.pt'
+        config_name_source = f'X0_benchmark_dim_{dataset_space.dim}_P0_{dataset_space.source_dist}_prior_{prior_space.prior_type}_num_categories_{prior_space.num_categories}_alpha_{prior_space.alpha}.pt'
         config_name_target = f'X1_benchmark_dim_{dataset_space.dim}_P0_{dataset_space.source_dist}_prior_{prior_space.prior_type}_num_categories_{prior_space.num_categories}_alpha_{prior_space.alpha}.pt'
 
-        solver_path = os.path.join(save_path, config_name_solver)
-        source_path = os.path.join(save_path, config_name_source)
-        target_path = os.path.join(save_path, config_name_target)
+        self.solver_path = os.path.join(save_path, config_name_solver)
+        self.source_path = os.path.join(save_path, config_name_source)
+        self.target_path = os.path.join(save_path, config_name_target)
         
-        if os.path.exists(source_path) is False or os.path.exists(target_path) is False or os.path.exists(solver_path) is False:
+        if os.path.exists(self.source_path) is False or os.path.exists(self.target_path) is False or os.path.exists(self.solver_path) is False:
             compute_benchmark = True
         else:
             compute_benchmark = False
 
-        prior = Prior(**prior_params)
-        self.D = LightSB_D(prior=prior, **solver_params)
+        prior  = Prior(**prior_params).to(device)
+        self.D = LightSB_D(prior=prior, **solver_params, device=device)
         
         if compute_benchmark is False:
             print('Loading saved solver and benchmark pairs...')
-            self.D.load_state_dict(torch.load(solver_path, weights_only=True))
-            self.input_dataset  = torch.load(source_path)
-            self.target_dataset = torch.load(target_path)
+            self.D.load_state_dict(torch.load(self.solver_path, weights_only=True))
+            self.input_dataset  = torch.load(self.source_path)
+            self.target_dataset = torch.load(self.target_path)
             
         else:
             print('Computing benchmark...')
@@ -58,17 +58,12 @@ class BenchmarkDiscreteEOT():
             if dataset_space.source_dist == 'uniform':
                 self.input_dataset = DiscreteUniformDataset(num_samples=dataset_space.full_size, dim=dataset_space.dim, num_categories=prior_space.num_categories, train=True).dataset
     
-            self.target_dataset = self.D.sample(self.input_dataset).cpu()
-
-            if save_benchmark is True:
-                print('Saving benchmark...')
-                torch.save(self.D.state_dict(), solver_path)
-                torch.save(self.input_dataset, source_path)
-                torch.save(self.target_dataset, target_path)
+            print('Sampling target points...')
+            self.target_dataset = self.D.sample(self.input_dataset.to(device)).cpu()                
 
         random_indices      = torch.randperm(len(self.input_dataset))
-        self.input_dataset  = self.input_dataset[random_indices]
-        self.target_dataset = self.target_dataset[random_indices]
+        self.input_dataset  = self.input_dataset[random_indices].cpu()
+        self.target_dataset = self.target_dataset[random_indices].cpu()
         
         input_dataloader   = DataLoader(self.input_dataset, batch_size=dataset_space.batch_size, shuffle=False)
         self.input_sampler = LoaderSampler(input_dataloader, self.device)
@@ -85,3 +80,9 @@ class BenchmarkDiscreteEOT():
     def sample_target_given_input(self, x):
         X1 = self.D.sample_trajectory(x).cpu()
         return X1
+    
+    def save(self):
+        print('Saving benchmark...')
+        torch.save(self.D.state_dict(), self.solver_path)
+        torch.save(self.input_dataset, self.source_path)
+        torch.save(self.target_dataset, self.target_path)

@@ -40,7 +40,7 @@ class LightSB_D(nn.Module):
         self.num_categories = prior.num_categories 
         self.device         = device   
         
-        self.log_alpha = nn.Parameter(torch.log(torch.ones(self.num_potentials)/self.num_potentials)
+        self.log_alpha = nn.Parameter(torch.log(torch.ones(self.num_potentials, device=device)/self.num_potentials)
 )
         self._initialize_cores(distr_init)
 
@@ -48,41 +48,20 @@ class LightSB_D(nn.Module):
         self, distr_init: Literal['benchmark_gaussian']
     ) -> None:
         
-        if distr_init == 'benchmark_gaussian_old':
-            spread = 1
-            
-            means = torch.randint(2, self.num_categories - 2, (self.num_potentials, self.dim))#.unsqueeze(-1).repeat(1, self.dim) #get_means(self.dim, self.num_potentials) #(K, D)
-            stds = [spread * torch.ones(self.dim) for _ in range(self.num_potentials)] # (K, D)
-            stds = torch.stack(stds, dim=0)
-
-            dists = [Normal(loc=means[k], scale=stds[k]) for k in range(self.num_potentials)]
-            y_d = [torch.arange(0, self.num_categories )]*self.dim 
-            y_d = torch.stack(y_d, dim=1)
-
-            log_cp_cores = [dist.log_prob(y_d) for dist in dists] #(K, D, S)
-            #print(log_cp_cores[0].shape)
-
         if distr_init == 'benchmark_gaussian':
-            spread = 1
+            spread = 2
         
-            means = torch.randint(2, self.num_categories - 2, (self.num_potentials, self.dim))  # (K, D)
-            stds = torch.full((self.num_potentials, self.dim), spread)                          # (K, D)
+            means = torch.randint(5, self.num_categories-5, (self.num_potentials, self.dim), device=self.device)
+            stds = torch.full((self.num_potentials, self.dim), spread, device=self.device)                          # (K, D)
 
-            # y_d: all category values across D dims, shape (num_categories, dim)
-            y_d = torch.arange(self.num_categories).view(self.num_categories, 1).repeat(1, self.dim)  # (S, D)
+            y_d = torch.arange(self.num_categories, device=self.device).view(self.num_categories, 1).repeat(1, self.dim)  # (S, D)
 
-            # Reshape for broadcasting
-            # y_d: (1, S, D), means: (K, 1, D), stds: (K, 1, D)
-            y_d = y_d.unsqueeze(0)          # (1, S, D)
-            means = means.unsqueeze(1)      # (K, 1, D)
-            stds = stds.unsqueeze(1)        # (K, 1, D)
+            y_d = y_d.unsqueeze(0)          
+            means = means.unsqueeze(1)      
+            stds = stds.unsqueeze(1)        
 
-            # Manual Gaussian log-prob: (K, S, D)
-            log_cp_cores = -0.5 * torch.log(torch.tensor(2 * torch.pi)) \
-                        - torch.log(stds) \
-                        - 0.5 * ((y_d - means) / stds) ** 2
+            log_cp_cores = -0.5 * torch.log(torch.tensor(2 * torch.pi) )- torch.log(stds) - 0.5 * ((y_d - means) / stds) ** 2
 
-            # Permute to (D, K, S) if needed for CP cores
             self.log_cp_cores = log_cp_cores.permute(2, 0, 1)
 
         elif distr_init == 'categorical':
@@ -183,7 +162,7 @@ class LightSB_D(nn.Module):
     @torch.no_grad()
     def sample_trajectory(self, x: torch.Tensor, pca=None) -> torch.Tensor:
         if pca is None:
-            out = torch.stack([x, self.sample(x)], dim=0)
+            out = torch.stack([x, self.sample(x).cpu()], dim=0)
         else:
             out = np.stack([pca.transform(x), pca.transform(self.sample(x).cpu())], axis=0)
         return out
