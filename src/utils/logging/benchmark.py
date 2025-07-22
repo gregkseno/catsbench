@@ -12,6 +12,10 @@ from src.utils import convert_to_numpy, fig2img
 from src.metrics.contingency_similarity import ContingencySimilarity
 from src.metrics.tv_complement import TVComplement
 from src.metrics.pqmass import PQMass
+from src.utils.logging.console import RankedLogger
+
+
+log = RankedLogger(__name__, rank_zero_only=True)
 
 
 class BenchmarkLogger(Callback):
@@ -136,7 +140,7 @@ class BenchmarkLogger(Callback):
         pl_module.log(f'val/tv_complement_{fb}', pl_module.tv_complement, metric_attribute='tv_complement')
         pl_module.log(f'val/contingency_similarity_{fb}', pl_module.contingency_similarity, metric_attribute='contingency_similarity')
         pl_module.log(f'val/pqmass_{fb}', pl_module.pqmass, metric_attribute='pqmass')
-        if trainer.is_last_batch:
+        if batch_idx == len(trainer.val_dataloaders) - 1:
             self._log_smaples(x_start, x_end, pl_module, 'val')
             self._log_trajectories(x_start, pl_module, stage='val')
 
@@ -160,7 +164,7 @@ class BenchmarkLogger(Callback):
         pl_module.log(f'test/tv_complement_{fb}', pl_module.tv_complement, metric_attribute='tv_complement')
         pl_module.log(f'test/contingency_similarity_{fb}', pl_module.contingency_similarity, metric_attribute='contingency_similarity')
         pl_module.log(f'test/pqmass_{fb}', pl_module.pqmass, metric_attribute='pqmass')
-        if trainer.is_last_batch:
+        if batch_idx == len(trainer.test_dataloaders) - 1:
             self._log_smaples(x_start, x_end, pl_module, 'test')
             self._log_trajectories(x_start, pl_module, stage='test')
 
@@ -198,7 +202,7 @@ class BenchmarkLogger(Callback):
             )
         elif isinstance(pl_module.logger, CometLogger):
             pl_module.logger.experiment.log_image(
-                img, name=f'{stage}/samples_{fb}', step=pl_module.global_step
+                image_data=img, name=f'{stage}/samples_{fb}', step=pl_module.global_step
             )
         else:
             raise ValueError(
@@ -261,7 +265,7 @@ class BenchmarkLogger(Callback):
             )
         elif isinstance(pl_module.logger, CometLogger):
             pl_module.logger.experiment.log_image(
-                img, name=f'{stage}/trajectories_{fb}', step=pl_module.global_step
+                image_data=img, name=f'{stage}/trajectories_{fb}', step=pl_module.global_step
             )
         else:
             raise ValueError(
