@@ -11,6 +11,7 @@ from lightning import LightningModule
 
 from src.data.prior import Prior
 from src.utils import optimize_coupling
+from src.utils import RankedLogger
 
 
 HPARAMS = (
@@ -19,6 +20,7 @@ HPARAMS = (
     'use_mini_batch', 'ignore_index', 'num_first_iterations',
     'optimizer', 'scheduler'
 )
+log = RankedLogger(__name__, rank_zero_only=True)
 
 # NOTE: start and end is swapped because CSBM uses 
 # reverse diffusion notation

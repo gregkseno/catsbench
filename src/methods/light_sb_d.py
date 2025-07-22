@@ -9,8 +9,12 @@ from lightning import LightningModule
 import numpy as np
 from torch.distributions.log_normal import LogNormal
 from torch.distributions.normal import Normal
-
+from src.utils import RankedLogger
 from src.data.prior import Prior
+
+
+log = RankedLogger(__name__, rank_zero_only=True)
+
 
 def get_means(dim: int, num_clusters: int = 5, min_separation: float = 8, seed: int = 43):
     torch.manual_seed(seed)
