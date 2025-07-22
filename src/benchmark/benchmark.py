@@ -47,8 +47,21 @@ class BenchmarkDiscreteEOT:
         self.solver_path = os.path.join(save_path, config_name_solver)
         self.source_path = os.path.join(save_path, config_name_source)
         self.target_path = os.path.join(save_path, config_name_target)
+
+        print(f'Benchmark paths: {self.solver_path}, {self.source_path}, {self.target_path}')
         
-        if not os.path.exists(self.source_path) or not os.path.exists(self.target_path) or not os.path.exists(self.solver_path):
+        if os.path.exists(self.source_path) and os.path.exists(self.target_path) and os.path.exists(self.solver_path):
+            print('Loading saved solver and benchmark pairs...')
+            #########################################################################################
+            # TODO: @Ark-130994, please, rework the loading of cores, to work without LightSB_D class
+            state_dict = torch.load(self.solver_path)
+            self.log_cp_cores = state_dict['log_cp_cores']
+            self.log_alpha = state_dict['log_alpha']
+            #########################################################################################
+
+            self.input_dataset  = torch.load(self.source_path)
+            self.target_dataset = torch.load(self.target_path) 
+        else:
             print('Computing benchmark...')
             if input_dist == 'gaussian':
                 self.input_dataset = DiscreteGaussianDataset(num_samples=num_samples, dim=dim, num_categories=num_categories, train=True)
@@ -67,17 +80,7 @@ class BenchmarkDiscreteEOT:
             torch.save(self.input_dataset, self.source_path)
             torch.save(self.target_dataset, self.target_path)
             #########################################################################################
-        else:
-            print('Loading saved solver and benchmark pairs...')
-            #########################################################################################
-            # TODO: @Ark-130994, please, rework the loading of cores, to work without LightSB_D class
-            state_dict = torch.load(self.solver_path)
-            self.log_cp_cores = state_dict['log_cp_cores']
-            self.log_alpha = state_dict['log_alpha']
-            #########################################################################################
 
-            self.input_dataset  = torch.load(self.source_path)
-            self.target_dataset = torch.load(self.target_path) 
                     
         # NOTE: what is this?
         random_indices      = torch.randperm(len(self.input_dataset))

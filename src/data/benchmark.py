@@ -59,7 +59,7 @@ class BenchmarkDataModule(LightningDataModule):
         # here is an `if` because the `setup` method is called multiple times 
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.benchmark and not self.data_train and not self.data_val and not self.data_test:
-            self.benchmark = BenchmarkDiscreteEOT(self.hparams.benchmark_config)
+            self.benchmark = BenchmarkDiscreteEOT(**self.hparams.benchmark_config)
 
             ###################### TRAINING DATASET ######################
             size_train = int(self.hparams.num_samples * self.hparams.train_val_test_split[0])
