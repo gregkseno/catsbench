@@ -9,7 +9,7 @@ from lightning import LightningModule
 import numpy as np
 from torch.distributions.log_normal import LogNormal
 from torch.distributions.normal import Normal
-from src.utils import RankedLogger
+from src.utils.logging.console import RankedLogger
 from src.data.prior import Prior
 
 

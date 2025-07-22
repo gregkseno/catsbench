@@ -11,7 +11,7 @@ from lightning import LightningModule
 
 from src.data.prior import Prior
 from src.utils import optimize_coupling
-from src.utils import RankedLogger
+from src.utils.logging.console import RankedLogger
 
 
 HPARAMS = (
