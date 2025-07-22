@@ -17,8 +17,8 @@ def plot_samples(x, y, D, indices_plot, beta, n_steps, xrange=[0,100], yrange=[0
                  plot_trajectories=True, by_dims=False, index_0=0, index_1=1):
     xmin, xmax = xrange[0], xrange[1]
     ymin, ymax = yrange[0], yrange[1]
-    num_trajectories = 1
-    num_translations = 3
+    num_trajectories = 5
+    num_translations = 4
     dim    = x.shape[1]
     y_pred = D.sample(x).cpu()
     #x = x.cpu()

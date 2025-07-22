@@ -82,7 +82,7 @@ class LightSB_D(LightningModule):
         # TODO: Add names to parameters
         self.log_alpha = nn.Parameter(torch.zeros(num_potentials))
         #self.log_alpha = nn.Parameter(torch.log(torch.ones(self.hparams.num_potentials)/self.hparams.num_potentials))
-        self._initialize_parameters(distr_init)
+        self._initialize_parameters_old(distr_init)
             
     def _initialize_parameters(
         self, distr_init: Literal['uniform', 'gaussian', 'benchmark']

@@ -3,16 +3,10 @@ from samplers import (
     DiscreteGaussianDataset, 
     DiscreteUniformDataset,
 )
-import matplotlib.pyplot as plt
-import torch.nn as nn
 import torch
-from tqdm.notebook import tqdm
-from PIL import Image
-import numpy as np
 from torch.utils.data import DataLoader
 from utils import LoaderSampler
-from light_sb_d import LightSB_D
-from utils import fig2img, plot_samples
+from light_sb_d_sampler import LightSB_D_Sampler
 
 from types import SimpleNamespace 
 import os
@@ -42,7 +36,7 @@ class BenchmarkDiscreteEOT():
             compute_benchmark = False
 
         prior  = Prior(**prior_params).to(device)
-        self.D = LightSB_D(prior=prior, **solver_params, device=device)
+        self.D = LightSB_D_Sampler(prior=prior, **solver_params, device=device)
         
         if compute_benchmark is False:
             print('Loading saved solver and benchmark pairs...')
