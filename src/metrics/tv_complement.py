@@ -5,7 +5,9 @@ from torchmetrics import Metric
 
 
 class TVComplement(Metric):
-
+    real_counts: torch.Tensor
+    pred_counts: torch.Tensor
+    
     def __init__(
         self,
         dim: int,
@@ -48,7 +50,7 @@ class TVComplement(Metric):
 
         reals = self.real_counts.float() / real_totals
         preds = self.pred_counts.float() / pred_totals
-        tvd = 0.5 * torch.abs(reals - preds).sum(dim=1) # (D, 1)
+        tvd = 0.5 * torch.abs(reals - preds).sum(dim=1) # (D)
         scores = 1.0 - tvd
         
         if self.reduction == "mean":
