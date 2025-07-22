@@ -2,7 +2,7 @@ from typing import Any, Dict, Literal, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from prince import MCA
+from sklearn.decomposition import PCA
 
 from lightning.pytorch import Callback, Trainer, LightningModule
 from lightning.pytorch.utilities import rank_zero_only
@@ -39,7 +39,7 @@ class BenchmarkLogger(Callback):
         self.num_trajectories = num_trajectories
         self.num_translations = num_translations
         if dim > 2:
-            self.mca = MCA(n_components=2)
+            self.mca = PCA(n_components=2)
 
         self.tv_complement = TVComplement(dim, num_categories)
         self.contingency_similarity = ContingencySimilarity(dim, num_categories)
@@ -131,15 +131,10 @@ class BenchmarkLogger(Callback):
         pl_module.tv_complement(x_end, pred_x_end)
         pl_module.contingency_similarity(x_end, pred_x_end)
         pl_module.pqmass(x_end, pred_x_end)
+
         pl_module.log(f'val/tv_complement_{fb}', pl_module.tv_complement, metric_attribute='tv_complement')
         pl_module.log(f'val/contingency_similarity_{fb}', pl_module.contingency_similarity, metric_attribute='contingency_similarity')
         pl_module.log(f'val/pqmass_{fb}', pl_module.pqmass, metric_attribute='pqmass')
-        # pl_module.log_dict(
-        #     {f'val/tv_complement_{fb}': pl_module.tv_complement, 
-        #      f'val/contingency_similarity_{fb}': self.contingency_similarity,
-        #      f'val/pqmass_{fb}': pl_module.pqmass}
-        # )
-
         if trainer.is_last_batch:
             self._log_smaples(x_start, x_end, pl_module, 'val')
             self._log_trajectories(x_start, pl_module, stage='val')
@@ -160,15 +155,10 @@ class BenchmarkLogger(Callback):
         pl_module.tv_complement(x_end, pred_x_end)
         pl_module.contingency_similarity(x_end, pred_x_end)
         pl_module.pqmass(x_end, pred_x_end)
+
         pl_module.log(f'test/tv_complement_{fb}', pl_module.tv_complement, metric_attribute='tv_complement')
         pl_module.log(f'test/contingency_similarity_{fb}', pl_module.contingency_similarity, metric_attribute='contingency_similarity')
         pl_module.log(f'test/pqmass_{fb}', pl_module.pqmass, metric_attribute='pqmass')
-        # pl_module.log_dict(
-        #     {f'test/tv_complement_{fb}': pl_module.tv_complement, 
-        #      f'test/contingency_similarity_{fb}': pl_module.contingency_similarity,
-        #      f'test/pqmass_{fb}': pl_module.pqmass}
-        # )
-
         if trainer.is_last_batch:
             self._log_smaples(x_start, x_end, pl_module, 'test')
             self._log_trajectories(x_start, pl_module, stage='test')
