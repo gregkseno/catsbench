@@ -10,12 +10,18 @@ from lightning.pytorch.utilities import rank_zero_only
 from src.utils import convert_to_numpy, fig2img
 from src.metrics.contingency_similarity import ContingencySimilarity
 from src.metrics.tv_complement import TVComplement
+from src.metrics.pqmass import PQMass
 
 
 class BenchmarkLogger(Callback):
     def __init__(
         self,
         dim: int,
+        num_categories: int,
+        num_refs: int,
+        re_tessellation: int,
+        permute_tests: int,
+        kernel: str,
         num_trajectories: int, 
         num_translations: int,
         axlim: Optional[Tuple[float, float]] = None,
@@ -29,8 +35,9 @@ class BenchmarkLogger(Callback):
         if dim > 2:
             self.mca = MCA(n_components=2)
 
-        self.tv_complement = TVComplement()
-        self.contingency_similarity = ContingencySimilarity()
+        self.tv_complement = TVComplement(dim, num_categories)
+        self.contingency_similarity = ContingencySimilarity(dim, num_categories)
+        self.pqmass = PQMass(dim, num_refs, re_tessellation, permute_tests, kernel)
 
         self.axlim = [7, 93] if axlim is None else axlim
         self.samples_fig_config = {
@@ -124,6 +131,7 @@ class BenchmarkLogger(Callback):
         pred_x_end = pl_module.sample(x_start)
         self.tv_complement(x_end, pred_x_end)
         self.contingency_similarity(x_end, pred_x_end)
+
         pl_module.log_dict(
             {f'test/tv_complement_{fb}': self.tv_complement, 
              f'test/contingency_similarity_{fb}': self.contingency_similarity}

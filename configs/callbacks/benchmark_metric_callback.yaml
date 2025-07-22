@@ -1,0 +1,13 @@
+metric_callback:
+  _target_: src.utils.BenchmarkLogger
+  dim: ${data.dim}
+  num_categories: ${data.num_categories}
+  num_refs: 100
+  re_tessellation: 100
+  permute_tests: 100
+  kernel: "euclidean"
+  num_trajectories: 4
+  num_translations: 3
+  axlim:
+    - 7
+    - 93

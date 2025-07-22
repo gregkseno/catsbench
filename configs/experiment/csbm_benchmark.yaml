@@ -12,20 +12,13 @@ defaults:
 data:
   dim: 16
   num_categories: 100
+  num_potentials: 4
+  num_samples: 100000
   train_val_test_split: [0.8, 0.1, 0.1]
   batch_size: 512 
   num_workers: 0
   pin_memory: false
-  input_dataset:
-    _target_: src.data.toy.DiscreteGaussianDataset
-    _partial_: true
-    dim: ${data.dim}
-    num_categories: ${data.num_categories}
-  target_dataset:
-    _target_: src.data.toy.DiscreteGaussianDataset
-    _partial_: true
-    dim: ${data.dim}
-    num_categories: ${data.num_categories}
+  dir: ./benchmark_data
 
 model:
   timestep_dim: 2
@@ -33,7 +26,7 @@ model:
 
 prior:
   alpha: 0.02
-  prior_type: gaussian
+  prior_type: gaussian_log
   num_timesteps: 16
   num_skip_steps: 8
 

@@ -9,9 +9,13 @@ from src.benchmark.benchmark import BenchmarkDiscreteEOT
 class BenchmarkDataModule(LightningDataModule):
     def __init__(
         self,
-        benchmark_config: Dict[Any],
+        dim: int,
+        num_categories: int,
+        num_potentials: int,
+        num_samples: int,
         train_val_test_split: Tuple[float, float, float],
         batch_size: int,
+        benchmark_config: Dict[str, Any],
         num_workers: int = 0,
         pin_memory: bool = False,
     ) -> None:
@@ -37,7 +41,7 @@ class BenchmarkDataModule(LightningDataModule):
 
     def prepare_data(self) -> None:
         pass
-        # BenchmarkDiscreteEOT.download(**self.benchmark.config)
+        # BenchmarkDiscreteEOT.download(...)
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data by seting variables: `self.data_train`, `self.data_val`, `self.data_test`."""

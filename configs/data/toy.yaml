@@ -1,7 +1,6 @@
 _target_: src.data.toy.ToyDataModule
 dim: 2
 num_categories: 50
-# Ensure: train_samples == batch_size * inner_iterations
 num_samples: 50000
 train_val_test_split: [0.8, 0.1, 0.1]
 batch_size: 512 
