@@ -6,6 +6,7 @@ from sklearn.decomposition import PCA
 
 from lightning.pytorch import Callback, Trainer, LightningModule
 from lightning.pytorch.utilities import rank_zero_only
+from lightning.pytorch.loggers import WandbLogger, CometLogger
 
 from src.utils import convert_to_numpy, fig2img
 from src.metrics.contingency_similarity import ContingencySimilarity
@@ -190,9 +191,20 @@ class BenchmarkLogger(Callback):
             axes[i].legend(loc="lower left")
         fig.tight_layout(pad=0.5)
         img = fig2img(fig)
-        pl_module.logger.log_image(
-            key=f'{stage}/samples_{fb}', images=[img], step=pl_module.global_step
-        )
+        
+        if isinstance(pl_module.logger, WandbLogger):
+            pl_module.logger.log_image(
+                key=f'{stage}/samples_{fb}', images=[img], step=pl_module.global_step
+            )
+        elif isinstance(pl_module.logger, CometLogger):
+            pl_module.logger.experiment.log_image(
+                img, name=f'{stage}/samples_{fb}', step=pl_module.global_step
+            )
+        else:
+            raise ValueError(
+                f'Unsupported logger type: {type(pl_module.logger)}. Expected WandbLogger or CometLogger.'
+            )
+        
         plt.close()
 
     @rank_zero_only
@@ -242,7 +254,18 @@ class BenchmarkLogger(Callback):
         ax.set_ylim(self.axlim)
         fig.tight_layout(pad=0.5)
         img = fig2img(fig)
-        pl_module.logger.log_image(
-            key=f'{stage}/trajectories_{fb}', images=[img], step=pl_module.global_step
-        )
+        
+        if isinstance(pl_module.logger, WandbLogger):
+            pl_module.logger.log_image(
+                key=f'{stage}/trajectories_{fb}', images=[img], step=pl_module.global_step
+            )
+        elif isinstance(pl_module.logger, CometLogger):
+            pl_module.logger.experiment.log_image(
+                img, name=f'{stage}/trajectories_{fb}', step=pl_module.global_step
+            )
+        else:
+            raise ValueError(
+                f'Unsupported logger type: {type(pl_module.logger)}. Expected WandbLogger or CometLogger.'
+            )
+        
         plt.close()
