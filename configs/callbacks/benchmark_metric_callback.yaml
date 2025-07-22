@@ -3,8 +3,8 @@ metric_callback:
   dim: ${data.dim}
   num_categories: ${data.num_categories}
   num_refs: 100
-  re_tessellation: 100
-  permute_tests: 10
+  re_tessellation: null
+  permute_tests: null
   kernel: "euclidean"
   num_trajectories: 4
   num_translations: 3

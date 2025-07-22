@@ -33,10 +33,7 @@ def main(config: DictConfig):
     log.info('Instantiating loggers...')
     loggers: List[Logger] = instantiate_loggers(config.get('logger'))
     for logger in loggers:
-        if isinstance(logger, WandbLogger):
-            logger.experiment.config.update(OmegaConf.to_container(config))
-        elif isinstance(logger, CometLogger):
-            logger.experiment.log_hyperparams(OmegaConf.to_container(config))
+        logger.log_hyperparams(OmegaConf.to_container(config))
 
     log.info(f'Instantiating trainer <{config.trainer._target_}>...')
     trainer: Trainer = instantiate(config.trainer, callbacks=callbacks, logger=loggers)
