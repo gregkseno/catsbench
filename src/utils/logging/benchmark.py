@@ -30,6 +30,12 @@ class BenchmarkLogger(Callback):
         dpi: int = 100
     ):
         super().__init__()
+        self.dim = dim
+        self.num_categories = num_categories
+        self.num_refs = num_refs
+        self.re_tessellation = re_tessellation
+        self.permute_tests = permute_tests
+        self.kernel = kernel
         self.num_trajectories = num_trajectories
         self.num_translations = num_translations
         if dim > 2:
@@ -74,17 +80,22 @@ class BenchmarkLogger(Callback):
             'front': {'c': 'grey', 'markeredgecolor': 'black', 'linewidth': 1, 'zorder': 2}
         }
 
-    # Callback is not a module, so it does not move 
-    # metrics to device automatically.
+    # intit the metrics 
     def setup(
         self,
         trainer: Trainer, 
         pl_module: LightningModule, 
         stage: Literal['fit', 'validate', 'test']
     ) -> None:
-        self.tv_complement.to(pl_module.device)
-        self.contingency_similarity.to(pl_module.device)
-        self.pqmass.to(pl_module.device)
+        if getattr(pl_module, 'tv_complement', None) is not None:
+            return
+        if getattr(pl_module, 'contingency_similarity', None) is not None:
+            return
+        if getattr(pl_module, 'pqmass', None) is not None:
+            return
+        pl_module.tv_complement = TVComplement(self.dim, self.num_categories)
+        pl_module.contingency_similarity = ContingencySimilarity(self.dim, self.num_categories)
+        pl_module.pqmass = PQMass(self.dim, self.num_refs, self.re_tessellation, self.permute_tests, self.kernel)
 
     def on_train_batch_end(
         self,
@@ -117,12 +128,17 @@ class BenchmarkLogger(Callback):
 
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         pred_x_end = pl_module.sample(x_start)
-        self.tv_complement(x_end, pred_x_end)
-        self.contingency_similarity(x_end, pred_x_end)
-        pl_module.log_dict(
-            {f'val/tv_complement_{fb}': self.tv_complement, 
-             f'val/contingency_similarity_{fb}': self.contingency_similarity}
-        )
+        pl_module.tv_complement(x_end, pred_x_end)
+        pl_module.contingency_similarity(x_end, pred_x_end)
+        pl_module.pqmass(x_end, pred_x_end)
+        pl_module.log(f'val/tv_complement_{fb}', pl_module.tv_complement, metric_attribute='tv_complement')
+        pl_module.log(f'val/contingency_similarity_{fb}', pl_module.contingency_similarity, metric_attribute='contingency_similarity')
+        pl_module.log(f'val/pqmass_{fb}', pl_module.pqmass, metric_attribute='pqmass')
+        # pl_module.log_dict(
+        #     {f'val/tv_complement_{fb}': pl_module.tv_complement, 
+        #      f'val/contingency_similarity_{fb}': self.contingency_similarity,
+        #      f'val/pqmass_{fb}': pl_module.pqmass}
+        # )
 
         if trainer.is_last_batch:
             self._log_smaples(x_start, x_end, pl_module, 'val')
@@ -141,13 +157,17 @@ class BenchmarkLogger(Callback):
 
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         pred_x_end = pl_module.sample(x_start)
-        self.tv_complement(x_end, pred_x_end)
-        self.contingency_similarity(x_end, pred_x_end)
-
-        pl_module.log_dict(
-            {f'test/tv_complement_{fb}': self.tv_complement, 
-             f'test/contingency_similarity_{fb}': self.contingency_similarity}
-        )
+        pl_module.tv_complement(x_end, pred_x_end)
+        pl_module.contingency_similarity(x_end, pred_x_end)
+        pl_module.pqmass(x_end, pred_x_end)
+        pl_module.log(f'test/tv_complement_{fb}', pl_module.tv_complement, metric_attribute='tv_complement')
+        pl_module.log(f'test/contingency_similarity_{fb}', pl_module.contingency_similarity, metric_attribute='contingency_similarity')
+        pl_module.log(f'test/pqmass_{fb}', pl_module.pqmass, metric_attribute='pqmass')
+        # pl_module.log_dict(
+        #     {f'test/tv_complement_{fb}': pl_module.tv_complement, 
+        #      f'test/contingency_similarity_{fb}': pl_module.contingency_similarity,
+        #      f'test/pqmass_{fb}': pl_module.pqmass}
+        # )
 
         if trainer.is_last_batch:
             self._log_smaples(x_start, x_end, pl_module, 'test')
