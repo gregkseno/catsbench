@@ -8,5 +8,5 @@
 #SBATCH --time=12:00:00
 
 source activate dot_bench
-# python -m src.run experiment=light_sb_d_gaussian_to_swiss_roll
-python -m src.run experiment=csbm_gaussian_to_swiss_roll
+# HYDRA_FULL_ERROR=1 python -m src.run experiment=light_sb_d_gaussian_to_swiss_roll
+HYDRA_FULL_ERROR=1 python -m src.run experiment=csbm_benchmark

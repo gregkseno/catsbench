@@ -5,7 +5,6 @@ defaults:
   - override /model: gpt
   - override /method: csbm_ar
   - override /callbacks: [rich_progress_bar, model_summary, toy_metric_callback]
-  - override /logger: wandb
   - override /trainer: gpu
   - _self_
 

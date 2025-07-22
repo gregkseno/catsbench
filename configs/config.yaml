@@ -4,7 +4,7 @@ defaults:
   - model: simple_mlp 
   - method: csbm
   - callbacks: [rich_progress_bar, model_summary, toy_metric_callback]
-  - logger: wandb
+  - logger: comet
   - trainer: gpu
   - experiment: null
   - _self_

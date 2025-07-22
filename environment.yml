@@ -3,6 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
+  - comet_ml=3.49.12
   - einops=0.8.1
   - hydra-core=1.3.2
   - jupyter=1.1.1

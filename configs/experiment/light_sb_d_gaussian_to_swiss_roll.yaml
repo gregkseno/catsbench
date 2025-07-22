@@ -5,7 +5,6 @@ defaults:
   - override /model: null
   - override /method: light_sb_d
   - override /callbacks: [rich_progress_bar, model_summary, toy_metric_callback]
-  - override /logger: wandb
   - override /trainer: gpu
   - _self_
 
