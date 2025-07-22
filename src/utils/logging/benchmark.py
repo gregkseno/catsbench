@@ -97,8 +97,9 @@ class BenchmarkLogger(Callback):
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
         fb = 'forward' if not pl_module.bidirectional or self.current_epoch % 2 == 0 else 'backward'
-        self.tv_complement(x_start, x_end)
-        self.contingency_similarity(x_start, x_end)
+        pred_x_end = pl_module.sample(x_start)
+        self.tv_complement(x_end, pred_x_end)
+        self.contingency_similarity(x_end, pred_x_end)
         pl_module.log_dict(
             {f'val/tv_complement_{fb}': self.tv_complement, 
              f'val/contingency_similarity_{fb}': self.contingency_similarity}
@@ -120,8 +121,9 @@ class BenchmarkLogger(Callback):
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
         fb = 'forward' if not pl_module.bidirectional or self.current_epoch % 2 == 0 else 'backward'
-        self.tv_complement(x_start, x_end)
-        self.contingency_similarity(x_start, x_end)
+        pred_x_end = pl_module.sample(x_start)
+        self.tv_complement(x_end, pred_x_end)
+        self.contingency_similarity(x_end, pred_x_end)
         pl_module.log_dict(
             {f'test/tv_complement_{fb}': self.tv_complement, 
              f'test/contingency_similarity_{fb}': self.contingency_similarity}
