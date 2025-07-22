@@ -37,8 +37,8 @@ model:
 prior:
   alpha: 0.02
   prior_type: gaussian
-  num_timesteps: 10
-  num_skip_steps: 10
+  num_timesteps: 16
+  num_skip_steps: 8
 
 method:
   use_mini_batch: false

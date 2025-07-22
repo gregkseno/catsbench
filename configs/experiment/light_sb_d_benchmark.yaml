@@ -1,0 +1,41 @@
+# @package _global_
+
+defaults:
+  - override /data: benchmark
+  - override /model: null
+  - override /method: light_sb_d
+  - override /callbacks: [rich_progress_bar, model_summary, benchmark_metric_callback]
+  - override /logger: wandb
+  - override /trainer: gpu
+  - _self_
+
+data:
+  dim: 16
+  num_categories: 100
+  num_potentials: 4
+  num_samples: 100000
+  train_val_test_split: [0.8, 0.1, 0.1]
+  batch_size: 512 
+  num_workers: 0
+  pin_memory: false
+  dir: ./benchmark_data
+
+model:
+  timestep_dim: 2
+  layers: [128, 128, 128]
+
+prior:
+  alpha: 0.02
+  prior_type: gaussian_log
+  num_timesteps: 16
+  num_skip_steps: 8
+
+method:
+  num_potentials: 10
+  distr_init: gaussian
+
+trainer:
+  limit_train_batches: 20000 # controls number of IMF inner iterations
+  val_check_interval: 1000
+  accumulate_grad_batches: 1
+  gradient_clip_val: null

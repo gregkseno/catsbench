@@ -5,3 +5,4 @@ wandb:
   project: dot-bench
   entity: gregkseno # set to name of your wandb team
   job_type: ${task_name}
+  offline: true
