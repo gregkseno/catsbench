@@ -5,4 +5,5 @@
 logs
 notebooks/*
 **/*.pt
+**/*.pth
 !benchmark_data/*.pt
