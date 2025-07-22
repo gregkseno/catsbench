@@ -18,7 +18,7 @@ data:
   batch_size: 512 
   num_workers: 0
   pin_memory: false
-  dir: ${paths.data_dir}
+  dir: ${paths.data_dir}/benchmark_data
 
 model:
   timestep_dim: 2

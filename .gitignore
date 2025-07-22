@@ -4,7 +4,3 @@
 **/__pycache__
 logs
 notebooks/*
-**/*.pt
-**/*.pth
-!benchmark_data/*.pt
-!benchmark_data/*.pth
