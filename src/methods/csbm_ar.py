@@ -101,15 +101,7 @@ class CSBM_AR(LightningModule):
 
     # EMA does not inherit nn.Module so it must be 
     # putted to device manually 
-    def on_fit_start(self) -> None:
-        self.emas['forward'].to(self.device)
-        self.emas['backward'].to(self.device)
-
-    def on_validation_start(self) -> None:
-        self.emas['forward'].to(self.device)
-        self.emas['backward'].to(self.device)
-
-    def on_test_start(self) -> None:
+    def setup(self, stage: Literal['fit', 'validate', 'test']) -> None:
         self.emas['forward'].to(self.device)
         self.emas['backward'].to(self.device)
 

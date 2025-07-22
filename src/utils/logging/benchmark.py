@@ -74,6 +74,18 @@ class BenchmarkLogger(Callback):
             'front': {'c': 'grey', 'markeredgecolor': 'black', 'linewidth': 1, 'zorder': 2}
         }
 
+    # Callback is not a module, so it does not move 
+    # metrics to device automatically.
+    def setup(
+        self,
+        trainer: Trainer, 
+        pl_module: LightningModule, 
+        stage: Literal['fit', 'validate', 'test']
+    ) -> None:
+        self.tv_complement.to(pl_module.device)
+        self.contingency_similarity.to(pl_module.device)
+        self.pqmass.to(pl_module.device)
+
     def on_train_batch_end(
         self,
         trainer: Trainer,
