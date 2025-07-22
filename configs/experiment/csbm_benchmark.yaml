@@ -1,10 +1,10 @@
 # @package _global_
 
 defaults:
-  - override /data: toy
+  - override /data: benchmark
   - override /model: simple_mlp
   - override /method: csbm
-  - override /callbacks: [rich_progress_bar, model_summary, toy_metric_callback]
+  - override /callbacks: [rich_progress_bar, model_summary, benchmark_metric_callback]
   - override /logger: wandb
   - override /trainer: gpu
   - _self_

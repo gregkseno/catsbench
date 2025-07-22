@@ -1,9 +1,9 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple
 
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 from src.utils import CoupleDataset, make_infinite_dataloader
-from src.benchmark.benchmark import BenchmarkDiscreteEOT
+from src.benchmark import BenchmarkDiscreteEOT
 
 
 class BenchmarkDataModule(LightningDataModule):
@@ -15,9 +15,11 @@ class BenchmarkDataModule(LightningDataModule):
         num_samples: int,
         train_val_test_split: Tuple[float, float, float],
         batch_size: int,
+        input_dist: Literal['gaussian', 'uniform'],
         benchmark_config: Dict[str, Any],
         num_workers: int = 0,
         pin_memory: bool = False,
+        dir: str = './data',
     ) -> None:
         assert len(train_val_test_split) == 3, ( 
             "train_val_test_split must be a tuple of three floats "

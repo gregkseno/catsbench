@@ -5,7 +5,7 @@ from scipy.special import softmax
 import torch
 from torch import nn
 
-from utils import broadcast
+from .utils import broadcast
 
 
 def log_space_product(A, B):

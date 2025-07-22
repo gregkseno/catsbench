@@ -1,10 +1,11 @@
-_target_: src.data.toy.ToyDataModule
+_target_: src.data.BenchmarkDataModule
 dim: 16
 num_categories: 100
 num_potentials: 4
 num_samples: 50000
 train_val_test_split: [0.8, 0.1, 0.1]
 batch_size: 512 
+input_dist: gaussian
 num_workers: 0
 pin_memory: false
 dir: ./benchmark_data
@@ -17,7 +18,7 @@ benchmark_config:
   num_potentials: ${data.num_potentials}
   num_timesteps: ${prior.num_timesteps}
   num_skip_steps: ${prior.num_skip_steps}
-  prior_type: gaussian_log
-  input_dist: gaussian
+  prior_type: ${prior.prior_type}
+  input_dist: ${data.input_dist}
   save_path: ${data.dir}
 
