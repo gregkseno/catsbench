@@ -9,3 +9,4 @@ from src.utils.data import (
 )
 from src.utils.visualization import fig2img
 from src.utils.logging.toy import ToyLogger
+from src.utils.logging.benchmark import BenchmarkLogger
