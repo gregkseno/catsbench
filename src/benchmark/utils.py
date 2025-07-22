@@ -193,7 +193,7 @@ class Sampler:
         pass
         
 class LoaderSampler(Sampler):
-    def __init__(self, loader, device='cuda'):
+    def __init__(self, loader, device='cpu'):
         super(LoaderSampler, self).__init__(device)
         self.loader = loader
         self.it = iter(self.loader)

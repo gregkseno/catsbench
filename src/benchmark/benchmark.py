@@ -47,18 +47,25 @@ class BenchmarkDiscreteEOT:
         self.solver_path = os.path.join(save_path, config_name_solver)
         self.source_path = os.path.join(save_path, config_name_source)
         self.target_path = os.path.join(save_path, config_name_target)
-
-        # Print pwd
-        print(f'Current working directory: {os.getcwd()}')
-        print(f'Benchmark paths: {self.solver_path}, {self.source_path}, {self.target_path}')
         
         if os.path.exists(self.source_path) and os.path.exists(self.target_path) and os.path.exists(self.solver_path):
             print('Loading saved solver and benchmark pairs...')
             #########################################################################################
             # TODO: @Ark-130994, please, rework the loading of cores, to work without LightSB_D class
+            # also, make that, log_cp_cores loads from the state_dict (here a moved only gaussian version)
             state_dict = torch.load(self.solver_path)
-            self.log_cp_cores = state_dict['log_cp_cores']
             self.log_alpha = state_dict['log_alpha']
+            
+            spread = 2
+            means = torch.randint(5, num_categories-5, (num_potentials, dim))
+            stds = torch.full((num_potentials, dim), spread)                          # (K, D)
+            y_d = torch.arange(num_categories).view(num_categories, 1).repeat(1, dim)  # (S, D)
+            y_d = y_d.unsqueeze(0)          
+            means = means.unsqueeze(1)      
+            stds = stds.unsqueeze(1)        
+            log_cp_cores = -0.5 * torch.log(torch.tensor(2 * torch.pi) )- torch.log(stds) - 0.5 * ((y_d - means) / stds) ** 2
+            
+            self.log_cp_cores = log_cp_cores.permute(2, 0, 1)
             #########################################################################################
 
             self.input_dataset  = torch.load(self.source_path)
@@ -77,6 +84,7 @@ class BenchmarkDiscreteEOT:
 
             #########################################################################################
             # TODO: @Ark-130994, please, change the saving of cores, to work without LightSB_D class
+            # make sure that log_cp_cores and log_alpha are saved in the state_dict
             print('Saving benchmark...')
             torch.save(self.D.state_dict(), self.solver_path)
             torch.save(self.input_dataset, self.source_path)
@@ -94,8 +102,8 @@ class BenchmarkDiscreteEOT:
     # the batch_size must be specified in sample methods
         input_dataloader  = DataLoader(self.input_dataset, batch_size=128, shuffle=False)
         target_dataloader = DataLoader(self.target_dataset, batch_size=128, shuffle=False)
-        self.input_sampler  = LoaderSampler(input_dataloader, self.device)
-        self.target_sampler = LoaderSampler(target_dataloader, self.device)
+        self.input_sampler  = LoaderSampler(input_dataloader)
+        self.target_sampler = LoaderSampler(target_dataloader)
 
     def sample_input(self, n_samples: int) -> torch.Tensor:
         return self.input_sampler.sample(n_samples)

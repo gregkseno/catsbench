@@ -128,7 +128,8 @@ def gaussian_prior_log(
         p_onestep_mat = torch.linalg.matrix_power(p_onestep_mat, n=num_skip_steps)
         log_p_onestep_mat = torch.log(p_onestep_mat)
 
-    log_p_cum_mats = get_log_cum_matrices(num_timesteps + 1, log_p_onestep_mat)
+    # NOTE: @Ark-130994 why here was num_timesteps + 1, but not num_timesteps + 2?
+    log_p_cum_mats = get_log_cum_matrices(num_timesteps + 2, log_p_onestep_mat)
 
     return log_p_onestep_mat.transpose(0, 1), log_p_cum_mats
 
