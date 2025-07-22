@@ -8,7 +8,7 @@ batch_size: 512
 input_dist: gaussian
 num_workers: 0
 pin_memory: false
-dir: ${paths.data_dir}/benchmark_data
+dir: ${paths.data_dir}/benchmark
 
 benchmark_config:
   alpha: ${prior.alpha}

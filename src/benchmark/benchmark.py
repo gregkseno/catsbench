@@ -48,6 +48,8 @@ class BenchmarkDiscreteEOT:
         self.source_path = os.path.join(save_path, config_name_source)
         self.target_path = os.path.join(save_path, config_name_target)
 
+        # Print pwd
+        print(f'Current working directory: {os.getcwd()}')
         print(f'Benchmark paths: {self.solver_path}, {self.source_path}, {self.target_path}')
         
         if os.path.exists(self.source_path) and os.path.exists(self.target_path) and os.path.exists(self.solver_path):
