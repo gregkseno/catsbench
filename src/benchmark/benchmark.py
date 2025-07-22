@@ -78,11 +78,7 @@ class BenchmarkDiscreteEOT():
 
     def sample_input(self, n_samples):
         return self.input_sampler.sample(n_samples)
-    def sample_input(self, n_samples):
-        return self.input_sampler.sample(n_samples)
 
-    def sample_target(self, n_samples):
-        return self.target_sampler.sample(n_samples)
     def sample_target(self, n_samples):
         return self.target_sampler.sample(n_samples)
     
