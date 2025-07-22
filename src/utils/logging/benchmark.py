@@ -103,7 +103,7 @@ class BenchmarkLogger(Callback):
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
-        fb = 'forward' if not pl_module.bidirectional or self.current_epoch % 2 == 0 else 'backward'
+        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         pred_x_end = pl_module.sample(x_start)
         self.tv_complement(x_end, pred_x_end)
         self.contingency_similarity(x_end, pred_x_end)
@@ -127,7 +127,7 @@ class BenchmarkLogger(Callback):
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
-        fb = 'forward' if not pl_module.bidirectional or self.current_epoch % 2 == 0 else 'backward'
+        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         pred_x_end = pl_module.sample(x_start)
         self.tv_complement(x_end, pred_x_end)
         self.contingency_similarity(x_end, pred_x_end)
@@ -149,7 +149,7 @@ class BenchmarkLogger(Callback):
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
-        fb = 'forward' if not pl_module.bidirectional or self.current_epoch % 2 == 0 else 'backward'
+        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         pred_x_end = self.mca.transform(convert_to_numpy(pl_module.sample(x_start)))
         x_start = self.mca.transform(convert_to_numpy(x_start))
         x_end = self.mca.transform(convert_to_numpy(x_end))
@@ -180,7 +180,7 @@ class BenchmarkLogger(Callback):
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
-        fb = 'forward' if not pl_module.bidirectional or self.current_epoch % 2 == 0 else 'backward'
+        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         fig, ax = plt.subplots(1, 1, **self.trajectories_fig_config)
         ax.get_xaxis().set_ticklabels([])
         ax.get_yaxis().set_ticklabels([])

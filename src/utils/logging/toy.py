@@ -110,7 +110,7 @@ class ToyLogger(Callback):
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
-        fb = 'forward' if not pl_module.bidirectional or self.current_epoch % 2 == 0 else 'backward'
+        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         pred_x_end = convert_to_numpy(pl_module.sample(x_start))
         x_start = convert_to_numpy(x_start)
         x_end = convert_to_numpy(x_end)
@@ -141,7 +141,7 @@ class ToyLogger(Callback):
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
-        fb = 'forward' if not pl_module.bidirectional or self.current_epoch % 2 == 0 else 'backward'
+        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         fig, ax = plt.subplots(1, 1, **self.trajectories_fig_config)
         ax.get_xaxis().set_ticklabels([])
         ax.get_yaxis().set_ticklabels([])
