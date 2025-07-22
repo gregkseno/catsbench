@@ -138,7 +138,7 @@ class Prior(nn.Module):
             self.dtype: torch.dtype = dtype
 
 
-        if prior_type == 'gaussian_log':
+        if prior_type == 'gaussian':
             p_onestep, p_cum = gaussian_prior_log(alpha, num_categories, num_timesteps, num_skip_steps, use_doubly_stochastic=True)
         elif prior_type == 'uniform':
             p_onestep, p_cum = uniform_prior(alpha, num_categories, num_timesteps, num_skip_steps)

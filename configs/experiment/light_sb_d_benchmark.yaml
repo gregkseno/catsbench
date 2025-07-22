@@ -25,7 +25,7 @@ model:
 
 prior:
   alpha: 0.02
-  prior_type: gaussian_log
+  prior_type: gaussian
   num_timesteps: 16
   num_skip_steps: 8
 
