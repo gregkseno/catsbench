@@ -62,9 +62,9 @@ class BenchmarkDiscreteEOT():
 
             if save_benchmark is True:
                 print('Saving benchmark...')
-                torch.save(D.state_dict(), solver_path)
-                torch.save(self.input_dataset, source_path))
-                torch.save(self.target_dataset, target_path))
+                torch.save(self.D.state_dict(), solver_path)
+                torch.save(self.input_dataset, source_path)
+                torch.save(self.target_dataset, target_path)
 
         random_indices      = torch.randperm(len(self.input_dataset))
         self.input_dataset  = self.input_dataset[random_indices]
