@@ -157,3 +157,4 @@ def plot_samples(x, y, D, indices_plot, beta, n_steps, xrange=[0,100], yrange=[0
         plt.show()
 
     return fig
+
