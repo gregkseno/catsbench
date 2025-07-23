@@ -140,7 +140,6 @@ class BenchmarkLogger(Callback):
         pl_module.log(f'val/tv_complement_{fb}', pl_module.tv_complement, metric_attribute='tv_complement')
         pl_module.log(f'val/contingency_similarity_{fb}', pl_module.contingency_similarity, metric_attribute='contingency_similarity')
         pl_module.log(f'val/pqmass_{fb}', pl_module.pqmass, metric_attribute='pqmass')
-        log.info(f'Len of validation dataloaders: {len(trainer.val_dataloaders)}')
         if batch_idx == len(trainer.val_dataloaders) - 1:
             self._log_smaples(x_start, x_end, pl_module, 'val')
             self._log_trajectories(x_start, pl_module, stage='val')

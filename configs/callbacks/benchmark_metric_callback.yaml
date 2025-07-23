@@ -9,5 +9,5 @@ metric_callback:
   num_trajectories: 4
   num_translations: 3
   axlim:
-    - -250
-    - 250
+    - -100
+    - 100

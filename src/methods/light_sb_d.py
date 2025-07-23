@@ -2,12 +2,10 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import torch
 from torch import nn
-from torch.nn import functional as F
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from lightning import LightningModule
 import numpy as np
-from torch.distributions.log_normal import LogNormal
 from torch.distributions.normal import Normal
 from src.utils.logging.console import RankedLogger
 from src.data.prior import Prior
@@ -350,153 +348,7 @@ class LightSB_D(LightningModule):
     @torch.no_grad()
     def sample_trajectory(self, x: torch.Tensor, pca=None) -> torch.Tensor:
         if pca is None:
-            out = torch.stack([x, self.sample(x).cpu()], dim=0)
+            out = torch.stack([x, self.sample(x)], dim=0)
         else:
             out = np.stack([pca.transform(x), pca.transform(self.sample(x).cpu())], axis=0)
         return out
-
-from typing import Any, Dict, List, Literal, Optional, Tuple
-
-import torch
-from torch import nn
-from torch.nn import functional as F
-from torch.optim import Optimizer
-from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
-from lightning import LightningModule
-import numpy as np
-
-from src.data.prior import Prior
-
-
-HPARAMS = (
-    'dim', 'num_potentials', 'distr_init', 
-    'optimizer', 'scheduler'
-)
-
-def create_dimensional_points(
-    d: int , min_val: float = 10.0, max_val: float = 40.0, device: str = 'cpu'
-):
-    base_points = torch.tensor([
-        [min_val, min_val, max_val, max_val],  
-        [min_val, max_val, max_val, min_val]   
-    ], device=device)
-    
-    full_points = torch.full((d, 4), min_val, device=device)
-    full_points[:2] = base_points
-    
-    if d >= 3:
-        full_points[2, 1] = max_val  
-        full_points[2, 2] = max_val  
-    
-    return full_points
-
-
-HPARAMS = (
-    'dim', 'num_potentials', 'distr_init', 
-    'optimizer', 'scheduler'
-)
-
-class AutoregressiveLightSB_D(LightningModule):
-    def __init__(
-        self, 
-        prior: Prior,
-        dim: int,
-        num_potentials: int, 
-        optimizer: Optimizer, # partially initialized 
-        scheduler: Optional[LRScheduler] = None, # partially initialized 
-        distr_init: Literal['uniform', 'gaussian', 'benchmark'] = 'gaussian', 
-    ):
-        super().__init__()
-        # somehow this function is able to load all 
-        # the method arguments and put to `self.hparams`
-        # save only `HPARAMS` for memory efficiency (probably :))
-        self.save_hyperparameters(*HPARAMS, logger=False)        
-        self.iteration = 1
-        self.prior = prior
-        
-        # TODO: Add names to parameters
-        self.log_alpha = nn.Parameter(torch.zeros(num_potentials))
-        self._initialize_parameters(distr_init)
-            
-        self.autoregressive_cores = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(self.hparams.num_potentials * d, 128),
-                nn.ReLU(),
-                nn.Linear(128, self.hparams.num_potentials * self.prior.num_categories)
-            ) for d in range(1, self.hparams.dim)
-        ])
-                
-    def get_log_v(self, y: torch.Tensor) -> torch.Tensor:
-        batch_size = y.shape[0]
-        log_terms = self.log_alpha[None, :]  # (1, K)
-        
-        # First dimension (no autoregressive dependency)
-        y0 = y[:, 0]
-        log_r0 = self.log_cp_cores[0][:, y0].T  # (batch_size, K)
-        log_terms = log_terms + log_r0
-        
-        # Autoregressive processing for subsequent dimensions
-        for d in range(1, self.hparams.dim):
-            # Gather previous dimensions' outputs
-            prev_dims = y[:, :d]
-            
-            # Encode previous dimensions
-            prev_flat = prev_dims.view(batch_size, -1).float()
-            ar_out = self.autoregressive_cores[d-1](prev_flat)
-            ar_out = ar_out.view(batch_size, self.hparams.num_potentials, self.prior.num_categories)
-            
-            # Combine with current dimension
-            yd = y[:, d]
-            log_rd = self.log_cp_cores[d][:, yd].T  # Base term
-            log_ar = ar_out[torch.arange(batch_size), :, yd]  # Autoregressive term
-            
-            log_terms = log_terms + log_rd + log_ar
-            
-        return torch.logsumexp(log_terms, dim=1)
-    
-    def get_log_c(self, x: torch.Tensor) -> torch.Tensor:
-        # Requires sequential integration - use ancestral sampling
-        num_samples = 1000  # Number of samples for Monte Carlo integration
-        device = x.device
-        
-        # Initialize with first dimension
-        log_probs = torch.zeros(x.shape[0], device=device)
-        y_samples = torch.zeros(x.shape[0], self.hparams.dim, device=device, dtype=torch.long)
-        
-        # Sample first dimension
-        with torch.no_grad():
-            timestep = torch.full((x.shape[0],), self.prior.num_timesteps, device=device)
-            pi_ref = self.prior.extract('cumulative', timestep, row_id=x[:, 0])
-            y_samples[:, 0] = Categorical(pi_ref).sample()
-        
-        # Autoregressive sampling for subsequent dimensions
-        for d in range(1, self.hparams.dim):
-            # Build conditioning input
-            prev_dims = y_samples[:, :d]
-            prev_flat = prev_dims.view(x.shape[0], -1).float()
-            
-            # Get autoregressive output
-            ar_out = self.autoregressive_cores[d-1](prev_flat)
-            ar_out = ar_out.view(x.shape[0], self.hparams.num_potentials, self.prior.num_categories)
-            
-            # Combine with base term
-            combined = (self.log_cp_cores[d][None, :, :] + 
-                       ar_out).logsumexp(dim=1)  # (batch_size, num_categories)
-            
-            # Sample next dimension
-            with torch.no_grad():
-                # Get prior transition probabilities
-                timestep = torch.full((x.shape[0],), self.prior.num_timesteps, device=device)
-                pi_ref = self.prior.extract('cumulative', timestep, row_id=x[:, d])
-                
-                # Combine model and prior
-                log_prob = combined + torch.log(pi_ref)
-                y_samples[:, d] = Categorical(torch.exp(log_prob)).sample()
-        
-        # Compute log_v for all sampled paths
-        log_v_samples = self.get_log_v(y_samples)
-        
-        # Monte Carlo estimate of log_C
-        log_C = torch.logsumexp(log_v_samples, dim=0) - torch.log(torch.tensor(num_samples))
-        return log_C
-    
