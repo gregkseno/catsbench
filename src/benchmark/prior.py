@@ -164,8 +164,6 @@ class Prior(nn.Module):
         prior_type: Literal[
             'uniform', 
             'gaussian',
-            'centroid_gaussian',
-            'von_mises',
         ] = 'uniform',
         eps: float = 1e-20,
         dtype: Union[str, torch.dtype] = torch.float32
@@ -183,15 +181,14 @@ class Prior(nn.Module):
         else:
             self.dtype: torch.dtype = dtype
 
-
         if prior_type == 'gaussian':
-            p_onestep, p_cum = gaussian_prior_log(alpha, num_categories, num_timesteps, num_skip_steps, use_doubly_stochastic=True)
+            log_p_onestep, log_p_cum = gaussian_prior(alpha, num_categories, num_timesteps, num_skip_steps)
         elif prior_type == 'uniform':
-            p_onestep, p_cum = uniform_prior(alpha, num_categories, num_timesteps, num_skip_steps)
+            log_p_onestep, log_p_cum = uniform_prior(alpha, num_categories, num_timesteps, num_skip_steps)
         else:
             raise NotImplementedError(f'Got unknown prior: {prior_type} or centroids is None!')
-        self.register_buffer("p_onestep", p_onestep)
-        self.register_buffer("p_cum", p_cum)
+        self.register_buffer("log_p_onestep", log_p_onestep)
+        self.register_buffer("log_p_cum", log_p_cum)
         self.to(dtype=self.dtype)
         
     def extract(
@@ -206,31 +203,31 @@ class Prior(nn.Module):
         if row_id is not None and column_id is not None:
             t = broadcast(t, row_id.dim() - 1)
             if mat_type  == 'onestep':
-                return self.p_onestep[row_id, column_id]
+                return self.log_p_onestep[row_id, column_id]
             else: 
-                return self.p_cum[t, row_id, column_id]
+                return self.log_p_cum[t, row_id, column_id]
             
         elif row_id is not None and column_id is None:
             t = broadcast(t, row_id.dim() - 1)
             if mat_type  == 'onestep':
-                return self.p_onestep[row_id]
+                return self.log_p_onestep[row_id]
             else: 
-                return self.p_cum[t, row_id, :]
+                return self.log_p_cum[t, row_id, :]
         
         elif row_id is None and column_id is not None:
             t = broadcast(t, column_id.dim() - 1)
             if mat_type  == 'onestep':
-                return self.p_onestep[:, column_id]
+                return self.log_p_onestep[:, column_id]
             else:
-                return self.p_cum[t, :, column_id]
+                return self.log_p_cum[t, :, column_id]
         else:   
             raise ValueError('row_id and column_id cannot be None both!')
 
     def sample_bridge(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         r"""Samples from bridge $p(x_{t} | x_{0}, x_{1})$."""
-        p_start_t = self.extract('cumulative', t, row_id=x_start)
-        p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
-        log_probs = torch.log(p_start_t + self.eps) + torch.log(p_t_end + self.eps)
+        log_p_start_t = self.extract('cumulative', t, row_id=x_start)
+        log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
+        log_probs = log_p_start_t + log_p_t_end
         log_probs = log_probs - log_probs.logsumexp(dim=-1, keepdim=True)
         
         noise = torch.rand_like(log_probs)
@@ -248,9 +245,9 @@ class Prior(nn.Module):
     
     def bridge_logits(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         r"""Calculates log probability of $p(x_{t} | x_{0}, x_{1})$."""
-        p_start_t = self.extract('cumulative', t, row_id=x_start)
-        p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
-        log_probs = torch.log(p_start_t + self.eps) + torch.log(p_t_end + self.eps)
+        log_p_start_t = self.extract('cumulative', t, row_id=x_start)
+        log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
+        log_probs = log_p_start_t + log_p_t_end
 
         log_probs = log_probs - log_probs.logsumexp(dim=-1, keepdim=True)
         return log_probs
@@ -271,12 +268,13 @@ class Prior(nn.Module):
         assert x_start_logits.shape == x_t.shape + (self.num_categories,), f"x_start_logits.shape: {x_start_logits.shape}, x_t.shape: {x_t.shape}"
         x_start_logits = x_start_logits.to(self.dtype)
         # fact1 is "guess of x_{t}" from x_{t-1}
-        fact1 = self.extract('onestep', t, row_id=x_t)
+        log_fact1 = self.extract('onestep', t, row_id=x_t)
 
         # fact2 is "guess of x_{t-1}" from x_{0}
-        x_start_probs = x_start_logits.softmax(dim=-1)  # bs, ..., num_categories
-        fact2 = torch.einsum("b...c,bcd->b...d", x_start_probs, self.p_cum[t - 1])
-        p_posterior_logits = torch.log(fact1 + self.eps) + torch.log(fact2 + self.eps)
+        x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
+        log_fact2 = torch.logsumexp(x_start_logits.unsqueeze(-1) + self.log_p_cum[t-1], dim=-2) 
+
+        p_posterior_logits = log_fact1 + log_fact2
         p_posterior_logits = p_posterior_logits - p_posterior_logits.logsumexp(dim=-1, keepdim=True) # Normalize
         
         # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already
