@@ -6,10 +6,6 @@ from sklearn.decomposition import PCA
 import torch
 import matplotlib.pyplot as plt
 
-def broadcast(t: torch.Tensor, num_add_dims: int) -> torch.Tensor:
-    shape = [t.shape[0]] + [1] * num_add_dims
-    return t.reshape(shape)
-
 def fig2img(fig: Figure) -> Image.Image:
     fig.canvas.draw()
     w, h = fig.canvas.get_width_height()
@@ -17,25 +13,6 @@ def fig2img(fig: Figure) -> Image.Image:
     buf.shape = (w, h, 4)
     buf = np.roll(buf, 3, axis = 2)
     return Image.frombytes("RGBA", (w, h), buf.tobytes())
-
-def get_means(dim: int, num_clusters: int = 5, min_separation: float = 8, seed: int = 43):
-    torch.manual_seed(seed)
-    means_hd = torch.zeros((num_clusters, dim))
-
-    for k in range(1, num_clusters):
-        candidate = torch.empty(dim)
-        valid = False
-        for _ in range(1000):  
-            candidate.uniform_(-15, 15) #(-15, 15) for 2 (-10, 10) for 16 (-5, 5) for 64
-            dists = torch.norm(means_hd[:k] - candidate, dim=1)
-            if torch.all(dists >= min_separation):
-                means_hd[k] = candidate
-                valid = True
-                break
-        if not valid:
-            raise RuntimeError(f"Couldn't place cluster {k}")
-    
-    return means_hd
 
 
 def plot_samples(x, y, D, indices_plot, beta, n_steps, xrange=[0,100], yrange=[0,100], 

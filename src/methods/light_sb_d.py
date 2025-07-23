@@ -13,54 +13,10 @@ from src.data.prior import Prior
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-
-def get_means(dim: int, num_clusters: int = 5, min_separation: float = 8, seed: int = 43):
-    torch.manual_seed(seed)
-    means_hd = torch.zeros((num_clusters, dim))
-#
-    #for k in range(1, num_clusters):
-    #    candidate = torch.empty(dim)
-    #    candidate.uniform_(-2, 2)
-    #    means_hd[k] = candidate
-#
-    #return means_hd
-
-    for k in range(1, num_clusters):
-        candidate = torch.empty(dim)
-        valid = False
-        for _ in range(1000):  # Max 1000 trials
-            candidate.uniform_(-5, 5) #(-15, 15) for 2 (-10, 10) for 16 (-5, 5) for 64
-            # Calculate distances to existing means
-            dists = torch.norm(means_hd[:k] - candidate, dim=1)
-            if torch.all(dists >= min_separation):
-                means_hd[k] = candidate
-                valid = True
-                break
-        if not valid:
-            raise RuntimeError(f"Couldn't place cluster {k}")
-    
-    return means_hd
-
 HPARAMS = (
     'dim', 'num_potentials', 'distr_init', 
     'optimizer', 'scheduler'
 )
-def create_dimensional_points(
-    d: int , min_val: float = 10.0, max_val: float = 40.0, device: str = 'cpu'
-):
-    base_points = torch.tensor([
-        [min_val, min_val, max_val, max_val],  
-        [min_val, max_val, max_val, min_val]   
-    ], device=device)
-    
-    full_points = torch.full((d, 4), min_val, device=device)
-    full_points[:2] = base_points
-    
-    if d >= 3:
-        full_points[2, 1] = max_val  
-        full_points[2, 2] = max_val  
-    
-    return full_points
 
 class LightSB_D(LightningModule):
     def __init__(
@@ -70,12 +26,10 @@ class LightSB_D(LightningModule):
         num_potentials: int, 
         optimizer: Optimizer, # partially initialized 
         scheduler: Optional[LRScheduler] = None, # partially initialized 
-        distr_init: Literal['uniform', 'gaussian', 'benchmark'] = 'gaussian', 
+        distr_init: Literal['uniform', 'gaussian'] = 'gaussian', 
     ):
         super().__init__()
-        # somehow this function is able to load all 
-        # the method arguments and put to `self.hparams`
-        # save only `HPARAMS` for memory efficiency (probably :))
+
         self.save_hyperparameters(*HPARAMS, logger=False)        
         self.bidirectional = False  
         self.iteration = 1
@@ -83,85 +37,25 @@ class LightSB_D(LightningModule):
         
         # TODO: Add names to parameters
         self.log_alpha = nn.Parameter(torch.zeros(num_potentials))
-        #self.log_alpha = nn.Parameter(torch.log(torch.ones(self.hparams.num_potentials)/self.hparams.num_potentials))
-        self._initialize_parameters_old(distr_init)
-            
+        self._initialize_parameters(distr_init)
+
     def _initialize_parameters(
-        self, distr_init: Literal['uniform', 'gaussian', 'benchmark']
-    ) -> None:
-        nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
-
-        if distr_init == 'gaussian':
-            spread = 0.6
-            rb, lb = 5, -5
-            means = torch.rand((self.hparams.num_potentials, self.hparams.dim))* (rb - lb) + lb
-            #get_means(self.dim, self.num_potentials) #(K, D)
-            stds = [spread * torch.ones(self.hparams.dim) for _ in range(self.hparams.num_potentials)] # (K, D)
-            
-            dists = [Normal(loc=means[k], scale=stds[k]) for k in range(self.hparams.num_potentials)]
-            cp_cores = [torch.abs(dists[k].sample((self.prior.num_categories,))) for k in range(self.hparams.num_potentials)]
-            log_cp_cores = [torch.log(core) for core in cp_cores]
-
-        elif distr_init == 'uniform':
-            log_cp_cores = [torch.log(torch.ones((self.prior.num_categories, self.hparams.dim))/(self.prior.num_categories * self.hparams.dim))]*self.hparams.num_potentials
-
-        #elif distr_init == 'dirichlet':
-        #    concentrations = torch.ones((self.num_categories, self.dim))/(self.num_categories * self.dim)
-        #    log_cp_cores = [Dirichlet(concentrations).sample(self.num) for ]
-
-        #self.log_cp_cores = [log_cp_core.to(self.device) for log_cp_core in log_cp_cores]
-        #print(self.device)
-        self.log_cp_cores = torch.stack(log_cp_cores, dim=1).permute(2, 1, 0).cuda()
-        #print(self.log_cp_cores.device)
-        self._make_model_parameters()
-
-    def _initialize_parameters_old_old(
-        self, distr_init: Literal['uniform', 'gaussian', 'benchmark']
-    ) -> None:
-        nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
-        self.log_cp_cores = nn.ParameterList([
-            nn.Parameter(torch.zeros(self.hparams.num_potentials, self.prior.num_categories))
-            for _ in range(self.hparams.dim)
-        ])
-
-        for core in self.log_cp_cores:
-            if distr_init == 'gaussian':
-                nn.init.normal_(core, mean=-1.0, std=0.5)
-            elif distr_init == 'uniform':
-                nn.init.constant_(core, -torch.log(torch.tensor(self.prior.num_categories * 1.0)))
-            else:
-                raise ValueError(f"Invalid distr_init: {distr_init}")
-
-    def _initialize_parameters_old(
-        self, distr_init: Literal['uniform', 'gaussian', 'benchmark']
+        self, distr_init: Literal['uniform', 'gaussian']
     ) -> None:
         nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
         self.log_cp_cores = []
         
-        if distr_init == 'benchmark':
-            rates = create_dimensional_points(self.hparams.dim, 10, self.prior.num_categories-10).to(self.device)
-            y_d   = torch.arange(self.prior.num_categories, device=self.device)  #(D, S)
-        if distr_init == 'poisson':
-            rates = torch.randint(5, 50, (self.hparams.dim, self.hparams.num_potentials))
-            y_d   = torch.arange(self.prior.num_categories, device=self.device)  #(D, S)
-
         for d in range(self.hparams.dim):
             
             if distr_init == 'gaussian':
                 cur_core = (-1.0 + 0.5**2*torch.randn(self.hparams.num_potentials, self.prior.num_categories)) \
             / (self.prior.num_categories * self.hparams.num_potentials)
                 cur_log_core = torch.log(cur_core**2)
-                #self.log_cp_cores.append(nn.Parameter(cur_log_core))
 
             elif distr_init == 'uniform':
                 cur_log_core = torch.log(torch.ones(self.hparams.num_potentials, self.prior.num_categories) \
                                         / (self.prior.num_categories * self.hparams.num_potentials))
             
-            elif distr_init in ['benchmark', 'poisson']:
-                rate = rates[d] # (K,)
-                cur_log_core = y_d[None, :] * torch.log(rate[:, None]) - rate[:, None] - torch.lgamma(y_d[None, :] + 1) #(K, S)
-            #elif distr_init == 'dirichlet':
-            #    cur_log_core = 
             else:
                 raise ValueError(f"Invalid distr_init: {distr_init}")
             
@@ -199,7 +93,6 @@ class LightSB_D(LightningModule):
                 device=self.device
             )
             log_pi_ref = self.prior.extract('cumulative', last_timestep, row_id=x_d)
-            #log_pi_ref = torch.log(pi_ref)
             
             log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
             log_inner = torch.logsumexp(log_joint, dim=2)  # (batch_size, K)
@@ -207,32 +100,6 @@ class LightSB_D(LightningModule):
             
         log_c = torch.logsumexp(self.log_alpha[None, :] + log_z, dim=1) #(K,) + (batch_size, K) -> (batch_size,)
         return log_c
-    
-    def init_by_samples(self, samples, device):
-        marginals = []
-        num_samples = samples.shape[0]
-
-        for dim in range(self.hparams.dim):
-            dim_samples = samples[:, dim]
-            
-            counts = torch.histc(dim_samples.float(),  # Ensure float type for histc
-                                bins=self.prior.num_categories,
-                                min=0,
-                                max=self.prior.num_categories-1)
-            
-            probs = (counts + 1e-8) / (num_samples + 1e-8 * self.prior.num_categories)
-            marginals.append(probs.log())  # Store log probabilities
-
-        self.log_cp_cores = nn.ParameterList()
-        for dim in range(self.hparams.dim):
-            base = torch.zeros(self.hparams.num_potentials, self.prior.num_categories)
-            
-            base[0] = marginals[dim]
-            
-            base[1:] = torch.randn(self.hparams.num_potentials - 1, 
-                                self.prior.num_categories) * 0.01
-            
-            self.log_cp_cores.append(nn.Parameter(base.to(device)))
 
     def training_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
@@ -316,7 +183,6 @@ class LightSB_D(LightningModule):
                 device=self.device
             )
             log_pi_ref = self.prior.extract('cumulative', last_timestep, row_id=x_d)
-            #log_pi_ref = torch.log(pi_ref)
             
             log_pi_ref_list.append(log_pi_ref)
                 

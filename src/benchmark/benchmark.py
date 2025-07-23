@@ -1,14 +1,14 @@
 from typing import Literal
-from samplers import (
+from .samplers import (
     DiscreteGaussianDataset, 
     DiscreteUniformDataset,
 )
 import torch
 from torch.utils.data import DataLoader
-from utils import LoaderSampler
+from .utils import LoaderSampler
 
 import os
-from prior import Prior
+from .prior import Prior
 
 class BenchmarkDiscreteEOT:
     def __init__(
