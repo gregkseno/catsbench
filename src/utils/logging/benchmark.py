@@ -44,7 +44,7 @@ class BenchmarkLogger(Callback):
         self.num_trajectories = num_trajectories
         self.num_translations = num_translations
         if dim > 2:
-            self.mca = PCA(n_components=2)
+            self.pca = PCA(n_components=2)
 
         self.tv_complement = TVComplement(dim, num_categories)
         self.contingency_similarity = ContingencySimilarity(dim, num_categories)
@@ -114,7 +114,7 @@ class BenchmarkLogger(Callback):
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
         if pl_module.current_epoch == 0:
-            self.mca.fit(convert_to_numpy(torch.cat(batch, dim=0)))
+            self.pca.fit(convert_to_numpy(torch.cat(batch, dim=0)))
 
         if trainer.is_last_batch:
             self._log_smaples(x_start, x_end, pl_module, 'train')   
@@ -140,6 +140,7 @@ class BenchmarkLogger(Callback):
         pl_module.log(f'val/tv_complement_{fb}', pl_module.tv_complement, metric_attribute='tv_complement')
         pl_module.log(f'val/contingency_similarity_{fb}', pl_module.contingency_similarity, metric_attribute='contingency_similarity')
         pl_module.log(f'val/pqmass_{fb}', pl_module.pqmass, metric_attribute='pqmass')
+        log.info(f'Len of validation dataloaders: {len(trainer.val_dataloaders)}')
         if batch_idx == len(trainer.val_dataloaders) - 1:
             self._log_smaples(x_start, x_end, pl_module, 'val')
             self._log_trajectories(x_start, pl_module, stage='val')
@@ -177,9 +178,9 @@ class BenchmarkLogger(Callback):
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
-        pred_x_end = self.mca.transform(convert_to_numpy(pl_module.sample(x_start)))
-        x_start = self.mca.transform(convert_to_numpy(x_start))
-        x_end = self.mca.transform(convert_to_numpy(x_end))
+        pred_x_end = self.pca.transform(convert_to_numpy(pl_module.sample(x_start)))
+        x_start = self.pca.transform(convert_to_numpy(x_start))
+        x_end = self.pca.transform(convert_to_numpy(x_end))
 
         fig, axes = plt.subplots(1, 3, **self.samples_fig_config)
         fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.iteration}')
@@ -224,7 +225,7 @@ class BenchmarkLogger(Callback):
         ax.get_yaxis().set_ticklabels([])
         fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.iteration}')
         
-        pred_x_end = self.mca.transform(convert_to_numpy(pl_module.sample(x_start)))
+        pred_x_end = self.pca.transform(convert_to_numpy(pl_module.sample(x_start)))
         traj_start = x_start[:self.num_trajectories]
         repeats = [self.num_translations] + [1] * traj_start.dim()
         traj_start = traj_start.unsqueeze(0).repeat(*repeats)
@@ -242,7 +243,9 @@ class BenchmarkLogger(Callback):
                     trajectories[-1]
                 ], dim=0
             )
-        trajectories = self.mca.transform(convert_to_numpy(trajectories))
+        trajectories = convert_to_numpy(trajectories.reshape(-1, self.dim))
+        trajectories = self.pca.transform(trajectories)
+        trajectories = trajectories.reshape(-1, self.num_trajectories * self.num_translations, 2)
 
         ax.scatter(pred_x_end[:, 0], pred_x_end[:, 1], **self.trajectories_pred_config)
         ax.scatter(trajectories[0, :, 0], trajectories[0, :, 1], **self.trajectories_start_config)
