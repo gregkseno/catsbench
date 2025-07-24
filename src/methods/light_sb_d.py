@@ -86,14 +86,7 @@ class LightSB_D(LightningModule):
         
         for d in range(self.hparams.dim):
             x_d = x[:, d]
-
-            last_timestep = torch.full(
-                size=(x.shape[0],), 
-                fill_value=self.prior.num_timesteps, 
-                device=self.device
-            )
-            log_pi_ref = self.prior.extract('cumulative', last_timestep, row_id=x_d)
-            
+            log_pi_ref = self.prior.extract_last_cum_matrix(x_d)
             log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
             log_inner = torch.logsumexp(log_joint, dim=2)  # (batch_size, K)
             log_z = log_z + log_inner
@@ -177,12 +170,7 @@ class LightSB_D(LightningModule):
         log_pi_ref_list = []
         for d in range(self.hparams.dim):
             x_d = x[:, d]
-            last_timestep = torch.full(
-                size=(x.shape[0],), 
-                fill_value=self.prior.num_timesteps, 
-                device=self.device
-            )
-            log_pi_ref = self.prior.extract('cumulative', last_timestep, row_id=x_d)
+            log_pi_ref = self.prior.extract_last_cum_matrix(x_d)
             
             log_pi_ref_list.append(log_pi_ref)
                 

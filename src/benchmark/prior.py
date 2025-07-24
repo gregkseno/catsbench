@@ -1,7 +1,5 @@
 from typing import Literal, Optional, Tuple, Union
 
-import numpy as np
-from scipy.special import softmax
 import torch.nn.functional as F
 import torch
 from torch import nn
@@ -12,25 +10,23 @@ def broadcast(t: torch.Tensor, num_add_dims: int) -> torch.Tensor:
     shape = [t.shape[0]] + [1] * num_add_dims
     return t.reshape(shape)
 
-def log_space_product(A, B):
-    A_exp = A.unsqueeze(2)  
-    B_exp = B.unsqueeze(0)  
-
-    return torch.logsumexp(A_exp + B_exp, dim=1)
+def log_space_product(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor:
+    log_matrix1 = log_matrix1.unsqueeze(2)  
+    log_matrix2 = log_matrix2.unsqueeze(0)  
+    return torch.logsumexp(log_matrix1 + log_matrix2, dim=1)
 
 def get_cum_matrices(num_timesteps: int, log_onestep_matrix: torch.Tensor) -> torch.Tensor:
     num_categories = log_onestep_matrix.shape[0]
     log_cum_matrices = torch.empty(size=(num_timesteps, num_categories, num_categories), dtype=log_onestep_matrix.dtype)
     
+    # Add identity matrix for the zero timestep
     log_identity = torch.full((num_categories, num_categories), float('-inf'), dtype=torch.float64)  # log(0) = -inf
     rows = torch.arange(num_categories)
     log_identity[rows, rows] = 0.0
-
     log_cum_matrices[0] = log_identity[:]
-    
+
     for timestep in range(1, num_timesteps):
         log_cum_matrices[timestep] = log_space_product(log_cum_matrices[timestep-1], log_onestep_matrix)
-
     assert log_onestep_matrix.shape == log_cum_matrices[0].shape, f'Wrong shape!'
     return log_cum_matrices
 
@@ -136,6 +132,7 @@ class Prior(nn.Module):
             log_p_onestep, log_p_cum = uniform_prior(alpha, num_categories, num_timesteps, num_skip_steps)
         else:
             raise NotImplementedError(f'Got unknown prior: {prior_type} or centroids is None!')
+        
         self.register_buffer("log_p_onestep", log_p_onestep)
         self.register_buffer("log_p_cum", log_p_cum)
         self.to(dtype=self.dtype)
@@ -171,6 +168,14 @@ class Prior(nn.Module):
                 return self.log_p_cum[t, :, column_id]
         else:   
             raise ValueError('row_id and column_id cannot be None both!')
+        
+    def extract_last_cum_matrix(self, x: torch.Tensor) -> torch.Tensor:
+        last_timestep = torch.full(
+            size=(x.shape[0],), 
+            fill_value=self.num_timesteps, 
+            device=self.device
+        )
+        return self.extract('cumulative', last_timestep, row_id=x)
 
     def sample_bridge(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         r"""Samples from bridge $p(x_{t} | x_{0}, x_{1})$."""
@@ -219,8 +224,9 @@ class Prior(nn.Module):
         # fact1 is "guess of x_{t}" from x_{t-1}
         log_fact1 = self.extract('onestep', t, row_id=x_t)
 
-        # fact2 is "guess of x_{t-1}" from x_{0}
-        x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
+        if not logits:
+            # fact2 is "guess of x_{t-1}" from x_{0}
+            x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
         log_fact2 = torch.logsumexp(x_start_logits.unsqueeze(-1) + self.log_p_cum[t-1], dim=-2) 
 
         p_posterior_logits = log_fact1 + log_fact2
@@ -230,4 +236,3 @@ class Prior(nn.Module):
         is_first_step = broadcast(t, x_t.dim()) == 1
         p_posterior_logits = torch.where(is_first_step, x_start_logits, p_posterior_logits)
         return p_posterior_logits
-

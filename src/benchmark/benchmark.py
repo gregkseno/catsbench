@@ -124,12 +124,7 @@ class BenchmarkDiscreteEOT:
         log_pi_ref_list = []
         for d in range(self.dim):
             x_d = x[:, d]
-            last_timestep = torch.full(
-                size=(x.shape[0],), 
-                fill_value=self.prior.num_timesteps, 
-                device=self.device
-            )
-            log_pi_ref = self.prior.extract('cumulative', last_timestep, row_id=x_d).to(self.device)
+            log_pi_ref = self.prior.extract_last_cum_matrix(x_d).to(self.device)
             log_pi_ref_list.append(log_pi_ref)
                 
             log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
@@ -155,7 +150,7 @@ class BenchmarkDiscreteEOT:
             y_d = torch.multinomial(p_d, num_samples=1).squeeze(1) #(batch_size,)
             y_samples[:, d] = y_d
         
-        if return_trajectories is False:
+        if not return_trajectories:
             return y_samples
         else:
             return torch.stack([x, y_samples], dim=0)
