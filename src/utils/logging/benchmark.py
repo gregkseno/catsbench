@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from sklearn.decomposition import PCA
 
+from torchmetrics import MetricCollection
 from lightning.pytorch import Callback, Trainer, LightningModule
 from lightning.pytorch.utilities import rank_zero_only
 from lightning.pytorch.loggers import WandbLogger, CometLogger
@@ -13,16 +14,19 @@ from src.metrics.contingency_similarity import ContingencySimilarity
 from src.metrics.tv_complement import TVComplement
 from src.metrics.pqmass import PQMass
 from src.utils.logging.console import RankedLogger
+from src.benchmark import BenchmarkDiscreteEOT
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-
 class BenchmarkLogger(Callback):
+    benchmark: BenchmarkDiscreteEOT
+
     def __init__(
         self,
         dim: int,
         num_categories: int,
+        num_cond_samples: int,
         num_refs: int,
         kernel: str,
         num_trajectories: int, 
@@ -37,6 +41,8 @@ class BenchmarkLogger(Callback):
         super().__init__()
         self.dim = dim
         self.num_categories = num_categories
+
+        self.num_cond_samples = num_cond_samples
         self.num_refs = num_refs
         self.re_tessellation = re_tessellation
         self.permute_tests = permute_tests
@@ -83,24 +89,37 @@ class BenchmarkLogger(Callback):
         self.trajectory_lines_config = {
             'back': {'c': 'black', 'markeredgecolor': 'black', 'linewidth': 2, 'zorder': 2},
             'front': {'c': 'grey', 'markeredgecolor': 'black', 'linewidth': 1, 'zorder': 2}
-        }
+        }    
 
-    # intit the metrics 
     def setup(
         self,
         trainer: Trainer, 
         pl_module: LightningModule, 
         stage: Literal['fit', 'validate', 'test']
     ) -> None:
-        if getattr(pl_module, 'tv_complement', None) is not None:
+        if pl_module.current_epoch != 0 and stage != 'fit':
             return
-        if getattr(pl_module, 'contingency_similarity', None) is not None:
-            return
-        if getattr(pl_module, 'pqmass', None) is not None:
-            return
-        pl_module.tv_complement = TVComplement(self.dim, self.num_categories)
-        pl_module.contingency_similarity = ContingencySimilarity(self.dim, self.num_categories)
-        pl_module.pqmass = PQMass(self.dim, self.num_refs, self.re_tessellation, self.permute_tests, self.kernel)
+
+        # get benchmark class
+        assert hasattr(trainer.datamodule, 'benchmark'), \
+            'Wrong datamodule! It should have `benchmark` attribute'
+        self.benchmark = trainer.datamodule.benchmark
+        self.benchmark.to(pl_module.device)
+
+        # initialize PCA
+        self.pca.fit(convert_to_numpy(
+            torch.cat([self.benchmark.input_dataset, self.benchmark.target_dataset], dim=0)
+        ))
+
+        # initialize metrics
+        pl_module.metrics = MetricCollection(
+            {
+                'tv_complement': TVComplement(self.dim, self.num_categories),
+                'contingency_similarity': ContingencySimilarity(self.dim, self.num_categories),
+                'pqmass': PQMass(self.dim, self.num_refs, self.re_tessellation, self.permute_tests, self.kernel)
+            },
+        )
+        pl_module.cond_metrics = pl_module.metrics.clone(prefix='cond_')
 
     def on_train_batch_end(
         self,
@@ -113,10 +132,7 @@ class BenchmarkLogger(Callback):
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
-        if pl_module.current_epoch == 0:
-            self.pca.fit(convert_to_numpy(torch.cat(batch, dim=0)))
-
-        if trainer.is_last_batch:
+        if batch_idx == 0:
             self._log_smaples(x_start, x_end, pl_module, 'train')   
             self._log_trajectories(x_start, pl_module, stage='train')
 
@@ -133,13 +149,17 @@ class BenchmarkLogger(Callback):
 
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         pred_x_end = pl_module.sample(x_start)
-        pl_module.tv_complement(x_end, pred_x_end)
-        pl_module.contingency_similarity(x_end, pred_x_end)
-        pl_module.pqmass(x_end, pred_x_end)
+        metrics = pl_module.metrics(x_end, pred_x_end)
+        metrics = {f'val/{k}_{fb}': v for k, v in metrics.items()}
+        pl_module.log_dict(metrics)
+        
+        repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
+        cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
+        cond_pred_x_end = pl_module.sample(repeated_x_start)
+        cond_metrics = pl_module.cond_metrics(cond_x_end, cond_pred_x_end)
+        cond_metrics = {f'val/{k}_{fb}': v for k, v in cond_metrics.items()}
+        pl_module.log_dict(cond_metrics)
 
-        pl_module.log(f'val/tv_complement_{fb}', pl_module.tv_complement, metric_attribute='tv_complement')
-        pl_module.log(f'val/contingency_similarity_{fb}', pl_module.contingency_similarity, metric_attribute='contingency_similarity')
-        pl_module.log(f'val/pqmass_{fb}', pl_module.pqmass, metric_attribute='pqmass')
         if batch_idx == len(trainer.val_dataloaders) - 1:
             self._log_smaples(x_start, x_end, pl_module, 'val')
             self._log_trajectories(x_start, pl_module, stage='val')
@@ -157,13 +177,17 @@ class BenchmarkLogger(Callback):
 
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         pred_x_end = pl_module.sample(x_start)
-        pl_module.tv_complement(x_end, pred_x_end)
-        pl_module.contingency_similarity(x_end, pred_x_end)
-        pl_module.pqmass(x_end, pred_x_end)
+        metrics = pl_module.metrics(x_end, pred_x_end)
+        metrics = {f'test/{k}_{fb}': v for k, v in metrics.items()}
+        pl_module.log_dict(metrics)
+        
+        repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
+        cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
+        cond_pred_x_end = pl_module.sample(repeated_x_start)
+        cond_metrics = pl_module.cond_metrics(cond_x_end, cond_pred_x_end)
+        cond_metrics = {f'test/{k}_{fb}': v for k, v in cond_metrics.items()}
+        pl_module.log_dict(cond_metrics)
 
-        pl_module.log(f'test/tv_complement_{fb}', pl_module.tv_complement, metric_attribute='tv_complement')
-        pl_module.log(f'test/contingency_similarity_{fb}', pl_module.contingency_similarity, metric_attribute='contingency_similarity')
-        pl_module.log(f'test/pqmass_{fb}', pl_module.pqmass, metric_attribute='pqmass')
         if batch_idx == len(trainer.test_dataloaders) - 1:
             self._log_smaples(x_start, x_end, pl_module, 'test')
             self._log_trajectories(x_start, pl_module, stage='test')
@@ -192,7 +216,7 @@ class BenchmarkLogger(Callback):
             axes[i].grid()
             axes[i].set_xlim(self.axlim)
             axes[i].set_ylim(self.axlim)
-            axes[i].legend(loc="lower left")
+            axes[i].legend(loc='lower left')
         fig.tight_layout(pad=0.5)
         img = fig2img(fig)
         
@@ -215,13 +239,15 @@ class BenchmarkLogger(Callback):
     def _log_trajectories(
         self,
         x_start: torch.Tensor | np.ndarray, 
+        x_end: torch.Tensor | np.ndarray,
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
-        fig, ax = plt.subplots(1, 1, **self.trajectories_fig_config)
-        ax.get_xaxis().set_ticklabels([])
-        ax.get_yaxis().set_ticklabels([])
+        fig, axs = plt.subplots(1, 2, **self.trajectories_fig_config)
+        for i in range(2):
+            axs[i].get_xaxis().set_ticklabels([])
+            axs[i].get_yaxis().set_ticklabels([])
         fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.iteration}')
         
         pred_x_end = self.pca.transform(convert_to_numpy(pl_module.sample(x_start)))
@@ -229,35 +255,55 @@ class BenchmarkLogger(Callback):
         repeats = [self.num_translations] + [1] * traj_start.dim()
         traj_start = traj_start.unsqueeze(0).repeat(*repeats)
         traj_start = traj_start.reshape(-1, *x_start.shape[1:])
-        trajectories = pl_module.sample_trajectory(traj_start)
 
-        # Reduce number of timesteps for visualization
-        num_timesteps = trajectories.shape[0]
-        if num_timesteps > 10:
-            trajectories = torch.stack([
-                    trajectories[0], 
-                    trajectories[num_timesteps // 8], 
-                    trajectories[num_timesteps // 2], 
-                    trajectories[(num_timesteps * 7) // 8], 
-                    trajectories[-1]
-                ], dim=0
-            )
+        # ground truth trajectories
+        trajectories = self.benchmark.sample_target_given_input(
+            traj_start, return_trajectories=True
+        )
         trajectories = convert_to_numpy(trajectories.reshape(-1, self.dim))
         trajectories = self.pca.transform(trajectories)
         trajectories = trajectories.reshape(-1, self.num_trajectories * self.num_translations, 2)
 
-        ax.scatter(pred_x_end[:, 0], pred_x_end[:, 1], **self.trajectories_pred_config)
-        ax.scatter(trajectories[0, :, 0], trajectories[0, :, 1], **self.trajectories_start_config)
-        ax.scatter(trajectories[-1, :, 0], trajectories[-1, :, 1], **self.trajectories_end_config)
+        axs[0].scatter(x_end[:, 0], x_end[:, 1], **self.trajectories_pred_config)
+        axs[0].scatter(trajectories[0, :, 0], trajectories[0, :, 1], **self.trajectories_start_config)
+        axs[0].scatter(trajectories[-1, :, 0], trajectories[-1, :, 1], **self.trajectories_end_config)
         for i in range(self.num_trajectories * self.num_translations):
-            ax.plot(trajectories[:, i, 0], trajectories[:, i, 1], **self.trajectory_lines_config['back'])
-            ax.plot(
+            axs[0].plot(trajectories[:, i, 0], trajectories[:, i, 1], **self.trajectory_lines_config['back'])
+            axs[0].plot(
                 trajectories[:, i, 0], trajectories[:, i, 1], **self.trajectory_lines_config['front'], 
-                label='Intermediate predictions' if i == 0 else ''
+                label='Trajectory (fitted)' if i == 0 else ''
             )
-        ax.legend(loc='lower left')
-        ax.set_xlim(self.axlim)
-        ax.set_ylim(self.axlim)
+
+        # model's trajectories
+        pred_trajectories = pl_module.sample_trajectory(traj_start)
+        num_timesteps = pred_trajectories.shape[0]
+        if num_timesteps > 10:
+            pred_trajectories = torch.stack([
+                    pred_trajectories[0], 
+                    pred_trajectories[num_timesteps // 8], 
+                    pred_trajectories[num_timesteps // 2], 
+                    pred_trajectories[(num_timesteps * 7) // 8], 
+                    pred_trajectories[-1]
+                ], dim=0
+            )
+        pred_trajectories = convert_to_numpy(pred_trajectories.reshape(-1, self.dim))
+        pred_trajectories = self.pca.transform(pred_trajectories)
+        pred_trajectories = pred_trajectories.reshape(-1, self.num_trajectories * self.num_translations, 2)
+
+        axs[1].scatter(pred_x_end[:, 0], pred_x_end[:, 1], **self.trajectories_pred_config)
+        axs[1].scatter(pred_trajectories[0, :, 0], pred_trajectories[0, :, 1], **self.trajectories_start_config)
+        axs[1].scatter(pred_trajectories[-1, :, 0], pred_trajectories[-1, :, 1], **self.trajectories_end_config)
+        for i in range(self.num_trajectories * self.num_translations):
+            axs[1].plot(pred_trajectories[:, i, 0], pred_trajectories[:, i, 1], **self.trajectory_lines_config['back'])
+            axs[1].plot(
+                pred_trajectories[:, i, 0], pred_trajectories[:, i, 1], **self.trajectory_lines_config['front'], 
+                label='Trajectory (ground truth)' if i == 0 else ''
+            )
+        
+        for i in range(2):
+            axs[i].legend(loc='lower left')
+            axs[i].set_xlim(self.axlim)
+            axs[i].set_ylim(self.axlim)
         fig.tight_layout(pad=0.5)
         img = fig2img(fig)
         
