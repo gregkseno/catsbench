@@ -170,7 +170,6 @@ class Prior(nn.Module):
         last_timestep = torch.full(
             size=(x.shape[0],), 
             fill_value=self.num_timesteps, 
-            device=x.device,
         )
         return self.extract('cumulative', last_timestep, row_id=x)
 

@@ -118,6 +118,7 @@ class BenchmarkDiscreteEOT:
         return self.target_sampler.sample(n_samples)
     #########################################################################################
     
+    @torch.no_grad()
     def sample_target_given_input(self, x: torch.Tensor, return_trajectories: bool = False) -> torch.Tensor:
         log_z = torch.zeros(x.shape[0], self.num_potentials, device=self.device)
         log_pi_ref_list = []
