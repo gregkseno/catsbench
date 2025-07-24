@@ -67,7 +67,7 @@ class BenchmarkLogger(Callback):
             'label': r'$p_{\theta}$', 'c': 'yellow', 's': 35, 'edgecolor': 'black'
         }
         self.trajectories_fig_config = {
-            'figsize': (8, 8) if trajectories_figsize is None else trajectories_figsize,
+            'figsize': (12, 6) if trajectories_figsize is None else trajectories_figsize,
             'dpi': dpi,
         }
         self.trajectories_pred_config = {
