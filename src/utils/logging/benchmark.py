@@ -52,10 +52,6 @@ class BenchmarkLogger(Callback):
         if dim > 2:
             self.pca = PCA(n_components=2)
 
-        self.tv_complement = TVComplement(dim, num_categories)
-        self.contingency_similarity = ContingencySimilarity(dim, num_categories)
-        self.pqmass = PQMass(dim, num_refs, re_tessellation, permute_tests, kernel)
-
         self.axlim = [7, 93] if axlim is None else axlim
         self.samples_fig_config = {
             'figsize': (12, 4) if samples_figsize is None else samples_figsize,
@@ -134,7 +130,7 @@ class BenchmarkLogger(Callback):
 
         if batch_idx == 0:
             self._log_smaples(x_start, x_end, pl_module, 'train')   
-            self._log_trajectories(x_start, pl_module, stage='train')
+            self._log_trajectories(x_start, x_end, pl_module, stage='train')
 
     def on_validation_batch_end(
         self,
@@ -152,7 +148,7 @@ class BenchmarkLogger(Callback):
         metrics = pl_module.metrics(x_end, pred_x_end)
         metrics = {f'val/{k}_{fb}': v for k, v in metrics.items()}
         pl_module.log_dict(metrics)
-        
+
         repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
         cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
         cond_pred_x_end = pl_module.sample(repeated_x_start)
@@ -162,7 +158,7 @@ class BenchmarkLogger(Callback):
 
         if batch_idx == len(trainer.val_dataloaders) - 1:
             self._log_smaples(x_start, x_end, pl_module, 'val')
-            self._log_trajectories(x_start, pl_module, stage='val')
+            self._log_trajectories(x_start, x_end, pl_module, stage='val')
 
     def on_test_batch_end(
         self,
@@ -190,7 +186,7 @@ class BenchmarkLogger(Callback):
 
         if batch_idx == len(trainer.test_dataloaders) - 1:
             self._log_smaples(x_start, x_end, pl_module, 'test')
-            self._log_trajectories(x_start, pl_module, stage='test')
+            self._log_trajectories(x_start, x_end, pl_module, stage='test')
 
     @rank_zero_only
     def _log_smaples(
@@ -250,6 +246,7 @@ class BenchmarkLogger(Callback):
             axs[i].get_yaxis().set_ticklabels([])
         fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.iteration}')
         
+        x_end = self.pca.transform(convert_to_numpy(x_end))
         pred_x_end = self.pca.transform(convert_to_numpy(pl_module.sample(x_start)))
         traj_start = x_start[:self.num_trajectories]
         repeats = [self.num_translations] + [1] * traj_start.dim()

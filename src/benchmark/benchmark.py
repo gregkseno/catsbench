@@ -11,6 +11,11 @@ import os
 from .prior import Prior
 from pathlib import Path
 
+from src.utils.logging.console import RankedLogger
+
+log = RankedLogger(__name__, rank_zero_only=True)
+
+
 class BenchmarkDiscreteEOT:
     def __init__(
         self, 
@@ -137,8 +142,7 @@ class BenchmarkDiscreteEOT:
         p_k = torch.exp(log_p_k) # (batch_size, K)
         k_stars = torch.multinomial(p_k, num_samples=1).squeeze(1)  # (batch_size,)
     
-        y_samples = torch.zeros(x.shape[0], self.dim, dtype=torch.long)
-    
+        y_samples = torch.zeros(x.shape[0], self.dim, dtype=torch.long, device=self.device)
         for d in range(self.dim):
             log_pi_ref = log_pi_ref_list[d]
                 
