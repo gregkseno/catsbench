@@ -88,13 +88,12 @@ class BenchmarkDiscreteEOT:
             self.log_cp_cores = log_cp_cores.permute(2, 0, 1).to(device)
 
             print('Sampling target points...')
-
             self.target_dataset = self.sample_target_given_input(self.input_dataset, return_trajectories=False)
 
             self.log_params = {
-                               'log_alpha': self.log_alpha,
-                               'log_cp_cores': self.log_cp_cores
-                              }
+                'log_alpha': self.log_alpha,
+                'log_cp_cores': self.log_cp_cores
+            }
             if save_bench:
                 self.save()
 
@@ -154,6 +153,13 @@ class BenchmarkDiscreteEOT:
             return y_samples
         else:
             return torch.stack([x, y_samples], dim=0)
+        
+    def to(self, device: str) -> None:
+        self.input_dataset.to(device)
+        self.target_dataset.to(device)
+        self.log_params['log_alpha'].to(device)
+        self.log_params['log_cp_cores'].to(device)
+        self.prior.to(device)
     
     def save(self):
         print(f'Saving benchmark to {self.folder_name}...')
