@@ -5,7 +5,7 @@ metric_callback:
   num_refs: 100
   re_tessellation: null
   permute_tests: null
-  kernel: "euclidean"
+  kernel: "hamming"
   num_trajectories: 4
   num_translations: 3
   axlim:

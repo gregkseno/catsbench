@@ -5,9 +5,11 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
-def broadcast(t: torch.Tensor, num_add_dims: int) -> torch.Tensor:
-    shape = [t.shape[0]] + [1] * num_add_dims
-    return t.reshape(shape)
+def broadcast(tensor: torch.Tensor, num_add_dims: int, dim: int = -1) -> torch.Tensor:
+    if dim < 0:
+        dim += tensor.dim() + 1
+    shape = [*tensor.shape[:dim], *([1] * num_add_dims), *tensor.shape[dim:]]
+    return tensor.reshape(*shape)
 
 def convert_to_numpy(x: torch.Tensor | np.ndarray) -> np.ndarray:
     if isinstance(x, torch.Tensor):

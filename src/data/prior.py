@@ -1,19 +1,17 @@
 from typing import Literal, Optional, Tuple, Union
 
+from math import log
 import torch.nn.functional as F
 import torch
 from torch import nn
 
-from math import log
+from src.utils import broadcast
 
-def broadcast(t: torch.Tensor, num_add_dims: int) -> torch.Tensor:
-    shape = [t.shape[0]] + [1] * num_add_dims
-    return t.reshape(shape)
 
-def log_space_product(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor:
-    log_matrix1 = log_matrix1.unsqueeze(2)  
-    log_matrix2 = log_matrix2.unsqueeze(0)  
-    return torch.logsumexp(log_matrix1 + log_matrix2, dim=1)
+def log_space_product(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
+    log_matrix1 = log_matrix1[..., :, None]
+    log_matrix2 = log_matrix2[..., None, :, :]
+    return torch.logsumexp(log_matrix1 + log_matrix2, dim=-2)
 
 def get_cum_matrices(num_timesteps: int, log_onestep_matrix: torch.Tensor) -> torch.Tensor:
     num_categories = log_onestep_matrix.shape[0]
@@ -48,7 +46,6 @@ def uniform_prior(
     log_p_cum_mats = get_cum_matrices(num_timesteps + 2, log_p_onestep_mat)
 
     return log_p_onestep_mat.transpose(0, 1), log_p_cum_mats
-
 
 def gaussian_prior(
     alpha: float,
@@ -173,7 +170,6 @@ class Prior(nn.Module):
         last_timestep = torch.full(
             size=(x.shape[0],), 
             fill_value=self.num_timesteps, 
-            device=self.device
         )
         return self.extract('cumulative', last_timestep, row_id=x)
 
@@ -227,7 +223,7 @@ class Prior(nn.Module):
         if not logits:
             # fact2 is "guess of x_{t-1}" from x_{0}
             x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
-        log_fact2 = torch.logsumexp(x_start_logits.unsqueeze(-1) + self.log_p_cum[t-1], dim=-2) 
+        log_fact2 = log_space_product(x_start_logits, self.log_p_cum[t-1]) 
 
         p_posterior_logits = log_fact1 + log_fact2
         p_posterior_logits = p_posterior_logits - p_posterior_logits.logsumexp(dim=-1, keepdim=True) # Normalize
