@@ -2,11 +2,15 @@ from typing import Literal, Optional, Tuple, Union
 
 import numpy as np
 from scipy.special import softmax
+import torch.nn.functional as F
 import torch
 from torch import nn
 
-from src.utils import broadcast
+from math import log
 
+def broadcast(t: torch.Tensor, num_add_dims: int) -> torch.Tensor:
+    shape = [t.shape[0]] + [1] * num_add_dims
+    return t.reshape(shape)
 
 def log_space_product(A, B):
     A_exp = A.unsqueeze(2)  
@@ -14,21 +18,15 @@ def log_space_product(A, B):
 
     return torch.logsumexp(A_exp + B_exp, dim=1)
 
-def get_cum_matrices(num_timesteps: int, onestep_matrix: torch.Tensor) -> torch.Tensor:
-    num_categories = onestep_matrix.shape[0]
-    cum_matrices = torch.empty(size=(num_timesteps, num_categories, num_categories), dtype=onestep_matrix.dtype)
-    cum_matrices[0] = torch.eye(num_categories, dtype=onestep_matrix.dtype)
-    
-    for timestep in range(1, num_timesteps):
-        cum_matrices[timestep] = cum_matrices[timestep-1] @ onestep_matrix
-    
-    assert onestep_matrix.shape == cum_matrices[0].shape, f'Wrong shape!'
-    return cum_matrices
-
-def get_log_cum_matrices(num_timesteps: int, log_onestep_matrix: torch.Tensor) -> torch.Tensor:
+def get_cum_matrices(num_timesteps: int, log_onestep_matrix: torch.Tensor) -> torch.Tensor:
     num_categories = log_onestep_matrix.shape[0]
     log_cum_matrices = torch.empty(size=(num_timesteps, num_categories, num_categories), dtype=log_onestep_matrix.dtype)
-    log_cum_matrices[0] = torch.clone(log_onestep_matrix)
+    
+    log_identity = torch.full((num_categories, num_categories), float('-inf'), dtype=torch.float64)  # log(0) = -inf
+    rows = torch.arange(num_categories)
+    log_identity[rows, rows] = 0.0
+
+    log_cum_matrices[0] = log_identity[:]
     
     for timestep in range(1, num_timesteps):
         log_cum_matrices[timestep] = log_space_product(log_cum_matrices[timestep-1], log_onestep_matrix)
@@ -36,23 +34,24 @@ def get_log_cum_matrices(num_timesteps: int, log_onestep_matrix: torch.Tensor) -
     assert log_onestep_matrix.shape == log_cum_matrices[0].shape, f'Wrong shape!'
     return log_cum_matrices
 
-
 def uniform_prior(
     alpha: float, 
     num_categories: int, 
     num_timesteps: int,
     num_skip_steps: int
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    p_onestep_mat = torch.tensor([alpha] * num_categories**2, dtype=torch.float64)
-    p_onestep_mat = p_onestep_mat / (num_categories - 1)
-    p_onestep_mat = p_onestep_mat.view(num_categories, num_categories)
-    p_onestep_mat -= torch.diag(torch.diag(p_onestep_mat))
-    p_onestep_mat += torch.diag(torch.ones(num_categories, dtype=torch.float64) - alpha)
-    p_onestep_mat = torch.matrix_power(p_onestep_mat, n=num_skip_steps)
+    
+    log_equal = log(1 - alpha)                  #log((1 - alpha)/(num_categories - 1) + 1e-20)
+    log_diff  = log(alpha/(num_categories - 1)) #log(alpha + (1 - alpha)/(num_categories - 1) + 1e-20)
 
-    p_cum_mats = get_cum_matrices(num_timesteps + 2, p_onestep_mat)
+    log_p_onestep_mat = torch.full((num_categories, num_categories), log_diff)  
+    rows = torch.arange(num_categories).to(torch.int32)
+    log_p_onestep_mat[rows, rows] = log_equal
 
-    return p_onestep_mat.transpose(0, 1), p_cum_mats
+    log_p_onestep_mat = get_cum_matrices(num_skip_steps + 1, log_p_onestep_mat)[-1]
+    log_p_cum_mats = get_cum_matrices(num_timesteps + 2, log_p_onestep_mat)
+
+    return log_p_onestep_mat.transpose(0, 1), log_p_cum_mats
 
 
 def gaussian_prior(
@@ -62,46 +61,14 @@ def gaussian_prior(
     num_skip_steps: int,
     use_doubly_stochastic: bool = True
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    p_onestep_mat = np.zeros([num_categories, num_categories], dtype=np.float64)
-    max_distance = num_categories - 1
-    if not use_doubly_stochastic:
-        indices = np.arange(num_categories)[None, ...]
-        values = (-4 * (indices - indices.T)**2) / ((alpha *max_distance)**2)
-        p_onestep_mat = softmax(values, axis=1)
-    else: # this logic mathcing D3PM article
-        norm_const = -4 * (np.arange(-max_distance, max_distance+2, step=1, dtype=np.float64) ** 2)
-        norm_const /= (alpha * max_distance)**2
-        norm_const = np.exp(norm_const).sum()
-        for i in range(num_categories):
-            for j in range(num_categories):
-                if i == j:
-                    continue
-                value = np.exp(-(4 * (i - j)**2) / (alpha * max_distance)**2)
-                p_onestep_mat[i][j] = value / norm_const
-        for i in range(num_categories):
-            p_onestep_mat[i][i] = 1 - p_onestep_mat[i].sum() 
-
-    p_onestep_mat = np.linalg.matrix_power(p_onestep_mat, n=num_skip_steps)
-    p_onestep_mat = torch.from_numpy(p_onestep_mat) # .softmax(dim=1)
-    p_cum_mats = get_cum_matrices(num_timesteps + 2, p_onestep_mat)
-
-    return p_onestep_mat.transpose(0, 1), p_cum_mats
-
-def gaussian_prior_log(
-    alpha: float,
-    num_categories: int, 
-    num_timesteps: int, 
-    num_skip_steps: int,
-    use_doubly_stochastic: bool = True
-) -> Tuple[torch.Tensor, torch.Tensor]:
 
     max_distance = num_categories - 1
     if not use_doubly_stochastic:
-        indices = np.arange(num_categories)[None, ...]
+        indices = torch.arange(num_categories, dtype=torch.float64)[None, ...]
         values = (-4 * (indices - indices.T)**2) / ((alpha *max_distance)**2)
-        p_onestep_mat = softmax(values, axis=1)
-    else: # this logic mathcing D3PM article
+        log_p_onestep_mat = F.log_softmax(values, dim=1)
 
+    else: 
         sum_aux = -4 * torch.arange(-num_categories + 1, num_categories+1, dtype=torch.float64)**2 / (alpha * max_distance)**2
         log_Z   = torch.logsumexp(sum_aux, dim=0)
 
@@ -120,16 +87,10 @@ def gaussian_prior_log(
         log_p_onestep_mat[off_diag_mask] = log_pi_vals[off_diag_mask]
         
         rows = torch.arange(num_categories)
-        log_p_onestep_mat[rows, indices.to(torch.int32)] = diag_log.squeeze(1)
+        log_p_onestep_mat[rows, rows] = diag_log.squeeze(1)
 
-    p_onestep_mat = torch.exp(log_p_onestep_mat)
-
-    if num_skip_steps > 1:
-        p_onestep_mat = torch.linalg.matrix_power(p_onestep_mat, n=num_skip_steps)
-        log_p_onestep_mat = torch.log(p_onestep_mat)
-
-    # NOTE: @Ark-130994 why here was num_timesteps + 1, but not num_timesteps + 2?
-    log_p_cum_mats = get_log_cum_matrices(num_timesteps + 2, log_p_onestep_mat)
+    log_p_onestep_mat = get_cum_matrices(num_skip_steps + 1, log_p_onestep_mat)[-1]
+    log_p_cum_mats = get_cum_matrices(num_timesteps + 2, log_p_onestep_mat)
 
     return log_p_onestep_mat.transpose(0, 1), log_p_cum_mats
 
@@ -152,8 +113,6 @@ class Prior(nn.Module):
         prior_type: Literal[
             'uniform', 
             'gaussian',
-            'centroid_gaussian',
-            'von_mises',
         ] = 'uniform',
         eps: float = 1e-20,
         dtype: Union[str, torch.dtype] = torch.float32
@@ -171,17 +130,14 @@ class Prior(nn.Module):
         else:
             self.dtype: torch.dtype = dtype
 
-
         if prior_type == 'gaussian':
-            p_onestep, p_cum = gaussian_prior(alpha, num_categories, num_timesteps, num_skip_steps, use_doubly_stochastic=True)
-        elif prior_type == 'gaussian_log':
-            p_onestep, p_cum = gaussian_prior_log(alpha, num_categories, num_timesteps, num_skip_steps, use_doubly_stochastic=True)
+            log_p_onestep, log_p_cum = gaussian_prior(alpha, num_categories, num_timesteps, num_skip_steps)
         elif prior_type == 'uniform':
-            p_onestep, p_cum = uniform_prior(alpha, num_categories, num_timesteps, num_skip_steps)
+            log_p_onestep, log_p_cum = uniform_prior(alpha, num_categories, num_timesteps, num_skip_steps)
         else:
             raise NotImplementedError(f'Got unknown prior: {prior_type} or centroids is None!')
-        self.register_buffer("p_onestep", p_onestep)
-        self.register_buffer("p_cum", p_cum)
+        self.register_buffer("log_p_onestep", log_p_onestep)
+        self.register_buffer("log_p_cum", log_p_cum)
         self.to(dtype=self.dtype)
         
     def extract(
@@ -196,31 +152,31 @@ class Prior(nn.Module):
         if row_id is not None and column_id is not None:
             t = broadcast(t, row_id.dim() - 1)
             if mat_type  == 'onestep':
-                return self.p_onestep[row_id, column_id]
+                return self.log_p_onestep[row_id, column_id]
             else: 
-                return self.p_cum[t, row_id, column_id]
+                return self.log_p_cum[t, row_id, column_id]
             
         elif row_id is not None and column_id is None:
             t = broadcast(t, row_id.dim() - 1)
             if mat_type  == 'onestep':
-                return self.p_onestep[row_id]
+                return self.log_p_onestep[row_id]
             else: 
-                return self.p_cum[t, row_id, :]
+                return self.log_p_cum[t, row_id, :]
         
         elif row_id is None and column_id is not None:
             t = broadcast(t, column_id.dim() - 1)
             if mat_type  == 'onestep':
-                return self.p_onestep[:, column_id]
+                return self.log_p_onestep[:, column_id]
             else:
-                return self.p_cum[t, :, column_id]
+                return self.log_p_cum[t, :, column_id]
         else:   
             raise ValueError('row_id and column_id cannot be None both!')
 
     def sample_bridge(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         r"""Samples from bridge $p(x_{t} | x_{0}, x_{1})$."""
-        p_start_t = self.extract('cumulative', t, row_id=x_start)
-        p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
-        log_probs = torch.log(p_start_t + self.eps) + torch.log(p_t_end + self.eps)
+        log_p_start_t = self.extract('cumulative', t, row_id=x_start)
+        log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
+        log_probs = log_p_start_t + log_p_t_end
         log_probs = log_probs - log_probs.logsumexp(dim=-1, keepdim=True)
         
         noise = torch.rand_like(log_probs)
@@ -238,9 +194,9 @@ class Prior(nn.Module):
     
     def bridge_logits(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         r"""Calculates log probability of $p(x_{t} | x_{0}, x_{1})$."""
-        p_start_t = self.extract('cumulative', t, row_id=x_start)
-        p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
-        log_probs = torch.log(p_start_t + self.eps) + torch.log(p_t_end + self.eps)
+        log_p_start_t = self.extract('cumulative', t, row_id=x_start)
+        log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
+        log_probs = log_p_start_t + log_p_t_end
 
         log_probs = log_probs - log_probs.logsumexp(dim=-1, keepdim=True)
         return log_probs
@@ -261,12 +217,13 @@ class Prior(nn.Module):
         assert x_start_logits.shape == x_t.shape + (self.num_categories,), f"x_start_logits.shape: {x_start_logits.shape}, x_t.shape: {x_t.shape}"
         x_start_logits = x_start_logits.to(self.dtype)
         # fact1 is "guess of x_{t}" from x_{t-1}
-        fact1 = self.extract('onestep', t, row_id=x_t)
+        log_fact1 = self.extract('onestep', t, row_id=x_t)
 
         # fact2 is "guess of x_{t-1}" from x_{0}
-        x_start_probs = x_start_logits.softmax(dim=-1)  # bs, ..., num_categories
-        fact2 = torch.einsum("b...c,bcd->b...d", x_start_probs, self.p_cum[t - 1])
-        p_posterior_logits = torch.log(fact1 + self.eps) + torch.log(fact2 + self.eps)
+        x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
+        log_fact2 = torch.logsumexp(x_start_logits.unsqueeze(-1) + self.log_p_cum[t-1], dim=-2) 
+
+        p_posterior_logits = log_fact1 + log_fact2
         p_posterior_logits = p_posterior_logits - p_posterior_logits.logsumexp(dim=-1, keepdim=True) # Normalize
         
         # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already

@@ -62,33 +62,6 @@ class DiscreteGaussianDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-def get_means(dim: int, num_clusters: int = 5, min_separation: float = 8, seed: int = 43):
-    torch.manual_seed(seed)
-    means_hd = torch.zeros((num_clusters, dim))
-#
-    #for k in range(1, num_clusters):
-    #    candidate = torch.empty(dim)
-    #    candidate.uniform_(-2, 2)
-    #    means_hd[k] = candidate
-#
-    #return means_hd
-
-    for k in range(1, num_clusters):
-        candidate = torch.empty(dim)
-        valid = False
-        for _ in range(1000):  # Max 1000 trials
-            candidate.uniform_(-5, 5) #(-15, 15) for 2 (-10, 10) for 16 (-5, 5) for 64
-            # Calculate distances to existing means
-            dists = torch.norm(means_hd[:k] - candidate, dim=1)
-            if torch.all(dists >= min_separation):
-                means_hd[k] = candidate
-                valid = True
-                break
-        if not valid:
-            raise RuntimeError(f"Couldn't place cluster {k}")
-    
-    return means_hd
-
 class DiscreteMixtureGaussianDataset(Dataset):
     def __init__(
         self, num_samples: int, dim: int, num_potentials: int = 4, num_categories: int = 100, spread: float = 0.8
@@ -131,3 +104,53 @@ class DiscreteSwissRollDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
+#class Sampler:
+#    def __init__(
+#        self, device='cuda',
+#    ):
+#        self.device = device
+#    
+#    def sample(self, size=5):
+#        pass
+#        
+#class LoaderSampler(Sampler):
+#    def __init__(self, loader, device='cpu'):
+#        super(LoaderSampler, self).__init__(device)
+#        self.loader = loader
+#        self.it = iter(self.loader)
+#        
+#    def __len__(self):
+#        return len(self.loader)
+#    
+#    def reset_sampler(self):
+#        self.it = iter(self.loader)
+#        
+#    def sample(self, size=5):
+#        if size <= self.loader.batch_size:
+#            try:
+#                batch = next(self.it)
+#            except StopIteration:
+#                self.it = iter(self.loader)
+#                return self.sample(size)
+#            if len(batch) < size:
+#                return self.sample(size)
+#                
+#            return batch[:size].to(self.device)
+#            
+#        elif size > self.loader.batch_size:
+#            samples = []
+#            cur_size = 0
+#            
+#            while cur_size < size:
+#                try:
+#                    batch = next(self.it)
+#                    samples.append(batch)
+#                    cur_size += batch.shape[0]
+#                except StopIteration:
+#                    self.it = iter(self.loader)
+#                    print(f'Maximum size allowed exceeded, returning {cur_size} samples...')
+#                    samples = torch.cat(samples, dim=0)
+#                    return samples[:cur_size].to(self.device)
+#                
+#            samples = torch.cat(samples, dim=0)
+#            return samples[:size].to(self.device)

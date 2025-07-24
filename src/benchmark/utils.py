@@ -204,7 +204,7 @@ def plot_samples_benchmark(x, y, bench, indices_plot, beta, n_steps, xrange=[0,1
         trajectories_stacked = bench.sample_target_given_input(traj_start.cpu(), return_trajectories=True)
         if dim > 2:
             trajectories = trajectories_stacked.reshape(-1, trajectories_stacked.shape[-1])
-            trajectories = pca.transform(trajectories).reshape(2, -1, x.shape[1])
+            trajectories = pca.transform(trajectories).reshape(2, -1, 2)
         else:
             trajectories = torch.clone(trajectories_stacked)
         for i in indices_plot:
@@ -360,3 +360,19 @@ class LoaderSampler(Sampler):
                 
             samples = torch.cat(samples, dim=0)
             return samples[:size].to(self.device)
+
+def sample_separated_means(num_potentials, dim, num_categories, min_dist=5, max_attempts=5000):
+    means = []
+    attempts = 0
+    low, high = 5, num_categories - 5
+
+    while len(means) < num_potentials and attempts < max_attempts:
+        candidate = torch.randint(low, high, (dim,))
+        if all(torch.norm(candidate - m.float()) >= min_dist for m in means):
+            means.append(candidate)
+        attempts += 1
+
+    if len(means) < num_potentials:
+        raise RuntimeError(f"Could only generate {len(means)} points with min_dist={min_dist}")
+    
+    return torch.stack(means)

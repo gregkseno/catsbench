@@ -5,10 +5,11 @@ from .samplers import (
 )
 import torch
 from torch.utils.data import DataLoader
-from .utils import LoaderSampler
+from .utils import LoaderSampler, sample_separated_means
 
 import os
 from .prior import Prior
+from pathlib import Path
 
 class BenchmarkDiscreteEOT:
     def __init__(
@@ -26,9 +27,10 @@ class BenchmarkDiscreteEOT:
             'gaussian_log',
         ] = 'uniform',
         input_dist: Literal['gaussian', 'uniform'] = 'gaussian',
-        save_path: str = 'data/benchmark',
+        save_path: str = '../data/benchmark',
         benchmark_type: Literal['gaussian_mixture'] = 'gaussian_mixture',
-        device='cpu'
+        device='cpu',
+        save_bench=True
     ):
         self.dim = dim
         self.num_potentials = num_potentials
@@ -42,25 +44,17 @@ class BenchmarkDiscreteEOT:
         self.save_path = save_path
         self.device    = device
         
-        # NOTE: @Ark-130994, can we make the benchmark files with some tree directory structure
-        # e.g. `./data/benchmark/dim_{dim}/P0_{input_dist}/prior_{prior_type}/num_categories_{num_categories}/alpha_{alpha}`?
-        benchmark_name = f'dim_{dim}/P0_{input_dist}_prior_{prior_type}_num_categories_{num_categories}_alpha_{alpha}'
-        config_name_solver = f'{benchmark_name}.pth'
-        config_name_source = f'{benchmark_name}.pt'
-        config_name_target = f'{benchmark_name}.pt'
-        self.solver_path = os.path.join(save_path, 'log_params', config_name_solver)
-        self.source_path = os.path.join(save_path, 'X0', config_name_source)
-        self.target_path = os.path.join(save_path, 'X1', config_name_target)
+        self.folder_name = f"{save_path}/dim_{dim}/num_categories_{num_categories}/prior_{prior_type}/alpha_{alpha}/"
+        self.solver_path = self.folder_name + f'D_P0_{input_dist}.pth'
+        self.source_path = self.folder_name + f'X0_P0_{input_dist}.pt'
+        self.target_path = self.folder_name + f'X1_P0_{input_dist}.pt'
         
         if os.path.exists(self.source_path) and os.path.exists(self.target_path) and os.path.exists(self.solver_path):
             print('Loading saved solver and benchmark pairs...')
-            #########################################################################################
-            # TODO: @Ark-130994, please, rework the loading of cores, to work without LightSB_D class
-            # also, make that, log_cp_cores loads from the state_dict (here a moved only gaussian version)
+
             self.log_params   = torch.load(self.solver_path, map_location=device)
             self.log_alpha    = self.log_params['log_alpha']
             self.log_cp_cores = self.log_params['log_cp_cores']
-            #########################################################################################
 
             self.input_dataset  = torch.load(self.source_path)
             self.target_dataset = torch.load(self.target_path) 
@@ -78,9 +72,13 @@ class BenchmarkDiscreteEOT:
             self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device)/self.num_potentials)
 
             if benchmark_type == 'gaussian_mixture':
-                spread = 2
-                means = torch.randint(5, num_categories-5, (num_potentials, dim))
-                stds = torch.full((num_potentials, dim), spread)                          # (K, D)
+                
+                #spreads = {2:2, 16:4, 64:8}
+                spreads = {2:4, 16:8, 64:16}
+
+                means = sample_separated_means(num_potentials, dim, num_categories, min_dist=10)#
+                #means = torch.randint(5, num_categories-7, (num_potentials, dim))
+                stds = torch.full((num_potentials, dim), spreads[dim])                          # (K, D)
                 y_d = torch.arange(num_categories).view(num_categories, 1).repeat(1, dim)  # (S, D)
                 y_d = y_d.unsqueeze(0)          
                 means = means.unsqueeze(1)      
@@ -97,14 +95,8 @@ class BenchmarkDiscreteEOT:
                                'log_alpha': self.log_alpha,
                                'log_cp_cores': self.log_cp_cores
                               }
-            #########################################################################################
-            # TODO: @Ark-130994, please, change the saving of cores, to work without LightSB_D class
-            # make sure that log_cp_cores and log_alpha are saved in the state_dict
-            #print('Saving benchmark...')
-            #torch.save(self.D.state_dict(), self.solver_path)
-            #torch.save(self.input_dataset, self.source_path)
-            #torch.save(self.target_dataset, self.target_path)
-            #########################################################################################
+            if save_bench:
+                self.save()
 
                     
         # NOTE: what is this?
@@ -169,17 +161,10 @@ class BenchmarkDiscreteEOT:
             return torch.stack([x, y_samples], dim=0)
     
     def save(self):
-        print('Saving benchmark...')
-        #log_params_folder = os.path.join(self.save_path, 'log_params', f'dim_{self.dim}')
-        #inputs_folder     = os.path.join(self.save_path, 'X0', f'dim_{self.dim}')
-        #targets_folder    = os.path.join(self.save_path, 'X1', f'dim_{self.dim}')
-#
-        #folders = [log_params_folder, inputs_folder, targets_folder]
-#
-        #for folder in folders:
-        #    if not os.path.exists(folder):
-        #        os.makedirs(folder)
+        print(f'Saving benchmark to {self.folder_name}...')
+        #Path(self.folder_name).mkdir(parents=True, exist_ok=True)
+        Path(self.folder_name).mkdir(parents=True, exist_ok=True)
 
-        #torch.save(self.log_params, self.solver_path)
+        torch.save(self.log_params, self.solver_path)
         torch.save(self.input_dataset, self.source_path)
         torch.save(self.target_dataset, self.target_path)
