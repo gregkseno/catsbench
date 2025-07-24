@@ -156,11 +156,11 @@ class BenchmarkDiscreteEOT:
         
     def to(self, device: str) -> None:
         self.device = device
-        self.input_dataset.to(device)
-        self.target_dataset.to(device)
-        self.log_params['log_alpha'].to(device)
-        self.log_params['log_cp_cores'].to(device)
-        self.prior.to(device)
+        self.input_dataset = self.input_dataset.to(device)
+        self.target_dataset = self.target_dataset.to(device)
+        self.log_alpha = self.log_alpha.to(device)
+        self.log_cp_cores = self.log_cp_cores.to(device)
+        self.prior = self.prior.to(device)
     
     def save(self):
         print(f'Saving benchmark to {self.folder_name}...')
