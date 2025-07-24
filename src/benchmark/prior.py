@@ -59,7 +59,7 @@ def gaussian_prior(
     num_categories: int, 
     num_timesteps: int, 
     num_skip_steps: int,
-    use_doubly_stochastic: bool = False
+    use_doubly_stochastic: bool = True
 ) -> Tuple[torch.Tensor, torch.Tensor]:
 
     max_distance = num_categories - 1
