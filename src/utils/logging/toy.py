@@ -68,7 +68,7 @@ class ToyLogger(Callback):
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
-        if trainer.is_last_batch:
+        if batch_idx == 0:
             self._log_smaples(x_start, x_end, pl_module, 'train')
             self._log_trajectories(x_start, pl_module, stage='train')
 
