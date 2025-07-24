@@ -155,6 +155,7 @@ class BenchmarkDiscreteEOT:
             return torch.stack([x, y_samples], dim=0)
         
     def to(self, device: str) -> None:
+        self.device = device
         self.input_dataset.to(device)
         self.target_dataset.to(device)
         self.log_params['log_alpha'].to(device)
