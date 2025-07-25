@@ -1,10 +1,11 @@
 from typing import Literal
-import torch
-from torch.nn import functional as F
-from torchmetrics import Metric
 import numpy as np
-
+import torch
+from torchmetrics import Metric
+from torchmetrics.utilities import dim_zero_cat
 from pqm import pqm_chi2
+
+from src.utils import convert_to_numpy
 
 
 class PQMass(Metric):
@@ -28,49 +29,41 @@ class PQMass(Metric):
         self.kernel = kernel
         self.reduction = reduction
 
-        self.add_state("real_data", default=torch.zeros(0))
-        self.add_state("pred_data", default=torch.zeros(0))
+        self.add_state("real_data", default=[], dist_reduce_fx='cat')
+        self.add_state("pred_data", default=[], dist_reduce_fx='cat')
 
     def update(
         self,
         real_data: torch.Tensor,
         pred_data: torch.Tensor,
     ) -> None:
-        self.real_data = torch.cat([self.real_data, real_data], dim=0)
-        self.pred_data = torch.cat([self.pred_data, pred_data], dim=0)
+        self.real_data.append(real_data) 
+        self.pred_data.append(pred_data)
 
     def compute(self) -> torch.Tensor:
         chi2 = pqm_chi2(
-            self.real_data, 
-            self.pred_data, 
+            convert_to_numpy(dim_zero_cat(self.real_data)), # convertation only because pqm_chi2 kernel
+            convert_to_numpy(dim_zero_cat(self.pred_data)), # parameter works with numpy arrays 
             num_refs=self.num_refs,
             re_tessellation=self.re_tessellation,
             permute_tests=self.permute_tests,
             kernel=self.kernel
         )
         if self.reduction == "mean":
-            # Convert chi2 to tensor regardless of input type
             if isinstance(chi2, tuple):
-                # Handle single tuple case
                 chi2 = torch.tensor(chi2[0])
             elif isinstance(chi2, list):
                 if len(chi2) > 0:
                     if isinstance(chi2[0], tuple):
-                        # Extract first element from each tuple in list
                         chi2 = torch.tensor([c[0] for c in chi2])
                     else:
-                        # Convert simple list to tensor
                         chi2 = torch.tensor(chi2)
                 else:
                     chi2 = torch.tensor(0.0)
             elif isinstance(chi2, np.ndarray):
-                # Convert numpy array to tensor
                 chi2 = torch.tensor(chi2)
             elif not isinstance(chi2, torch.Tensor):
-                # Handle any other numeric type
                 chi2 = torch.tensor(chi2)
-                
-            # Compute mean of tensor
             chi2 = torch.mean(chi2)
         
         return chi2
