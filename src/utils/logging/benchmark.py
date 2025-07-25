@@ -143,22 +143,30 @@ class BenchmarkLogger(Callback):
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
-        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         pred_x_end = pl_module.sample(x_start)
-        metrics = pl_module.metrics(x_end, pred_x_end)
-        metrics = {f'val/{k}_{fb}': v for k, v in metrics.items()}
-        pl_module.log_dict(metrics)
+        pl_module.metrics.update(x_end, pred_x_end)
 
         repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
         cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
         cond_pred_x_end = pl_module.sample(repeated_x_start)
-        cond_metrics = pl_module.cond_metrics(cond_x_end, cond_pred_x_end)
-        cond_metrics = {f'val/{k}_{fb}': v for k, v in cond_metrics.items()}
-        pl_module.log_dict(cond_metrics)
+        pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
 
         if batch_idx == len(trainer.val_dataloaders) - 1:
             self._log_smaples(x_start, x_end, pl_module, 'val')
             self._log_trajectories(x_start, x_end, pl_module, stage='val')
+
+    def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
+        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
+        
+        metrics = pl_module.metrics.compute()
+        metrics = {f'val/{k}_{fb}': v for k, v in metrics.items()}
+        pl_module.log_dict(metrics)
+        pl_module.metrics.reset()
+        
+        cond_metrics = pl_module.cond_metrics.compute()
+        cond_metrics = {f'val/{k}_{fb}': v for k, v in cond_metrics.items()}
+        pl_module.log_dict(cond_metrics)
+        pl_module.cond_metrics.reset()
 
     def on_test_batch_end(
         self,
@@ -171,22 +179,30 @@ class BenchmarkLogger(Callback):
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
-        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         pred_x_end = pl_module.sample(x_start)
-        metrics = pl_module.metrics(x_end, pred_x_end)
-        metrics = {f'test/{k}_{fb}': v for k, v in metrics.items()}
-        pl_module.log_dict(metrics)
+        pl_module.metrics.update(x_end, pred_x_end)
         
         repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
         cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
         cond_pred_x_end = pl_module.sample(repeated_x_start)
-        cond_metrics = pl_module.cond_metrics(cond_x_end, cond_pred_x_end)
-        cond_metrics = {f'test/{k}_{fb}': v for k, v in cond_metrics.items()}
-        pl_module.log_dict(cond_metrics)
+        pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
 
         if batch_idx == len(trainer.test_dataloaders) - 1:
             self._log_smaples(x_start, x_end, pl_module, 'test')
             self._log_trajectories(x_start, x_end, pl_module, stage='test')
+
+    def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
+        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
+        
+        metrics = pl_module.metrics.compute()
+        metrics = {f'test/{k}_{fb}': v for k, v in metrics.items()}
+        pl_module.log_dict(metrics)
+        pl_module.metrics.reset()
+        
+        cond_metrics = pl_module.cond_metrics.compute()
+        cond_metrics = {f'test/{k}_{fb}': v for k, v in cond_metrics.items()}
+        pl_module.log_dict(cond_metrics)
+        pl_module.cond_metrics.reset()
 
     @rank_zero_only
     def _log_smaples(

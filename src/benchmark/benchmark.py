@@ -11,10 +11,6 @@ import os
 from .prior import Prior
 from pathlib import Path
 
-from src.utils.logging.console import RankedLogger
-
-log = RankedLogger(__name__, rank_zero_only=True)
-
 
 class BenchmarkDiscreteEOT:
     def __init__(
