@@ -2,7 +2,7 @@ metric_callback:
   _target_: src.utils.BenchmarkLogger
   dim: ${data.dim}
   num_categories: ${data.num_categories}
-  num_cond_samples: ${data.batch_size}
+  num_cond_samples: 1000
   num_refs: 100
   re_tessellation: null
   permute_tests: null

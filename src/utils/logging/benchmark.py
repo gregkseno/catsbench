@@ -112,7 +112,7 @@ class BenchmarkLogger(Callback):
             {
                 'tv_complement': TVComplement(self.dim, self.num_categories),
                 'contingency_similarity': ContingencySimilarity(self.dim, self.num_categories),
-                'pqmass': PQMass(self.dim, self.num_refs, self.re_tessellation, self.permute_tests, self.kernel)
+                # 'pqmass': PQMass(self.dim, self.num_refs, self.re_tessellation, self.permute_tests, self.kernel)
             },
         )
         pl_module.cond_metrics = pl_module.metrics.clone(prefix='cond_')
