@@ -107,8 +107,8 @@ class BenchmarkDiscreteEOT:
     #########################################################################################
     # TODO: @Ark-130994, please, make the samplers work without batch size.
     # the batch_size must be specified in sample methods
-        input_dataloader  = DataLoader(self.input_dataset, batch_size=128, shuffle=False)
-        target_dataloader = DataLoader(self.target_dataset, batch_size=128, shuffle=False)
+        input_dataloader  = DataLoader(self.input_dataset, batch_size=512, shuffle=False)
+        target_dataloader = DataLoader(self.target_dataset, batch_size=512, shuffle=False)
         self.input_sampler  = LoaderSampler(input_dataloader)
         self.target_sampler = LoaderSampler(target_dataloader)
 
@@ -165,7 +165,6 @@ class BenchmarkDiscreteEOT:
     
     def save(self):
         print(f'Saving benchmark to {self.folder_name}...')
-        #Path(self.folder_name).mkdir(parents=True, exist_ok=True)
         Path(self.folder_name).mkdir(parents=True, exist_ok=True)
 
         torch.save(self.log_params, self.solver_path)
