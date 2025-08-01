@@ -95,14 +95,12 @@ class BenchmarkDiscreteEOT:
                 'log_alpha': self.log_alpha,
                 'log_cp_cores': self.log_cp_cores
             }
+            # random_indices      = torch.randperm(len(self.input_dataset))
+            # self.input_dataset  = self.input_dataset[random_indices]
+            random_indices      = torch.randperm(len(self.target_dataset))
+            self.target_dataset = self.target_dataset[random_indices]
             if save_bench:
                 self.save()
-
-                    
-        # NOTE: what is this?
-        random_indices      = torch.randperm(len(self.input_dataset))
-        self.input_dataset  = self.input_dataset[random_indices]
-        self.target_dataset = self.target_dataset[random_indices]
 
     #########################################################################################
     # TODO: @Ark-130994, please, make the samplers work without batch size.
