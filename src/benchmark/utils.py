@@ -149,9 +149,9 @@ def plot_samples(x, y, D, indices_plot, beta, n_steps, xrange=[0,100], yrange=[0
         zmin = ymin
         zmax = xmax
         for ax in [ax1, ax2]:
-            ax.set_xlim(0, 100)
-            ax.set_ylim(0, 100)
-            ax.set_zlim(0, 100)  # Add z-axis limits if needed
+            ax.set_xlim(0, xmax)
+            ax.set_ylim(0, ymax)
+            ax.set_zlim(0, zmax)  # Add z-axis limits if needed
             ax.legend()
             ax.grid(True)
         
@@ -171,7 +171,7 @@ def plot_samples_benchmark(x, y, bench, indices_plot, beta, n_steps, xrange=[0,1
     #x = x.cpu()
     #y = y.cpu()
 
-    if dim > 2 and by_dims is False:
+    if dim > 3 and by_dims is False:
         pca = PCA(n_components=2)
         pca.fit(y.cpu())#(torch.cat([y, y_pred], dim=0))
         x_pca      = pca.transform(x.cpu())
@@ -202,7 +202,7 @@ def plot_samples_benchmark(x, y, bench, indices_plot, beta, n_steps, xrange=[0,1
     
     if plot_trajectories:
         trajectories_stacked = bench.sample_target_given_input(traj_start.cpu(), return_trajectories=True)
-        if dim > 2:
+        if dim > 3:
             trajectories = trajectories_stacked.reshape(-1, trajectories_stacked.shape[-1])
             trajectories = pca.transform(trajectories).reshape(2, -1, 2)
         else:
@@ -267,15 +267,21 @@ def plot_samples_benchmark(x, y, bench, indices_plot, beta, n_steps, xrange=[0,1
         indices_plot = torch.randint(0, len(x), (10,))  # Randomly pick 10 points
         
         # Plot connecting lines
-        for i in indices_plot:
-            ax2.plot(
-                [x[i, 0].cpu(), y_pred[i, 0].cpu()],
-                [x[i, 1].cpu(), y_pred[i, 1].cpu()],
-                [x[i, 2].cpu(), y_pred[i, 2].cpu()],
-                color='g',
-                linewidth=1.5,
-                alpha=1.0
-            )
+        #for i in indices_plot:
+        #    ax2.plot(
+        #        [x[i, 0].cpu(), y_pred[i, 0].cpu()],
+        #        [x[i, 1].cpu(), y_pred[i, 1].cpu()],
+        #        [x[i, 2].cpu(), y_pred[i, 2].cpu()],
+        #        color='g',
+        #        linewidth=1.5,
+        #        alpha=1.0
+        #    )
+
+        ax2.scatter(trajectories[0, :, 0], trajectories[0, :, 1], trajectories[0, :, 2], s=15, color='r', alpha=0.8, label=fr'$p_0(x)$')
+        ax2.scatter(trajectories[-1, :, 0], trajectories[-1, :, 1], trajectories[-1, :, 2], s=15, color='y', alpha=0.8)
+        for i in range(num_trajectories * num_translations):
+            ax2.plot(trajectories[:, i, 0], trajectories[:, i, 1], trajectories[:, i, 2], color='g', linewidth=1.5, alpha=1.0)
+            ax2.plot(trajectories[:, i, 0], trajectories[:, i, 1], trajectories[:, i, 2], color='g', linewidth=1.5, alpha=1.0)
         
         # Scatter original (red) and predicted (yellow) points
         ax2.scatter(
@@ -299,9 +305,9 @@ def plot_samples_benchmark(x, y, bench, indices_plot, beta, n_steps, xrange=[0,1
         zmin = ymin
         zmax = xmax
         for ax in [ax1, ax2]:
-            ax.set_xlim(0, 100)
-            ax.set_ylim(0, 100)
-            ax.set_zlim(0, 100)  # Add z-axis limits if needed
+            ax.set_xlim(xmin, xmax)
+            ax.set_ylim(ymin, ymax)
+            ax.set_zlim(zmin, zmax)  # Add z-axis limits if needed
             ax.legend()
             ax.grid(True)
         

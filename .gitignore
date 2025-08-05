@@ -6,6 +6,7 @@ logs
 notebooks/*
 **/*.pt
 **/*.pth
-!benchmark_data/*.pt
-!benchmark_data/*.pth
+data/MNIST/*
+data_nocommit/*
+src/methods/light_sb_d_torch.py
 notebooks/LightSB_D.ipynb

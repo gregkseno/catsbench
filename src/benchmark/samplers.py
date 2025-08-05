@@ -9,7 +9,7 @@ from torch.distributions.mixture_same_family import MixtureSameFamily
 from torch.distributions.categorical import Categorical
 from torch.distributions.multivariate_normal import MultivariateNormal
 
-
+from torchvision import transforms, datasets
 
 def _continuous_to_discrete(
     batch: Union[torch.Tensor, np.ndarray], 
@@ -104,53 +104,61 @@ class DiscreteSwissRollDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-#class Sampler:
-#    def __init__(
-#        self, device='cuda',
-#    ):
-#        self.device = device
-#    
-#    def sample(self, size=5):
-#        pass
-#        
-#class LoaderSampler(Sampler):
-#    def __init__(self, loader, device='cpu'):
-#        super(LoaderSampler, self).__init__(device)
-#        self.loader = loader
-#        self.it = iter(self.loader)
-#        
-#    def __len__(self):
-#        return len(self.loader)
-#    
-#    def reset_sampler(self):
-#        self.it = iter(self.loader)
-#        
-#    def sample(self, size=5):
-#        if size <= self.loader.batch_size:
-#            try:
-#                batch = next(self.it)
-#            except StopIteration:
-#                self.it = iter(self.loader)
-#                return self.sample(size)
-#            if len(batch) < size:
-#                return self.sample(size)
-#                
-#            return batch[:size].to(self.device)
-#            
-#        elif size > self.loader.batch_size:
-#            samples = []
-#            cur_size = 0
-#            
-#            while cur_size < size:
-#                try:
-#                    batch = next(self.it)
-#                    samples.append(batch)
-#                    cur_size += batch.shape[0]
-#                except StopIteration:
-#                    self.it = iter(self.loader)
-#                    print(f'Maximum size allowed exceeded, returning {cur_size} samples...')
-#                    samples = torch.cat(samples, dim=0)
-#                    return samples[:cur_size].to(self.device)
-#                
-#            samples = torch.cat(samples, dim=0)
-#            return samples[:size].to(self.device)
+class DiscreteColoredMNISTDataset(Dataset):
+    def __init__(
+        self, 
+        target_digit: int, 
+        data_dir: str, 
+        train: bool = True, 
+        img_size: int = 32
+    ):
+        
+        transform = transforms.Compose([
+            transforms.Resize((img_size, img_size)),
+            transforms.ToTensor(),
+            transforms.Lambda(lambda image: self._get_random_colored_images(image))
+        ])
+        
+        dataset = datasets.MNIST(data_dir, train=train, transform=transform, download=True)
+        dataset = torch.stack(
+            [dataset[i][0] for i in range(len(dataset.targets)) if dataset.targets[i] == target_digit],
+            dim=0
+        )
+        dataset = (255 * dataset).to(dtype=torch.int64)
+        self.dataset = dataset      
+
+    def _get_random_colored_images(self, image: torch.Tensor):
+        hue = 360 * torch.rand(1)
+        image_min = 0
+        image_diff = (image - image_min) * (hue % 60) / 60
+        image_inc = image_diff
+        image_dec = image - image_diff
+        colored_image = torch.zeros((3, image.shape[1], image.shape[2]))
+        H_i = torch.round(hue / 60) % 6 # type: ignore
+        
+        if H_i == 0:
+            colored_image[0] = image
+            colored_image[1] = image_inc
+            colored_image[2] = image_min
+        elif H_i == 1:
+            colored_image[0] = image_dec
+            colored_image[1] = image
+            colored_image[2] = image_min
+        elif H_i == 2:
+            colored_image[0] = image_min
+            colored_image[1] = image
+            colored_image[2] = image_inc
+        elif H_i == 3:
+            colored_image[0] = image_min
+            colored_image[1] = image_dec
+            colored_image[2] = image
+        elif H_i == 4:
+            colored_image[0] = image_inc
+            colored_image[1] = image_min
+            colored_image[2] = image
+        elif H_i == 5:
+            colored_image[0] = image
+            colored_image[1] = image_min
+            colored_image[2] = image_dec
+        
+        return colored_image
