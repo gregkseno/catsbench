@@ -1,6 +1,7 @@
 from src.utils.instantiation import instantiate_callbacks, instantiate_loggers
 from src.utils.data import (
     broadcast, 
+    log_space_product,
     convert_to_numpy, 
     convert_to_torch, 
     make_infinite_dataloader,

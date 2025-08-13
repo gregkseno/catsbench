@@ -5,13 +5,8 @@ import torch.nn.functional as F
 import torch
 from torch import nn
 
-from src.utils import broadcast
+from src.utils import broadcast, log_space_product
 
-
-def log_space_product(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
-    log_matrix1 = log_matrix1[..., :, None]
-    log_matrix2 = log_matrix2[..., None, :, :]
-    return torch.logsumexp(log_matrix1 + log_matrix2, dim=-2)
 
 def get_cum_matrices(num_timesteps: int, log_onestep_matrix: torch.Tensor) -> torch.Tensor:
     num_categories = log_onestep_matrix.shape[0]
@@ -97,6 +92,9 @@ def gaussian_prior(
 
 # Inherit from nn.Module to do device casting automatically
 class Prior(nn.Module):
+    log_p_onestep: torch.Tensor
+    log_p_cum: torch.Tensor
+    
     def __init__(
         self, 
         alpha: float,

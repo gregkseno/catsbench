@@ -11,6 +11,11 @@ def broadcast(tensor: torch.Tensor, num_add_dims: int, dim: int = -1) -> torch.T
     shape = [*tensor.shape[:dim], *([1] * num_add_dims), *tensor.shape[dim:]]
     return tensor.reshape(*shape)
 
+def log_space_product(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
+    log_matrix1 = log_matrix1[..., :, None]
+    log_matrix2 = log_matrix2[..., None, :, :]
+    return torch.logsumexp(log_matrix1 + log_matrix2, dim=-2)
+
 def convert_to_numpy(x: torch.Tensor | np.ndarray) -> np.ndarray:
     if isinstance(x, torch.Tensor):
         x = x.detach().cpu().numpy()
