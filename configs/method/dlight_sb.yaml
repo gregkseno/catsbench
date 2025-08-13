@@ -1,4 +1,4 @@
-_target_: src.methods.light_sb_d.LightSB_D
+_target_: src.methods.dlight_sb.DLightSB
 
 optimizer:
   _target_: torch.optim.AdamW

@@ -18,7 +18,7 @@ HPARAMS = (
     'optimizer', 'scheduler'
 )
 
-class LightSB_D(LightningModule):
+class DLightSB(LightningModule):
     def __init__(
         self, 
         prior: Prior,

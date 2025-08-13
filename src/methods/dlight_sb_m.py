@@ -21,7 +21,7 @@ HPARAMS = (
 log = RankedLogger(__name__, rank_zero_only=True)
 
 
-class LightSBM_D(LightningModule):
+class DLightSB_M(LightningModule):
     def __init__(
         self, 
         prior: Prior,
@@ -101,23 +101,6 @@ class LightSBM_D(LightningModule):
             torch.softmax(pred_q_posterior_logits, dim=-1)
         )
         return mse_loss 
-
-    # def get_log_psi(
-    #     self, 
-    #     x: torch.Tensor, 
-    #     t: torch.Tensor
-    # ) -> torch.Tensor:
-    #     t = self.prior.num_timesteps + 2 - t 
-    #     log_z = torch.zeros(x.shape[0], self.hparams.num_potentials, device=self.device)
-    #     for d in range(self.hparams.dim):
-    #         x_d = x[:, d]
-    #         log_pi_ref = self.prior.extract('cumulative', t, row_id=x_d)
-    #         log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
-    #         log_inner = torch.logsumexp(log_joint, dim=2)  # (batch_size, K)
-    #         log_z = log_z + log_inner
-            
-    #     log_psi = torch.logsumexp(self.log_alpha[None, :] + log_z, dim=1) #(K,) + (batch_size, K) -> (batch_size,)
-    #     return log_psi
 
     def get_log_phi_tp1(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         t   = (self.prior.num_timesteps + 2) - t          # [B]
