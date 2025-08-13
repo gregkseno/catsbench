@@ -312,5 +312,3 @@ class CSBM(LightningModule):
         trajectory = torch.stack(trajectory, dim=0)
         return trajectory
 
-if __name__ == '__main__':
-    _ = CSBM(None, None, None, None)

@@ -329,6 +329,3 @@ class CSBM_AR(LightningModule):
             trajectory.append(x)
         trajectory = torch.stack(trajectory, dim=0)
         return trajectory
-
-if __name__ == '__main__':
-    _ = CSBM_AR(None, None, None, None)

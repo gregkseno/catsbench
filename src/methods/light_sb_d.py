@@ -6,7 +6,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from lightning import LightningModule
 import numpy as np
-from torch.distributions.normal import Normal
+
 from src.utils.logging.console import RankedLogger
 from src.data.prior import Prior
 
@@ -45,7 +45,7 @@ class LightSB_D(LightningModule):
         nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
         self.log_cp_cores = []
         
-        for d in range(self.hparams.dim):
+        for _ in range(self.hparams.dim):
             
             if distr_init == 'gaussian':
                 cur_core = (-1.0 + 0.5**2*torch.randn(self.hparams.num_potentials, self.prior.num_categories)) \
@@ -69,23 +69,23 @@ class LightSB_D(LightningModule):
             parameters.append(core)
         self.parameters = nn.ParameterList(parameters)
                 
-    def get_log_v(self, y: torch.Tensor) -> torch.Tensor:
+    def get_log_v(self, x_end: torch.Tensor) -> torch.Tensor:
         log_terms = self.log_alpha[None, :]  # (1, K)
         
-        for d in range(y.shape[1]):
-            y_d = y[:, d]  # (batch_size,)
+        for d in range(x_end.shape[1]):
+            y_d = x_end[:, d]  # (batch_size,)
             log_r_d = self.log_cp_cores[d][:, y_d].T  # (batch_size, K)
             log_terms = log_terms + log_r_d
             
         log_v = torch.logsumexp(log_terms, dim=1)  # (batch_size,)
         return log_v
 
-    def get_log_c(self, x: torch.Tensor) -> torch.Tensor:
+    def get_log_c(self, x_start: torch.Tensor) -> torch.Tensor:
         
-        log_z = torch.zeros(x.shape[0], self.hparams.num_potentials, device=self.device)
+        log_z = torch.zeros(x_start.shape[0], self.hparams.num_potentials, device=self.device)
         
         for d in range(self.hparams.dim):
-            x_d = x[:, d]
+            x_d = x_start[:, d]
             log_pi_ref = self.prior.extract_last_cum_matrix(x_d)
             log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
             log_inner = torch.logsumexp(log_joint, dim=2)  # (batch_size, K)
