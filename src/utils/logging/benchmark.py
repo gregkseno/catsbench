@@ -6,8 +6,8 @@ from sklearn.decomposition import PCA
 
 from torchmetrics import MetricCollection
 from lightning.pytorch import Callback, Trainer, LightningModule
-from lightning.pytorch.utilities import rank_zero_only
 from lightning.pytorch.loggers import WandbLogger, CometLogger
+from lightning.pytorch.utilities import rank_zero_only
 
 from src.utils import convert_to_numpy, fig2img
 from src.metrics.contingency_similarity import ContingencySimilarity
