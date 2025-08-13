@@ -103,8 +103,8 @@ class DLightSB_M(LightningModule):
         return mse_loss 
 
     def get_log_phi_tp1(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        t   = (self.prior.num_timesteps + 2) - t          # [B]
-        tp1 = (self.prior.num_timesteps + 2) - (t + 1)    # [B]
+        t = (self.prior.num_timesteps + 1) - t          # [B]
+        tp1 = (self.prior.num_timesteps + 1) - (t + 1)    # [B]
 
         log_inner_t = torch.empty(
             x_t.shape[0], 
@@ -117,7 +117,7 @@ class DLightSB_M(LightningModule):
             log_pi_ref_t = self.prior.extract('cumulative', t, row_id=x_d) # [B, S]
             log_joint_t = self.log_cp_cores[d][None, :, :] + log_pi_ref_t[:, None, :] # [B, K, S]
             log_inner_t[:, :, d] = torch.logsumexp(log_joint_t, dim=2) # fill with [B, K]
-        log_inner_t = log_inner_t.sum(dim=2)  # [B, K]
+        sum_log_inner_t = log_inner_t.sum(dim=2)  # [B, K]
 
         log_phi_tp1 = torch.empty(
             x_t.shape[0], 
@@ -127,7 +127,7 @@ class DLightSB_M(LightningModule):
         ) # [B, K, D]
         for d in range(self.hparams.dim):
             x_tp1_d = torch.arange(self.prior.num_categories, device=self.device) # [S]
-            x_tp1_d = x_tp1_d.unsqueeze(0).repeat(-1, 1).reshape(-1) # [B*S]
+            x_tp1_d = x_tp1_d.unsqueeze(0).repeat(x_t.shape[0], 1).reshape(-1) # [B*S]
             tp1_repeated = tp1.repeat_interleave(self.prior.num_categories) # [B*S]
             log_pi_ref_tp1 = self.prior.extract('cumulative', tp1_repeated, row_id=x_tp1_d) # [B*S, S]
 
@@ -135,7 +135,7 @@ class DLightSB_M(LightningModule):
             log_inner_tp1 = torch.logsumexp(log_joint_tp1, dim=2)  # [B*S, K]
             log_inner_tp1 = log_inner_tp1.view(-1, self.prior.num_categories, self.hparams.num_potentials).permute(0, 2, 1) # [B, K, S]
 
-            log_other_d = self.log_alpha[None, :] + (log_inner_t - log_inner_t[:, :, d]) # [B, K]
+            log_other_d = self.log_alpha[None, :] + (sum_log_inner_t - log_inner_t[:, :, d]) # [B, K]
             log_phi_tp1[:, d, :] = torch.logsumexp(log_other_d[:, :, None] + log_inner_tp1, dim=1) # fill with [B, S]
 
         return log_phi_tp1 # [B, D, S]
@@ -153,7 +153,9 @@ class DLightSB_M(LightningModule):
         x_t = self.prior.sample_bridge(true_x_start, true_x_end, t)
 
         true_q_posterior_logits = self.prior.posterior_logits(true_x_start, x_t, t, logits=False)
-        pred_q_transition_logits = self.prior.extract('onestep', column_id=x_t) + self.get_log_phi_tp1(x_t, t=t)
+        pred_q_transition_logits = \
+            self.prior.extract('onestep', t, column_id=x_t).permute(1, 2, 0) + \
+            self.get_log_phi_tp1(x_t, t=t)
         pred_q_transition_logits = pred_q_transition_logits.log_softmax(dim=-1)
 
         kl = self.kl_loss(true_q_posterior_logits, pred_q_transition_logits)
@@ -171,7 +173,7 @@ class DLightSB_M(LightningModule):
         x_start, x_end = batch
 
         # if first iteration apply optional mini-batch sampling
-        if self.first_iteration and self.hparams.use_mini_batch:
+        if self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
         outputs = {'x_start': x_start, 'x_end': x_end} # For logger
 
@@ -193,7 +195,7 @@ class DLightSB_M(LightningModule):
         outputs = {'x_start': x_start, 'x_end': x_end} # For logger
 
         # if first iteration apply optional mini-batch sampling
-        if self.first_iteration and self.hparams.use_mini_batch:
+        if self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
 
         _, info = self.optimal_projection(x_start, x_end)
@@ -209,7 +211,7 @@ class DLightSB_M(LightningModule):
         outputs = {'x_start': x_start, 'x_end': x_end} # For logger
 
         # if first iteration apply optional mini-batch sampling
-        if self.first_iteration and self.hparams.use_mini_batch:
+        if self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
 
         _, info = self.optimal_projection(x_start, x_end)
@@ -228,7 +230,9 @@ class DLightSB_M(LightningModule):
     def markov_sample(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         last_step = (t == self.prior.num_timesteps + 1).long().view((x.shape[0], *[1] * (x.dim() - 1)))
         
-        pred_q_transition_logits = self.prior.extract('onestep', column_id=x) + self.get_log_phi_tp1(x, t=t)
+        pred_q_transition_logits = \
+            self.prior.extract('onestep', t, column_id=x).permute(1, 2, 0) + \
+            self.get_log_phi_tp1(x, t=t)
         pred_q_transition_logits = pred_q_transition_logits.log_softmax(dim=-1)
         noise = torch.rand_like(pred_q_transition_logits)
         noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
