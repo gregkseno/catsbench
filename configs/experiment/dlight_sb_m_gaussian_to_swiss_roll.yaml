@@ -3,7 +3,7 @@
 defaults:
   - override /data: toy
   - override /model: null
-  - override /method: dlight_sb
+  - override /method: dlight_sb_m
   - override /callbacks: [rich_progress_bar, model_summary, toy_metric_callback]
   - override /trainer: gpu
   - _self_
@@ -34,6 +34,9 @@ prior:
 
 method:
   num_potentials: 10
+  kl_loss_coeff: 1.0
+  mse_loss_coeff: 0.0
+  use_mini_batch: false
   distr_init: uniform
 
 trainer:
