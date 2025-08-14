@@ -152,7 +152,7 @@ class BenchmarkLogger(Callback):
         cond_pred_x_end = pl_module.sample(repeated_x_start)
         pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
 
-        if batch_idx == len(trainer.val_dataloaders) - 1:
+        if batch_idx == len(trainer.val_dataloaders) - 2:
             self._log_smaples(x_start, x_end, pl_module, 'val')
             self._log_trajectories(x_start, x_end, pl_module, stage='val')
 
@@ -188,7 +188,7 @@ class BenchmarkLogger(Callback):
         cond_pred_x_end = pl_module.sample(repeated_x_start)
         pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
 
-        if batch_idx == len(trainer.test_dataloaders) - 1:
+        if batch_idx == len(trainer.test_dataloaders) - 2:
             self._log_smaples(x_start, x_end, pl_module, 'test')
             self._log_trajectories(x_start, x_end, pl_module, stage='test')
 

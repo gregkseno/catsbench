@@ -84,7 +84,7 @@ class ToyLogger(Callback):
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
-        if batch_idx == len(trainer.val_dataloaders) - 1:
+        if batch_idx == len(trainer.val_dataloaders) - 2:
             self._log_smaples(x_start, x_end, pl_module, 'val')
             self._log_trajectories(x_start, pl_module, stage='val')
 
@@ -99,7 +99,7 @@ class ToyLogger(Callback):
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
-        if batch_idx == len(trainer.test_dataloaders) - 1:
+        if batch_idx == len(trainer.test_dataloaders) - 2:
             self._log_smaples(x_start, x_end, pl_module, 'test')
             self._log_trajectories(x_start, pl_module, stage='test')
 
