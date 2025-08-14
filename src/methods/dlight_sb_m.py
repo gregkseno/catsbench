@@ -104,7 +104,7 @@ class DLightSB_M(LightningModule):
 
     def get_log_phi_tp1(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         t = (self.prior.num_timesteps + 1) - t          # [B]
-        tp1 = (self.prior.num_timesteps + 1) - (t + 1)    # [B]
+        tp1 = t - 1    # [B]
 
         log_inner_t = torch.empty(
             x_t.shape[0], 
@@ -132,7 +132,7 @@ class DLightSB_M(LightningModule):
             log_pi_ref_tp1 = self.prior.extract('cumulative', tp1_repeated, row_id=x_tp1_d) # [B*S, S]
 
             log_joint_tp1 = self.log_cp_cores[d][None, :, :] + log_pi_ref_tp1[:, None, :] # [B*S, K, S]
-            log_inner_tp1 = torch.logsumexp(log_joint_tp1, dim=2)  # [B*S, K]
+            log_inner_tp1 = torch.logsumexp(log_joint_tp1, dim=-1)  # [B*S, K]
             log_inner_tp1 = log_inner_tp1.view(-1, self.prior.num_categories, self.hparams.num_potentials).permute(0, 2, 1) # [B, K, S]
 
             log_other_d = self.log_alpha[None, :] + (sum_log_inner_t - log_inner_t[:, :, d]) # [B, K]
@@ -154,7 +154,7 @@ class DLightSB_M(LightningModule):
 
         true_q_posterior_logits = self.prior.posterior_logits(true_x_start, x_t, t, logits=False)
         pred_q_transition_logits = \
-            self.prior.extract('onestep', t, column_id=x_t).permute(1, 2, 0) + \
+            self.prior.extract('onestep', t, column_id=x_t) + \
             self.get_log_phi_tp1(x_t, t=t)
         pred_q_transition_logits = pred_q_transition_logits.log_softmax(dim=-1)
 
@@ -227,22 +227,78 @@ class DLightSB_M(LightningModule):
             return {'optimizer': optimizer, 'lr_scheduler': scheduler},
         return {'optimizer': optimizer}
     
-    def markov_sample(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        last_step = (t == self.prior.num_timesteps + 1).long().view((x.shape[0], *[1] * (x.dim() - 1)))
+    # def markov_sample(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    #     last_step = (t == self.prior.num_timesteps + 1).long().view((x.shape[0], *[1] * (x.dim() - 1)))
+    #     # TODO: fix sampling using K potentials
+    #     pred_q_transition_logits = \
+    #         self.prior.extract('onestep', t, column_id=x) + self.get_log_phi_tp1(x, t=t)
+    #     pred_q_transition_logits = pred_q_transition_logits.log_softmax(dim=-1)
+    #     noise = torch.rand_like(pred_q_transition_logits)
+    #     noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
+    #     gumbel_noise = -torch.log(-torch.log(noise))
+    #     random_samples = torch.argmax(pred_q_transition_logits + gumbel_noise, dim=-1)
         
-        pred_q_transition_logits = \
-            self.prior.extract('onestep', t, column_id=x).permute(1, 2, 0) + \
-            self.get_log_phi_tp1(x, t=t)
-        pred_q_transition_logits = pred_q_transition_logits.log_softmax(dim=-1)
-        noise = torch.rand_like(pred_q_transition_logits)
-        noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
-        gumbel_noise = -torch.log(-torch.log(noise))
-        random_samples = torch.argmax(pred_q_transition_logits + gumbel_noise, dim=-1)
-        
-        argmax_samples = pred_q_transition_logits.argmax(dim=-1)
-        samples = last_step * argmax_samples + (1 - last_step) * random_samples
-        return samples
-        
+    #     argmax_samples = pred_q_transition_logits.argmax(dim=-1)
+    #     samples = last_step * argmax_samples + (1 - last_step) * random_samples
+    #     return samples
+
+    @torch.no_grad()
+    def markov_sample(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        B, D, S, K = x_t.shape[0], self.hparams.dim, self.prior.num_categories, self.hparams.num_potentials
+
+        # Convert to the cumulative indices you already use
+        # You used: tprime = N+1 - t, tp1 = tprime - 1 == N - t
+        tprime = (self.prior.num_timesteps + 1) - t          # [B]
+        tp1 = tprime - 1                                      # [B]  -> corresponds to N - t
+
+        # 1) Compute log u_{t,k}^{(d)}[x_{t,d}] for all d (needed for mixture weights)
+        # log_u_t_at_x: [B, K, D]
+        log_u_t_at_x = torch.empty(B, K, D, device=self.device)
+        for d in range(D):
+            x_d = x_t[:, d]  # [B]
+            # log P_d^{N-t}(x_{t,d}, :)   shape [B, S]
+            log_PNmt_row = self.prior.extract('cumulative', tprime, row_id=x_d)
+            # log u_{t,k}^{(d)}[x_{t,d}] = logsum_y ( log r_k^{(d)}[y] + log P^{N-t}(x_d, y) )
+            # -> [B, K]
+            log_u_t_at_x[:, :, d] = torch.logsumexp(
+                self.log_cp_cores[d][None, :, :] + log_PNmt_row[:, None, :], dim=2
+            )
+
+        # Mixture weights p(k | x_t): [B, K]
+        log_w_k = self.log_alpha[None, :] + log_u_t_at_x.sum(dim=2)  # sum over d
+        log_p_k = log_w_k - torch.logsumexp(log_w_k, dim=1, keepdim=True)
+        p_k = log_p_k.exp()
+        k_star = torch.multinomial(p_k, num_samples=1).squeeze(1)    # [B]
+
+        # 2) For each d, sample y_d | x_t, k_star  from softmax( log P_d(x_d, ·) + log u_{t+1,k}^{(d)}[·] )
+        y = torch.empty(B, D, dtype=torch.long, device=self.device)
+
+        # Precompute all rows y_d=0..S-1 for tp1 to get u_{t+1}
+        all_y = torch.arange(S, device=self.device)  # [S]
+        for d in range(D):
+            # Build [B*S, S] of log P_d^{N-(t+1)}(y_d, ·) to get u_{t+1}
+            y_rep = all_y.unsqueeze(0).repeat(B, 1).reshape(-1)        # [B*S]
+            log_PNm1_rows = self.prior.extract('cumulative', tp1.repeat_interleave(S), row_id=y_rep)  # [B*S, S]
+            # log u_{t+1,k}^{(d)}[y_d] for all y_d: [B*S, K] -> [B, K, S]
+            log_u_tp1 = torch.logsumexp(
+                self.log_cp_cores[d][None, :, :] + log_PNm1_rows[:, None, :], dim=2
+            ).view(B, S, K).permute(0, 2, 1)  # [B, K, S]
+
+            # Select the sampled component per batch: [B, S]
+            log_u_tp1_sel = log_u_tp1[torch.arange(B, device=self.device), k_star, :]
+
+            # Add the one-step term log P_d(x_{t,d}, ·): [B, S]
+            log_P_onestep = self.prior.extract('onestep', t, column_id=x_t[:, d])  # you store transposed
+
+            # Final logits for y_d given k_star: [B, S]
+            logits_y_d = log_P_onestep + log_u_tp1_sel
+
+            # Sample
+            p_y_d = torch.softmax(logits_y_d, dim=1)
+            y[:, d] = torch.multinomial(p_y_d, num_samples=1).squeeze(1)
+
+        return y
+
     @torch.no_grad()
     def sample(self, x: torch.Tensor) -> torch.Tensor:
         """Sample from the model starting from `x` returning the final sample."""
