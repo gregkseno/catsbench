@@ -157,8 +157,12 @@ class Prior(nn.Module):
         
         elif row_id is None and column_id is not None:
             t = broadcast(t, column_id.dim() - 1)
-            if mat_type  == 'onestep':
-                return self.log_p_onestep[:, column_id]
+            if mat_type == 'onestep':
+                result = torch.index_select(
+                    self.log_p_onestep, dim=1, 
+                    index=column_id.reshape(-1)
+                )
+                return result.reshape(*column_id.shape, self.num_categories)
             else:
                 return self.log_p_cum[t, :, column_id]
         else:   
@@ -230,3 +234,19 @@ class Prior(nn.Module):
         is_first_step = broadcast(t, x_t.dim()) == 1
         p_posterior_logits = torch.where(is_first_step, x_start_logits, p_posterior_logits)
         return p_posterior_logits
+    
+
+if __name__ == "__main__":
+    num_categories = 10
+    num_timesteps = 5
+    prior = Prior(
+        alpha=0.1, 
+        num_categories=num_categories, 
+        num_timesteps=num_timesteps, 
+        num_skip_steps=2, 
+        prior_type='uniform'
+    )
+    x_start = torch.randint(0, num_categories, (3, 2))  # Batch size 3, 2 dimensions
+    x_end = torch.randint(0, num_categories, (3, 2))    # Batch size 3, 2 dimensions
+    t = torch.randint(0, num_timesteps + 1, (3,))  # Random time steps for the example
+    x_t = prior.sample_bridge(x_start, x_end, t)
