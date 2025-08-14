@@ -29,11 +29,11 @@ data:
 prior:
   alpha: 0.02
   prior_type: gaussian
-  num_timesteps: 16
-  num_skip_steps: 8
+  num_timesteps: 128
+  num_skip_steps: 1
 
 method:
-  num_potentials: 10
+  num_potentials: 1000
   kl_loss_coeff: 1.0
   mse_loss_coeff: 0.0
   use_mini_batch: false
