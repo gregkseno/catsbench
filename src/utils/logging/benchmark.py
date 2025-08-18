@@ -45,7 +45,10 @@ class BenchmarkLogger(Callback):
         if dim > 2:
             self.pca = PCA(n_components=2)
 
-        self.axlim = [7, 93] if axlim is None else axlim
+        if dim > 2:
+            self.axlim = [7, 93] if axlim is None else axlim
+        else:
+            self.axlim = [0, num_categories]
         self.samples_fig_config = {
             'figsize': (12, 4) if samples_figsize is None else samples_figsize,
             'dpi': dpi,

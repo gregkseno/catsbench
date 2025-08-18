@@ -4,7 +4,11 @@ defaults:
   - override /data: toy
   - override /model: null
   - override /method: dlight_sb
-  - override /callbacks: [rich_progress_bar, model_summary, toy_metric_callback]
+  - override /callbacks:
+    - rich_progress_bar
+    - model_checkpoint
+    - model_summary
+    - toy_metric_callback
   - override /trainer: gpu
   - _self_
 

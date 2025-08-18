@@ -4,7 +4,11 @@ defaults:
   - override /data: benchmark
   - override /model: simple_mlp
   - override /method: csbm
-  - override /callbacks: [rich_progress_bar, model_summary, benchmark_metric_callback]
+  - override /callbacks:
+    - rich_progress_bar
+    - model_checkpoint
+    - model_summary
+    - benchmark_metric_callback
   - override /trainer: gpu
   - _self_
 
