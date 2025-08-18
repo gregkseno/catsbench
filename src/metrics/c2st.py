@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score
+from sklearn.preprocessing import OneHotEncoder
 from torchmetrics import Metric
 from torchmetrics.utilities import dim_zero_cat
 
@@ -13,6 +14,7 @@ from src.utils import convert_to_numpy
 class ClassifierTwoSampleTest(Metric):
     def __init__(
         self,
+        num_categories: int,
         train_fraction: float = 0.7,
         model_kwargs: Optional[Dict[str, Any]] = None,
     ):
@@ -38,7 +40,7 @@ class ClassifierTwoSampleTest(Metric):
         pred_target = np.ones(pred_data.shape[0], dtype=np.int64)
         real_target = np.zeros(real_data.shape[0], dtype=np.int64)
 
-        X = np.vstack([real_data, pred_data])
+        X = OneHotEncoder().fit_transform(np.vstack([real_data, pred_data]))
         y = np.concatenate([real_target, pred_target])
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, train_size=self.train_fraction, stratify=y, shuffle=True,
