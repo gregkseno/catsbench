@@ -35,40 +35,24 @@ class DLightSB(LightningModule):
         self.iteration = 1
         self.prior = prior
         
-        # TODO: Add names to parameters
         self.log_alpha = nn.Parameter(torch.zeros(num_potentials))
-        self._initialize_parameters(distr_init)
+        self.log_cp_cores = nn.ParameterList()
 
-    def _initialize_parameters(
-        self, distr_init: Literal['uniform', 'gaussian']
-    ) -> None:
         nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
-        self.log_cp_cores = []
-        
-        for _ in range(self.hparams.dim):
-            
+        for _ in range(dim):
             if distr_init == 'gaussian':
-                cur_core = (-1.0 + 0.5**2*torch.randn(self.hparams.num_potentials, self.prior.num_categories)) \
-            / (self.prior.num_categories * self.hparams.num_potentials)
-                cur_log_core = torch.log(cur_core**2)
-
+                cur_core = (-1.0 + 0.5**2 * torch.randn(num_potentials, prior.num_categories)) \
+                   / (prior.num_categories * num_potentials)
+                cur_log_core = torch.log(cur_core ** 2)
             elif distr_init == 'uniform':
-                cur_log_core = torch.log(torch.ones(self.hparams.num_potentials, self.prior.num_categories) \
-                                        / (self.prior.num_categories * self.hparams.num_potentials))
-            
+                cur_log_core = torch.log(
+                    torch.ones(num_potentials, prior.num_categories) /
+                    (prior.num_categories * num_potentials)
+                )
             else:
-                raise ValueError(f"Invalid distr_init: {distr_init}")
-            
-            cur_log_core = cur_log_core.to(self.device)
+                raise ValueError(f'Invalid distr_init: {distr_init}')
             self.log_cp_cores.append(nn.Parameter(cur_log_core))
-        self._make_model_parameters()
-
-    def _make_model_parameters(self) -> None:
-        parameters = []
-        for core in self.log_cp_cores:
-            parameters.append(core)
-        self.parameters = nn.ParameterList(parameters)
-                
+        
     def get_log_v(self, x_end: torch.Tensor) -> torch.Tensor:
         log_terms = self.log_alpha[None, :]  # (1, K)
         
@@ -106,9 +90,9 @@ class DLightSB(LightningModule):
 
         # logs step-wise loss
         info = {
-            f"train/loss": outputs['loss'], 
-            f"train/log_v": log_v.mean(), 
-            f"train/log_c": log_c.mean()
+            f'train/loss': outputs['loss'], 
+            f'train/log_v': log_v.mean(), 
+            f'train/log_c': log_c.mean()
         }
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('train/iteration', self.iteration, prog_bar=True)
@@ -129,9 +113,9 @@ class DLightSB(LightningModule):
 
         # logs step-wise loss
         info = {
-            f"val/loss": loss, 
-            f"val/log_v": log_v.mean(), 
-            f"val/log_c": log_c.mean()
+            f'val/loss': loss, 
+            f'val/log_v': log_v.mean(), 
+            f'val/log_c': log_c.mean()
         }
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('val/iteration', self.iteration, prog_bar=True)
@@ -149,9 +133,9 @@ class DLightSB(LightningModule):
 
         # logs step-wise loss
         info = {
-            f"test/loss": loss, 
-            f"test/log_v": log_v.mean(), 
-            f"test/log_c": log_c.mean()
+            f'test/loss': loss, 
+            f'test/log_v': log_v.mean(), 
+            f'test/log_c': log_c.mean()
         }
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('test/iteration', self.iteration, prog_bar=True)
@@ -200,9 +184,5 @@ class DLightSB(LightningModule):
         return y_samples
     
     @torch.no_grad()
-    def sample_trajectory(self, x: torch.Tensor, pca=None) -> torch.Tensor:
-        if pca is None:
-            out = torch.stack([x, self.sample(x)], dim=0)
-        else:
-            out = np.stack([pca.transform(x), pca.transform(self.sample(x).cpu())], axis=0)
-        return out
+    def sample_trajectory(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.stack([x, self.sample(x)], dim=0)
