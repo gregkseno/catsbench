@@ -71,8 +71,8 @@ class BenchmarkDataModule(LightningDataModule):
             ####################### VALIDATION DATASET ######################
             size_val = int(self.hparams.num_samples * self.hparams.train_test_split[1])
             self.data_val = CoupleDataset(
-                input_dataset=self.benchmark.input_dataset[:size_val],
-                target_dataset=self.benchmark.target_dataset[:size_val],
+                input_dataset=self.benchmark.input_dataset[-size_val:],
+                target_dataset=self.benchmark.target_dataset[-size_val:],
             )
 
     def train_dataloader(self) -> DataLoader[Any]:
