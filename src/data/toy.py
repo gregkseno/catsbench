@@ -140,18 +140,18 @@ class ToyDataModule(LightningDataModule):
         dim: int,
         num_categories: int,
         num_samples: int,
-        train_val_test_split: Tuple[float, float, float],
+        train_test_split: Tuple[float, float, float],
         batch_size: int,
         num_workers: int = 0,
         pin_memory: bool = False,
     ) -> None:
         assert dim == 2, "This datamodule is designed for 2D data only."
-        assert len(train_val_test_split) == 3, ( 
-            "train_val_test_split must be a tuple of three floats "
+        assert len(train_test_split) == 3, ( 
+            "train_test_split must be a tuple of three floats "
             "representing the proportions for train, val, and test sets."
         )
-        assert sum(train_val_test_split) == 1.0, \
-            "The sum of train_val_test_split must be equal to 1.0."
+        assert sum(train_test_split) == 1.0, \
+            "The sum of train_test_split must be equal to 1.0."
 
         super().__init__()
         # somehow this function is able to load all 
@@ -181,23 +181,17 @@ class ToyDataModule(LightningDataModule):
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.data_train and not self.data_val and not self.data_test:
             ###################### TRAINING DATASET ######################
-            size_train = int(self.hparams.num_samples * self.hparams.train_val_test_split[0])
+            size_train = int(self.hparams.num_samples * self.hparams.train_test_split[0])
             self.data_train = CoupleDataset(
                 input_dataset=self.hparams.input_dataset(num_samples=size_train), 
                 target_dataset=self.hparams.target_dataset(num_samples=size_train)
             )
 
             ####################### VALIDATION DATASET ######################
-            size_val = int(self.hparams.num_samples * self.hparams.train_val_test_split[0])
+            size_val = int(self.hparams.num_samples * self.hparams.train_test_split[1])
             self.data_val = CoupleDataset(
                 input_dataset=self.hparams.input_dataset(num_samples=size_val, train=False), 
                 target_dataset=self.hparams.target_dataset(num_samples=size_val, train=False)
-            )
-            ######################### TEST DATASET #########################
-            size_test = int(self.hparams.num_samples * self.hparams.train_val_test_split[0])
-            self.data_test = CoupleDataset(
-                input_dataset=self.hparams.input_dataset(num_samples=size_test, train=False), 
-                target_dataset=self.hparams.target_dataset(num_samples=size_test, train=False)
             )
 
     def train_dataloader(self) -> DataLoader[Any]:
@@ -223,7 +217,7 @@ class ToyDataModule(LightningDataModule):
     def test_dataloader(self) -> DataLoader[Any]:
         """Create and return the test dataloader."""
         return DataLoader(
-            dataset=self.data_test,
+            dataset=self.data_val,
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
