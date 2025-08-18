@@ -40,6 +40,7 @@ method:
   distr_init: uniform
 
 trainer:
+  max_epochs: 10
   limit_train_batches: 20000 # controls number of IPF inner iterations
   val_check_interval: 1000
   accumulate_grad_batches: 1

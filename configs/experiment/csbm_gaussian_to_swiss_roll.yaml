@@ -45,6 +45,7 @@ method:
   ignore_index: -100
 
 trainer:
+  max_epochs: 30
   limit_train_batches: 20000 # controls number of IMF inner iterations
   val_check_interval: 1000
   accumulate_grad_batches: 1
