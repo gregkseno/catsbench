@@ -3,6 +3,7 @@ model_checkpoint:
   dirpath: ${paths.output_dir}/checkpoints
   filename: epoch_{epoch:03d}
   every_n_epochs: 1
+  save_on_train_epoch_end: true
   monitor: null 
   verbose: false
   save_last: True
