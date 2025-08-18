@@ -20,8 +20,7 @@ dependencies:
   - pip:
     - --extra-index-url https://download.pytorch.org/whl/cu124
     - flash-attn==2.7.3 
-    - torch==2.6.0+cu124
-    - torchvision==0.21.0+cu124
-    - prince==0.16.0
+    - torch==2.6.0
+    - torchvision==0.21.0
     - pqm==0.6.3
     - comet_ml==3.49.12
