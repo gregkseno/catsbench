@@ -10,6 +10,7 @@ from lightning.pytorch.loggers import WandbLogger, CometLogger
 from lightning.pytorch.utilities import rank_zero_only
 
 from src.utils import convert_to_numpy, fig2img
+from src.metrics.c2st import ClassifierTwoSampleTest
 from src.metrics.contingency_similarity import ContingencySimilarity
 from src.metrics.tv_complement import TVComplement
 from src.metrics.pqmass import PQMass
@@ -113,10 +114,14 @@ class BenchmarkLogger(Callback):
             {
                 'tv_complement': TVComplement(self.dim, self.num_categories),
                 'contingency_similarity': ContingencySimilarity(self.dim, self.num_categories),
+                'c2st': ClassifierTwoSampleTest()
                 # 'pqmass': PQMass(self.dim, self.num_refs, self.re_tessellation, self.permute_tests, self.kernel)
             },
         )
         pl_module.cond_metrics = pl_module.metrics.clone(prefix='cond_')
+        pl_module.paired_c2st = ClassifierTwoSampleTest()
+        pl_module.cond_paired_c2st = ClassifierTwoSampleTest()
+
 
     def on_train_batch_end(
         self,
@@ -146,11 +151,19 @@ class BenchmarkLogger(Callback):
 
         pred_x_end = pl_module.sample(x_start)
         pl_module.metrics.update(x_end, pred_x_end)
+        pl_module.paired_c2st.update(
+            torch.cat([x_start, x_end], dim=-1), 
+            torch.cat([x_start, pred_x_end], dim=-1)
+        )
 
         repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
         cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
         cond_pred_x_end = pl_module.sample(repeated_x_start)
         pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
+        pl_module.cond_paired_c2st.update(
+            torch.cat([repeated_x_start, cond_x_end], dim=-1), 
+            torch.cat([repeated_x_start, cond_pred_x_end], dim=-1)
+        )
 
         if batch_idx == len(trainer.val_dataloaders) - 2:
             self._log_smaples(x_start, x_end, pl_module, 'val')
@@ -163,6 +176,14 @@ class BenchmarkLogger(Callback):
         metrics = {f'val/{k}_{fb}': v for k, v in metrics.items()}
         pl_module.log_dict(metrics)
         pl_module.metrics.reset()
+
+        paired_c2st = pl_module.paired_c2st.compute()
+        pl_module.log('val/paired_c2st', paired_c2st)
+        pl_module.paired_c2st.reset()
+
+        cond_paired_c2st = pl_module.cond_paired_c2st.compute()
+        pl_module.log('val/cond_paired_c2st', cond_paired_c2st)
+        pl_module.cond_paired_c2st.reset()
         
         cond_metrics = pl_module.cond_metrics.compute()
         cond_metrics = {f'val/{k}_{fb}': v for k, v in cond_metrics.items()}
@@ -182,11 +203,19 @@ class BenchmarkLogger(Callback):
 
         pred_x_end = pl_module.sample(x_start)
         pl_module.metrics.update(x_end, pred_x_end)
+        pl_module.paired_c2st.update(
+            torch.cat([x_start, x_end], dim=-1), 
+            torch.cat([x_start, pred_x_end], dim=-1)
+        )
         
         repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
         cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
         cond_pred_x_end = pl_module.sample(repeated_x_start)
         pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
+        pl_module.cond_paired_c2st.update(
+            torch.cat([repeated_x_start, cond_x_end], dim=-1), 
+            torch.cat([repeated_x_start, cond_pred_x_end], dim=-1)
+        )
 
         if batch_idx == len(trainer.test_dataloaders) - 2:
             self._log_smaples(x_start, x_end, pl_module, 'test')
@@ -199,7 +228,15 @@ class BenchmarkLogger(Callback):
         metrics = {f'test/{k}_{fb}': v for k, v in metrics.items()}
         pl_module.log_dict(metrics)
         pl_module.metrics.reset()
-        
+
+        paired_c2st = pl_module.paired_c2st.compute()
+        pl_module.log('test/paired_c2st', paired_c2st)
+        pl_module.paired_c2st.reset()
+
+        cond_paired_c2st = pl_module.cond_paired_c2st.compute()
+        pl_module.log('test/cond_paired_c2st', cond_paired_c2st)
+        pl_module.cond_paired_c2st.reset()
+
         cond_metrics = pl_module.cond_metrics.compute()
         cond_metrics = {f'test/{k}_{fb}': v for k, v in cond_metrics.items()}
         pl_module.log_dict(cond_metrics)
