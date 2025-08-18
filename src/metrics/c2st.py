@@ -20,7 +20,7 @@ class ClassifierTwoSampleTest(Metric):
         if not 0.0 < train_fraction < 1.0:
             raise ValueError("train_fraction must be in (0, 1)")
         self.train_fraction = train_fraction
-        self.model_kwargs = model_kwargs or {}
+        self.model_kwargs = model_kwargs or {'max_iter': 1000, 'solver': 'lbfgs'}
 
         # Local storage of samples; not aggregated across processes.
         self.add_state("real_data", default=[], dist_reduce_fx='cat')

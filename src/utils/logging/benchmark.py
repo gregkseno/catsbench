@@ -72,15 +72,15 @@ class BenchmarkLogger(Callback):
             'dpi': dpi,
         }
         self.trajectories_pred_config = {
-            'c': 'salmon', 's': 120, 'edgecolors': 'black', 
+            'c': 'salmon', 's': 100, 'edgecolors': 'black', 
             'label': 'Fitted distribution', 'zorder': 1, 'linewidth': 0.8
         }
         self.trajectories_start_config = {
-            'c': 'lime', 's': 180, 'edgecolors': 'black', 
+            'c': 'lime', 's': 150, 'edgecolors': 'black', 
             'label': r'Trajectory start ($x \sim p_0$)', 'zorder': 3
         }
         self.trajectories_end_config = {
-            'c': 'yellow', 's': 100, 'edgecolors': 'black', 
+            'c': 'yellow', 's': 80, 'edgecolors': 'black', 
             'label': r'Trajectory end (fitted)', 'zorder': 3
         }
         self.trajectory_lines_config = {
