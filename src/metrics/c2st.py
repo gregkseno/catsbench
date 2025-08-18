@@ -14,7 +14,6 @@ from src.utils import convert_to_numpy
 class ClassifierTwoSampleTest(Metric):
     def __init__(
         self,
-        num_categories: int,
         train_fraction: float = 0.7,
         model_kwargs: Optional[Dict[str, Any]] = None,
     ):

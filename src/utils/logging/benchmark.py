@@ -28,12 +28,8 @@ class BenchmarkLogger(Callback):
         dim: int,
         num_categories: int,
         num_cond_samples: int,
-        num_refs: int,
-        kernel: str,
         num_trajectories: int, 
         num_translations: int,
-        re_tessellation: Optional[int] = None,
-        permute_tests: Optional[int] = None,
         axlim: Optional[Tuple[float, float]] = None,
         samples_figsize: Optional[Tuple[int, int]] = None,
         trajectories_figsize: Optional[Tuple[int, int]] = None,
@@ -44,10 +40,6 @@ class BenchmarkLogger(Callback):
         self.num_categories = num_categories
 
         self.num_cond_samples = num_cond_samples
-        self.num_refs = num_refs
-        self.re_tessellation = re_tessellation
-        self.permute_tests = permute_tests
-        self.kernel = kernel
         self.num_trajectories = num_trajectories
         self.num_translations = num_translations
         if dim > 2:
@@ -115,7 +107,6 @@ class BenchmarkLogger(Callback):
                 'tv_complement': TVComplement(self.dim, self.num_categories),
                 'contingency_similarity': ContingencySimilarity(self.dim, self.num_categories),
                 'c2st': ClassifierTwoSampleTest()
-                # 'pqmass': PQMass(self.dim, self.num_refs, self.re_tessellation, self.permute_tests, self.kernel)
             },
         )
         pl_module.cond_metrics = pl_module.metrics.clone(prefix='cond_')
@@ -178,11 +169,11 @@ class BenchmarkLogger(Callback):
         pl_module.metrics.reset()
 
         paired_c2st = pl_module.paired_c2st.compute()
-        pl_module.log('val/paired_c2st', paired_c2st)
+        pl_module.log(f'val/paired_c2st_{fb}', paired_c2st)
         pl_module.paired_c2st.reset()
 
         cond_paired_c2st = pl_module.cond_paired_c2st.compute()
-        pl_module.log('val/cond_paired_c2st', cond_paired_c2st)
+        pl_module.log(f'val/cond_paired_c2st_{fb}', cond_paired_c2st)
         pl_module.cond_paired_c2st.reset()
         
         cond_metrics = pl_module.cond_metrics.compute()
@@ -230,11 +221,11 @@ class BenchmarkLogger(Callback):
         pl_module.metrics.reset()
 
         paired_c2st = pl_module.paired_c2st.compute()
-        pl_module.log('test/paired_c2st', paired_c2st)
+        pl_module.log(f'test/paired_c2st_{fb}', paired_c2st)
         pl_module.paired_c2st.reset()
 
         cond_paired_c2st = pl_module.cond_paired_c2st.compute()
-        pl_module.log('test/cond_paired_c2st', cond_paired_c2st)
+        pl_module.log(f'test/cond_paired_c2st_{fb}', cond_paired_c2st)
         pl_module.cond_paired_c2st.reset()
 
         cond_metrics = pl_module.cond_metrics.compute()
