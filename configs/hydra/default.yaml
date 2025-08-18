@@ -1,0 +1,13 @@
+# @package hydra
+
+job:
+  chdir: false
+run:
+  dir: ${paths.log_dir}/runs/${hydra:runtime.choices.data}/dim_${data.dim}/${prior.prior_type}_${prior.alpha}/${hydra:runtime.choices.method}/${now:%Y-%m-%d}_${now:%H-%M-%S}
+sweep:
+  dir: ${paths.log_dir}/sweeps/${now:%Y-%m-%d_%H-%M-%S}
+  subdir: ${hydra:runtime.choices.data}/dim_${data.dim}/${prior.prior_type}_${prior.alpha}/${hydra:runtime.choices.method}/${hydra.job.num}
+job_logging:
+  handlers:
+    file:
+      filename: ${hydra:runtime.output_dir}/${task_name}.log

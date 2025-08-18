@@ -7,6 +7,8 @@ defaults:
   - logger: comet
   - trainer: gpu
   - experiment: null
+  - hydra: default
+  - override hydra/launcher: slurm
   - _self_
 
 paths:
@@ -18,15 +20,3 @@ paths:
 task_name: train
 seed: 42
 ckpt_path: null # for resuming the training or testing
-
-hydra:
-  job:
-    chdir: false
-  run:
-    dir: ${paths.log_dir}/${task_name}/runs/${now:%Y-%m-%d}_${now:%H-%M-%S}
-  sweep:
-    dir: ${paths.log_dir}/${task_name}/multirun/${now:%Y-%m-%d_%H-%M-%S}
-  job_logging:
-    handlers:
-      file:
-        filename: ${hydra:runtime.output_dir}/${task_name}.log

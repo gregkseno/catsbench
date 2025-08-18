@@ -10,7 +10,7 @@ defaults:
 
 data:
   dim: 16
-  num_categories: 100
+  num_categories: 50
   num_potentials: 4
   num_samples: 100000
   train_val_test_split: [0.8, 0.1, 0.1]
@@ -26,7 +26,7 @@ model:
 prior:
   alpha: 0.02
   prior_type: gaussian
-  num_timesteps: 16
+  num_timesteps: 15
   num_skip_steps: 8
 
 method:
@@ -38,6 +38,7 @@ method:
   ignore_index: -100
 
 trainer:
+  max_epochs: 30
   limit_train_batches: 20000 # controls number of IMF inner iterations
   val_check_interval: 1000
   accumulate_grad_batches: 1
