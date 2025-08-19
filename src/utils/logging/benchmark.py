@@ -330,12 +330,12 @@ class BenchmarkLogger(Callback):
         # model's trajectories
         pred_trajectories = pl_module.sample_trajectory(traj_start)
         num_timesteps = pred_trajectories.shape[0]
-        if num_timesteps > 10:
+        if num_timesteps > 17:
             pred_trajectories = torch.stack([
                     pred_trajectories[0], 
-                    pred_trajectories[num_timesteps // 8], 
+                    pred_trajectories[num_timesteps // 4], 
                     pred_trajectories[num_timesteps // 2], 
-                    pred_trajectories[(num_timesteps * 7) // 8], 
+                    pred_trajectories[(num_timesteps * 3) // 4], 
                     pred_trajectories[-1]
                 ], dim=0
             )

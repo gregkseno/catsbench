@@ -65,7 +65,6 @@ class DLightSB(LightningModule):
         return log_v
 
     def get_log_c(self, x_start: torch.Tensor) -> torch.Tensor:
-        
         log_z = torch.zeros(x_start.shape[0], self.hparams.num_potentials, device=self.device)
         
         for d in range(self.hparams.dim):
@@ -184,5 +183,13 @@ class DLightSB(LightningModule):
         return y_samples
     
     @torch.no_grad()
-    def sample_trajectory(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.stack([x, self.sample(x)], dim=0)
+    def sample_trajectory(self, x_start: torch.Tensor) -> torch.Tensor:
+        x_end = self.sample(x_start)
+
+        trajectory = [x_start]
+        for t in range(1, self.prior.num_timesteps + 1):
+            t = torch.full((x_start.shape[0],), t, device=x_start.device)
+            x_t = self.prior.sample_bridge(x_start, x_end, t)
+            trajectory.append(x_t)
+        trajectory.append(x_end)
+        return torch.stack(trajectory, dim=0)
