@@ -152,7 +152,9 @@ class DLightSB_M(LightningModule):
         )
         x_t = self.prior.sample_bridge(true_x_start, true_x_end, t)
 
-        true_q_posterior_logits = self.prior.posterior_logits(true_x_start, x_t, t, logits=False)
+        true_q_posterior_logits = self.prior.posterior_logits(
+            true_x_start, x_t, t, logits=False, fb='forward'
+        )
         pred_q_transition_logits = \
             self.prior.extract('onestep', t, column_id=x_t) + \
             self.get_log_phi_tp1(x_t, t=t)

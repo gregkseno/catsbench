@@ -195,21 +195,13 @@ class Prior(nn.Module):
 
         return x_t
     
-    def bridge_logits(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        r"""Calculates log probability of $p(x_{t} | x_{0}, x_{1})$."""
-        log_p_start_t = self.extract('cumulative', t, row_id=x_start)
-        log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
-        log_probs = log_p_start_t + log_p_t_end
-
-        log_probs = log_probs - log_probs.logsumexp(dim=-1, keepdim=True)
-        return log_probs
-    
     def posterior_logits(
         self, 
         x_start: torch.Tensor, 
         x_t: torch.Tensor, 
         t: torch.Tensor, 
-        logits: bool = False
+        logits: bool = False,
+        fb: Literal['forward', 'backward'] = 'backward'
     ) -> torch.Tensor:
         r"""Calculates logits of $p(x_{t-1} | x_{t}, x_{0})$.
         If logits is True, the output is summed over x_0 and transition matrix returned.""" 
@@ -230,9 +222,14 @@ class Prior(nn.Module):
         p_posterior_logits = log_fact1 + log_fact2
         p_posterior_logits = p_posterior_logits - p_posterior_logits.logsumexp(dim=-1, keepdim=True) # Normalize
         
-        # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already
-        is_first_step = broadcast(t, x_t.dim()) == 1
-        p_posterior_logits = torch.where(is_first_step, x_start_logits, p_posterior_logits)
+        # Use `torch.where` because when `t == N + 1` x_start_logits are actually x_1 already
+        if fb == 'forward':
+            is_final_step = broadcast(t, x_t.dim()) == self.num_timesteps + 1
+            p_posterior_logits = torch.where(is_final_step, x_start_logits, p_posterior_logits)
+        else:
+            # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already
+            is_first_step = broadcast(t, x_t.dim()) == 1
+            p_posterior_logits = torch.where(is_first_step, x_start_logits, p_posterior_logits)
         return p_posterior_logits
     
 
