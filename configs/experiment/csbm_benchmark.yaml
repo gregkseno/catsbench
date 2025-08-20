@@ -24,7 +24,7 @@ data:
   dir: ${paths.data_dir}/benchmark
 
 model:
-  timestep_dim: 2
+  timestep_dim: ${data.dim}
   layers: [128, 128, 128]
 
 prior:
