@@ -1,5 +1,6 @@
 from typing import Any, Dict, Literal, Optional, Tuple
 
+import torch
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 from src.utils import CoupleDataset, make_infinite_dataloader
@@ -60,6 +61,10 @@ class BenchmarkDataModule(LightningDataModule):
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.benchmark and not self.data_train and not self.data_val and not self.data_test:
             self.benchmark = BenchmarkDiscreteEOT(**self.hparams.benchmark_config)
+
+            # Permute the target dataset to ensure unpaired setup
+            random_indices = torch.randperm(len(self.target_dataset))
+            self.benchmark.target_dataset = self.benchmark.target_dataset[random_indices]
 
             ###################### TRAINING DATASET ######################
             size_train = int(self.hparams.num_samples * self.hparams.train_test_split[0])
