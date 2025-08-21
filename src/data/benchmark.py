@@ -63,7 +63,7 @@ class BenchmarkDataModule(LightningDataModule):
             self.benchmark = BenchmarkDiscreteEOT(**self.hparams.benchmark_config)
 
             # Permute the target dataset to ensure unpaired setup
-            random_indices = torch.randperm(len(self.target_dataset))
+            random_indices = torch.randperm(len(self.benchmark.target_dataset))
             self.benchmark.target_dataset = self.benchmark.target_dataset[random_indices]
 
             ###################### TRAINING DATASET ######################
