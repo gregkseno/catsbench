@@ -263,8 +263,6 @@ class CSBM(LightningModule):
     def markov_sample(
         self, x: torch.Tensor, t: torch.Tensor, fb: Literal['forward', 'backward']
     ) -> torch.Tensor:
-        first_step = (t == 1).long().view((x.shape[0], *[1] * (x.dim() - 1)))
-        
         with self.emas[fb].average_parameters():
             pred_x_start_logits = self.models[fb](x, t)
         pred_q_posterior_logits = self.prior.posterior_logits(pred_x_start_logits, x, t, logits=True)
@@ -272,14 +270,7 @@ class CSBM(LightningModule):
         noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
         gumbel_noise = -torch.log(-torch.log(noise))
         random_samples = torch.argmax(pred_q_posterior_logits + gumbel_noise, dim=-1)
-        
-        # No noise when t == 1
-        # NOTE: for t=1 this just "samples" from the argmax
-        # as opposed to "sampling" from the mean in the gaussian case.
-
-        argmax_samples = pred_q_posterior_logits.argmax(dim=-1)
-        samples = first_step * argmax_samples + (1 - first_step) * random_samples
-        return samples
+        return random_samples
         
     @torch.no_grad()
     def sample(
