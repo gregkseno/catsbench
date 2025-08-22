@@ -26,7 +26,8 @@ from pathlib import Path
 from src.benchmark.samplers import DiscreteColoredMNISTDataset
 from transformers import PreTrainedTokenizerFast
 
-from stylegan2 import legacy, dnnlib
+from .stylegan2 import legacy, dnnlib
+
 
 class BenchmarkDiscreteEOTBase:
         
