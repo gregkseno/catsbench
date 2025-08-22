@@ -109,12 +109,12 @@ class BenchmarkDiscreteEOT(BenchmarkDiscreteEOTBase):
     def __init__(
         self, 
         alpha: float,
-        num_val_samples: int,
         dim: int,
         num_categories: int,
         num_timesteps: int,
         num_skip_steps: int,
         num_potentials: int,
+        num_val_samples: Optional[int] = None,
         prior_type: Literal[
             'uniform', 
             'gaussian',
@@ -158,7 +158,7 @@ class BenchmarkDiscreteEOT(BenchmarkDiscreteEOTBase):
 
         else:
             print('Computing validation benchmark pairs...')
-            
+            assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
             self.input_dataset = self.sample_input(num_val_samples).to(device)
             self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device)/self.num_potentials)
             
@@ -207,12 +207,12 @@ class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
         self, 
         generator_pkl_path: str,
         alpha: float,
-        num_val_samples: int,
         dim: int, 
         num_categories: int,
         num_timesteps: int,
         num_skip_steps: int,
         num_potentials: int,
+        num_val_samples: Optional[int] = None,
         prior_type: Literal[
             'uniform', 
             'gaussian',
@@ -256,7 +256,7 @@ class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
             
         else:
             print('Computing validation benchmark pairs...')
-
+            assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
             noise = torch.randn((num_val_samples, 512)).to(device)
             input_samples = self.generator(noise)*0.5 + 0.5
             self.input_dataset = (input_samples * 255).to(torch.int32).reshape(-1, self.dim)
