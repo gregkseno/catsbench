@@ -52,7 +52,7 @@ class InfiniteCoupleDataset(IterableDataset):
         sample_input: Callable, 
         sample_target: Callable
     ):
-        self.batch_size
+        self.batch_size = batch_size
         self.sample_input = sample_input
         self.sample_target = sample_target
 
