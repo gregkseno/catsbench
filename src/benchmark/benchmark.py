@@ -26,6 +26,8 @@ from pathlib import Path
 from src.benchmark.samplers import DiscreteColoredMNISTDataset
 from transformers import PreTrainedTokenizerFast
 
+from stylegan2 import legacy, dnnlib
+
 class BenchmarkDiscreteEOTBase:
         
     def get_log_cp_cores(self, benchmark_type, spread=15):
@@ -49,18 +51,6 @@ class BenchmarkDiscreteEOTBase:
             log_cp_cores = torch.rand(size=(self.num_potentials, self.prior.num_categories, self.dim))     
 
         return log_cp_cores
-    
-    def sample_target(self, num_samples: int) -> torch.Tensor:
-        '''Sample independent target data'''
-        input_data = self.sample_input(num_samples)
-        target_data = self.sample_target_given_input(input_data)
-        return target_data
-    
-    def sample_input_target(self, num_samples: int) -> torch.Tensor:
-        '''Sample paired input and target data'''
-        input_data = self.sample_input(num_samples)
-        target_data = self.sample_target_given_input(input_data)
-        return input_data, target_data
     
     @torch.no_grad()
     def sample_target_given_input(self, x: torch.Tensor, return_trajectories: bool = False) -> torch.Tensor:
@@ -198,6 +188,123 @@ class BenchmarkDiscreteEOT(BenchmarkDiscreteEOTBase):
         else:
             raise ValueError(f'Unknown input distribution: {self.input_dist}')
         return input_samples
+    
+    def sample_target(self, num_samples: int) -> torch.Tensor:
+        '''Sample independent target data'''
+        input_data = self.sample_input(num_samples)
+        target_data = self.sample_target_given_input(input_data)
+        return target_data
+    
+    def sample_input_target(self, num_samples: int) -> torch.Tensor:
+        '''Sample paired input and target data'''
+        input_data = self.sample_input(num_samples)
+        target_data = self.sample_target_given_input(input_data)
+        return input_data, target_data
+
+class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
+    def __init__(
+        self, 
+        generator_pkl_path: str,
+        alpha: float,
+        num_val_samples: int,
+        dim: int, 
+        num_categories: int,
+        num_timesteps: int,
+        num_skip_steps: int,
+        num_potentials: int,
+        prior_type: Literal[
+            'uniform', 
+            'gaussian',
+            'gaussian_log',
+        ] = 'gaussian',
+        save_path: str = '../data/cmnist',
+        benchmark_type: Literal['gaussian_mixture'] = 'gaussian_mixture',
+        device='cpu',
+        save_bench: bool = True,
+    ):
+        print('Loading StyleGAN2 generator checkpoint...')
+        self.generator = self.load_generator(generator_pkl_path)
+        self.dim = dim
+        self.num_potentials = num_potentials
+        self.prior  = Prior(
+            alpha=alpha, 
+            num_categories=num_categories, 
+            num_timesteps=num_timesteps, 
+            num_skip_steps=num_skip_steps, 
+            prior_type=prior_type
+        ).to(device)
+        self.save_path = save_path
+        self.device    = device
+        
+        self.folder_name = f"{save_path}/num_categories_{num_categories}/prior_{prior_type}/alpha_{alpha}/"
+        
+        self.solver_path = self.folder_name + f'D_c0_{benchmark_type}.pth'
+        self.source_path = self.folder_name + f'X0_c0_{benchmark_type}.pt'
+        self.target_path = self.folder_name + f'X1_c0_{benchmark_type}.pt'
+        print('Path: ', self.solver_path)
+
+        if os.path.exists(self.source_path) and os.path.exists(self.target_path) and os.path.exists(self.solver_path):
+            print('Loading saved solver and benchmark pairs...')
+
+            self.log_params   = torch.load(self.solver_path, map_location=device)
+            self.log_alpha    = self.log_params['log_alpha']
+            self.log_cp_cores = self.log_params['log_cp_cores']
+
+            self.input_dataset  = torch.load(self.source_path, map_location=device)
+            self.target_dataset = torch.load(self.target_path, map_location=device) 
+            
+        else:
+            print('Computing validation benchmark pairs...')
+
+            noise = torch.randn((num_val_samples, 512)).to(device)
+            input_samples = self.generator(noise)*0.5 + 0.5
+            self.input_dataset = (input_samples * 255).to(torch.int32).reshape(-1, self.dim)
+
+            print(self.input_dataset.shape)
+
+            self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device)/self.num_potentials)
+            log_cp_cores = self.get_log_cp_cores(benchmark_type, spread=15)
+            self.log_cp_cores = log_cp_cores.permute(2, 0, 1).to(device) #(K, S, D) -> (D, K, S)
+
+            print('Sampling validation target points...')
+            target_samples = []
+            n_batches = num_val_samples//5000
+            for ix in range(n_batches):
+                target_batch = self.sample_target_given_input(self.input_dataset[ix*5000:(ix+1)*5000], return_trajectories=False)
+                target_samples.append(target_batch)
+
+            self.target_dataset = torch.cat(target_samples, dim=0)
+            
+            self.log_params = {
+                'log_alpha': self.log_alpha,
+                'log_cp_cores': self.log_cp_cores
+            }
+            if save_bench:
+                self.save()
+
+    def load_generator(self, generator_pkl_path):
+        with dnnlib.util.open_url(generator_pkl_path) as f:
+            G =  legacy.load_network_pkl(f)['G_ema'].to(self.device)
+
+        generator = lambda x: ((G(x, None)*0.5 + 0.5).clamp(0, 1)*255).to(torch.int32)
+        return generator
+    
+    def sample_input(self, num_samples: int, seed: int) -> torch.tensor:
+        noise = torch.randn((num_samples, 512), device=self.device)
+        output = self.generator(noise).reshape(-1, self.dim)
+        return output
+    
+    def sample_target(self, num_samples: int, seed: int) -> torch.tensor:
+        noise = torch.randn((num_samples, 512), device=self.device)
+        output = self.generator(noise).reshape(-1, self.dim)
+        noised_output = self.sample_target_given_input(output)
+        return noised_output
+    
+    def sample_input_target(self, num_samples: int, seed: int)-> torch.tensor:
+        noise = torch.randn((num_samples, 512), device=self.device)
+        output = self.generator(noise).reshape(-1, self.dim)
+        noised_output = self.sample_target_given_input(output)
+        return output, noised_output
 
 class BenchmarkDiscreteEOTImages(BenchmarkDiscreteEOT):
     def __init__(
@@ -309,127 +416,7 @@ class BenchmarkDiscreteEOTImages(BenchmarkDiscreteEOT):
         self.target_sampler = LoaderSampler(target_dataloader)
         self.target_sampler_shuffled = LoaderSampler(target_dataloader_shuffled)
 
-class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
-    def __init__(
-        self, 
-        generator,
-        alpha: float,
-        dim: int, 
-        num_categories: int,
-        num_timesteps: int,
-        num_skip_steps: int,
-        num_potentials: int,
-        prior_type: Literal[
-            'uniform', 
-            'gaussian',
-            'gaussian_log',
-        ] = 'gaussian',
-        save_path: str = '../data/cmnist',
-        benchmark_type: Literal['gaussian_mixture'] = 'gaussian_mixture',
-        device='cpu',
-        precompute: bool = False,
-        save_bench: bool = True,
-        batch_size = 128  # Useful if we want to train iterating over all batches.
-    ):
-        self.generator = generator
-        self.dim = dim
-        self.num_potentials = num_potentials
-        self.prior  = Prior(
-            alpha=alpha, 
-            num_categories=num_categories, 
-            num_timesteps=num_timesteps, 
-            num_skip_steps=num_skip_steps, 
-            prior_type=prior_type
-        ).to(device)
-        self.save_path = save_path
-        self.device    = device
-        
-        self.folder_name = f"{save_path}/num_categories_{num_categories}/prior_{prior_type}/alpha_{alpha}/"
-        
-        self.solver_path = self.folder_name + f'D_c0_{benchmark_type}.pth'
-        self.source_path = self.folder_name + f'X0_c0_{benchmark_type}.pt'
-        self.target_path = self.folder_name + f'X1_c0_{benchmark_type}.pt'
-        print('Path: ', self.solver_path)
 
-        if os.path.exists(self.source_path) and os.path.exists(self.target_path) and os.path.exists(self.solver_path):
-            print('Loading saved solver and benchmark pairs...')
-
-            self.log_params   = torch.load(self.solver_path, map_location=device)
-            self.log_alpha    = self.log_params['log_alpha']
-            self.log_cp_cores = self.log_params['log_cp_cores']
-
-            self.input_dataset  = torch.load(self.source_path, map_location=device)
-            self.target_dataset = torch.load(self.target_path, map_location=device) 
-
-        elif precompute:
-            print('Computing benchmark...')
-
-            noise = torch.randn((100_000, 512)).to(device)
-            input_samples = generator(noise)*0.5 + 0.5
-            self.input_dataset = (input_samples * 255).to(torch.int32).reshape(-1, self.dim)
-
-            print(self.input_dataset.shape)
-
-            self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device)/self.num_potentials)
-            log_cp_cores = self.get_log_cp_cores(benchmark_type, spread=15)
-            self.log_cp_cores = log_cp_cores.permute(2, 0, 1).to(device) #(K, S, D) -> (D, K, S)
-
-            print('Sampling target points...')
-            target_samples = []
-            n_batches = 100000//5000
-            for ix in range(n_batches):
-                target_batch = self.sample_target_given_input(self.input_dataset[ix*5000:(ix+1)*5000], return_trajectories=False)
-                target_samples.append(target_batch)
-
-            self.target_dataset = torch.cat(target_samples, dim=0)
-            
-            self.log_params = {
-                'log_alpha': self.log_alpha,
-                'log_cp_cores': self.log_cp_cores
-            }
-            if save_bench:
-                self.save()
-
-        else:
-            self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device)/self.num_potentials)
-            log_cp_cores = self.get_log_cp_cores(benchmark_type, spread=15)
-            self.log_cp_cores = log_cp_cores.permute(2, 0, 1).to(device) #(K, S, D) -> (D, K, S)
-            self.log_params = {
-                'log_alpha': self.log_alpha,
-                'log_cp_cores': self.log_cp_cores
-            }
-
-        try:
-            random_indices      = torch.randperm(len(self.input_dataset))
-            self.input_dataset  = self.input_dataset[random_indices]
-            self.target_dataset = self.target_dataset[random_indices]
-
-            input_dataloader  = DataLoader(self.input_dataset, batch_size=batch_size, shuffle=False)
-            target_dataloader = DataLoader(self.target_dataset, batch_size=batch_size, shuffle=False)
-            target_dataloader_shuffled = DataLoader(self.target_dataset, batch_size=batch_size, shuffle=True)
-
-            self.input_sampler  = LoaderSampler(input_dataloader)
-            self.target_sampler = LoaderSampler(target_dataloader)
-            self.target_sampler_shuffled = LoaderSampler(target_dataloader_shuffled)
-        except:
-            print('No precomputed samples, only generation is possible...')
-
-    def generate_input(self, num_samples: int) -> torch.tensor:
-        noise = torch.randn((num_samples, 512), device=self.device)
-        output = self.generator(noise).reshape(-1, self.dim)
-        return output
-    
-    def generate_target(self, num_samples: int) -> torch.tensor:
-        noise = torch.randn((num_samples, 512), device=self.device)
-        output = self.generator(noise).reshape(-1, self.dim)
-        noised_output = self.sample_target_given_input(output)
-        return noised_output
-    
-    def generate_input_target(self, num_samples: int)-> torch.tensor:
-        noise = torch.randn((num_samples, 512), device=self.device)
-        output = self.generator(noise).reshape(-1, self.dim)
-        noised_output = self.sample_target_given_input(output)
-        return output, noised_output
 
 class BenchmarkDiscreteEOTImagesGenerated_old(BenchmarkDiscreteEOT):
     def __init__(
