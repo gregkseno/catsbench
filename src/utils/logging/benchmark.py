@@ -109,12 +109,11 @@ class BenchmarkLogger(Callback):
             {
                 'tv_complement': TVComplement(self.dim, self.num_categories),
                 'contingency_similarity': ContingencySimilarity(self.dim, self.num_categories),
-                'c2st': ClassifierTwoSampleTest()
             },
         )
         pl_module.cond_metrics = pl_module.metrics.clone(prefix='cond_')
-        pl_module.paired_c2st = ClassifierTwoSampleTest()
-        pl_module.cond_paired_c2st = ClassifierTwoSampleTest()
+        pl_module.c2st = ClassifierTwoSampleTest()
+        pl_module.cond_c2st = ClassifierTwoSampleTest()
 
 
     def on_train_batch_end(
@@ -145,7 +144,7 @@ class BenchmarkLogger(Callback):
 
         pred_x_end = pl_module.sample(x_start)
         pl_module.metrics.update(x_end, pred_x_end)
-        pl_module.paired_c2st.update(
+        pl_module.c2st.update(
             torch.cat([x_start, x_end], dim=-1), 
             torch.cat([x_start, pred_x_end], dim=-1)
         )
@@ -154,7 +153,7 @@ class BenchmarkLogger(Callback):
         cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
         cond_pred_x_end = pl_module.sample(repeated_x_start)
         pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
-        pl_module.cond_paired_c2st.update(
+        pl_module.cond_c2st.update(
             torch.cat([repeated_x_start, cond_x_end], dim=-1), 
             torch.cat([repeated_x_start, cond_pred_x_end], dim=-1)
         )
@@ -171,13 +170,13 @@ class BenchmarkLogger(Callback):
         pl_module.log_dict(metrics)
         pl_module.metrics.reset()
 
-        paired_c2st = pl_module.paired_c2st.compute()
-        pl_module.log(f'val/paired_c2st_{fb}', paired_c2st)
-        pl_module.paired_c2st.reset()
+        c2st = pl_module.c2st.compute()
+        pl_module.log(f'val/c2st_{fb}', c2st)
+        pl_module.c2st.reset()
 
-        cond_paired_c2st = pl_module.cond_paired_c2st.compute()
-        pl_module.log(f'val/cond_paired_c2st_{fb}', cond_paired_c2st)
-        pl_module.cond_paired_c2st.reset()
+        cond_c2st = pl_module.cond_c2st.compute()
+        pl_module.log(f'val/cond_c2st_{fb}', cond_c2st)
+        pl_module.cond_c2st.reset()
         
         cond_metrics = pl_module.cond_metrics.compute()
         cond_metrics = {f'val/{k}_{fb}': v for k, v in cond_metrics.items()}
@@ -197,7 +196,7 @@ class BenchmarkLogger(Callback):
 
         pred_x_end = pl_module.sample(x_start)
         pl_module.metrics.update(x_end, pred_x_end)
-        pl_module.paired_c2st.update(
+        pl_module.c2st.update(
             torch.cat([x_start, x_end], dim=-1), 
             torch.cat([x_start, pred_x_end], dim=-1)
         )
@@ -206,7 +205,7 @@ class BenchmarkLogger(Callback):
         cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
         cond_pred_x_end = pl_module.sample(repeated_x_start)
         pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
-        pl_module.cond_paired_c2st.update(
+        pl_module.cond_c2st.update(
             torch.cat([repeated_x_start, cond_x_end], dim=-1), 
             torch.cat([repeated_x_start, cond_pred_x_end], dim=-1)
         )
@@ -223,13 +222,13 @@ class BenchmarkLogger(Callback):
         pl_module.log_dict(metrics)
         pl_module.metrics.reset()
 
-        paired_c2st = pl_module.paired_c2st.compute()
-        pl_module.log(f'test/paired_c2st_{fb}', paired_c2st)
-        pl_module.paired_c2st.reset()
+        c2st = pl_module.c2st.compute()
+        pl_module.log(f'test/c2st_{fb}', c2st)
+        pl_module.c2st.reset()
 
-        cond_paired_c2st = pl_module.cond_paired_c2st.compute()
-        pl_module.log(f'test/cond_paired_c2st_{fb}', cond_paired_c2st)
-        pl_module.cond_paired_c2st.reset()
+        cond_c2st = pl_module.cond_c2st.compute()
+        pl_module.log(f'test/cond_c2st_{fb}', cond_c2st)
+        pl_module.cond_c2st.reset()
 
         cond_metrics = pl_module.cond_metrics.compute()
         cond_metrics = {f'test/{k}_{fb}': v for k, v in cond_metrics.items()}

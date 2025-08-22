@@ -47,9 +47,10 @@ class ClassifierTwoSampleTest(Metric):
 
         model = LogisticRegression(**self.model_kwargs)
         model.fit(X_train, y_train)
-        roc_auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
+        score = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
+        score = 1 - abs(score - 0.5) * 2
 
-        return torch.tensor(roc_auc, dtype=torch.float32)
+        return torch.tensor(score, dtype=torch.float32)
 
 
 
