@@ -2,7 +2,7 @@
 
 defaults:
   - override /data: benchmark
-  - override /model: simple_mlp
+  - override /model: simple_dit
   - override /method: csbm
   - override /callbacks:
     - rich_progress_bar
@@ -23,9 +23,9 @@ data:
   pin_memory: false
   dir: ${paths.data_dir}/benchmark
 
-model:
-  timestep_dim: ${data.dim}
-  layers: [128, 128, 128]
+#model:
+#  timestep_dim: ${data.dim}
+#  layers: [128, 128, 128]
 
 prior:
   alpha: 0.02
