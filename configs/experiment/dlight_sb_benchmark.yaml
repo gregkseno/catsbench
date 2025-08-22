@@ -16,8 +16,6 @@ data:
   dim: 16
   num_categories: 50
   num_potentials: 4
-  num_samples: 100000
-  train_test_split: [0.8, 0.2]
   batch_size: 128 
   num_workers: 0
   pin_memory: false

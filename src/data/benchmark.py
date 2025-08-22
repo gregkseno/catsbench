@@ -3,7 +3,7 @@ from typing import Any, Dict, Literal, Optional, Tuple
 import torch
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
-from src.utils import CoupleDataset, make_infinite_dataloader
+from src.utils import CoupleDataset, InfiniteCoupleDataset
 from src.benchmark import BenchmarkDiscreteEOT
 
 
@@ -13,8 +13,7 @@ class BenchmarkDataModule(LightningDataModule):
         dim: int,
         num_categories: int,
         num_potentials: int,
-        num_samples: int,
-        train_test_split: Tuple[float, float, float],
+        num_test_samples: int,
         batch_size: int,
         input_dist: Literal['gaussian', 'uniform'],
         benchmark_config: Dict[str, Any],
@@ -22,13 +21,6 @@ class BenchmarkDataModule(LightningDataModule):
         pin_memory: bool = False,
         dir: str = './data',
     ) -> None:
-        assert len(train_test_split) == 2, ( 
-            "train_test_split must be a tuple of three floats "
-            "representing the proportions for train and val sets."
-        )
-        assert sum(train_test_split) == 1.0, \
-            "The sum of train_test_split must be equal to 1.0."
-
         super().__init__()
         # somehow this function is able to load all 
         # the method arguments and put to `self.hparams`
@@ -67,28 +59,26 @@ class BenchmarkDataModule(LightningDataModule):
             self.benchmark.target_dataset = self.benchmark.target_dataset[random_indices]
 
             ###################### TRAINING DATASET ######################
-            size_train = int(self.hparams.num_samples * self.hparams.train_test_split[0])
-            self.data_train = CoupleDataset(
-                input_dataset=self.benchmark.input_dataset[:size_train],
-                target_dataset=self.benchmark.target_dataset[:size_train],
+            self.data_train = InfiniteCoupleDataset(
+                self.batch_size_per_device,
+                input_dataset=self.benchmark.sample_input,
+                target_dataset=self.benchmark.sample_target,
             )
 
             ####################### VALIDATION DATASET ######################
-            size_val = int(self.hparams.num_samples * self.hparams.train_test_split[1])
             self.data_val = CoupleDataset(
-                input_dataset=self.benchmark.input_dataset[-size_val:],
-                target_dataset=self.benchmark.target_dataset[-size_val:],
+                input_dataset=self.benchmark.input_dataset,
+                target_dataset=self.benchmark.target_dataset,
             )
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader."""
-        return make_infinite_dataloader(DataLoader(
+        return DataLoader(
             dataset=self.data_train,
-            batch_size=self.batch_size_per_device,
+            batch_size=None,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
-            shuffle=True,
-        ))
+        )
 
     def val_dataloader(self) -> DataLoader[Any]:
         """Create and return the validation dataloader."""

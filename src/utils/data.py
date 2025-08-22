@@ -1,8 +1,8 @@
-from typing import Any
+from typing import Any, Callable
 import numpy as np
 import ot
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, IterableDataset, DataLoader
 
 
 def broadcast(tensor: torch.Tensor, num_add_dims: int, dim: int = -1) -> torch.Tensor:
@@ -44,6 +44,21 @@ class CoupleDataset(Dataset):
         return (self.input_dataset[idx % self.len_input],
                 self.target_dataset[idx % self.len_target])
 
+class InfiniteCoupleDataset(IterableDataset):
+    """A dataset that couples two datasets together, allowing for infinite paired sampling."""
+    def __init__(
+        self, 
+        batch_size: int, 
+        sample_input: Callable, 
+        sample_target: Callable
+    ):
+        self.batch_size
+        self.sample_input = sample_input
+        self.sample_target = sample_target
+
+    def __iter__(self):
+        while True:
+            yield self.sample_input(self.batch_size), self.sample_target(self.batch_size)
 
 def optimize_coupling(x: torch.Tensor, y: torch.Tensor):
     """Permutes batches of data to optimize the coupling between them using Euclidian distance."""
