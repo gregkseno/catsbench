@@ -4,6 +4,7 @@ from src.utils.data import (
     log_space_product,
     convert_to_numpy, 
     convert_to_torch, 
+    make_infinite_dataloader,
     CoupleDataset,
     InfiniteCoupleDataset,
     optimize_coupling

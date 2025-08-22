@@ -13,7 +13,6 @@ class BenchmarkDataModule(LightningDataModule):
         dim: int,
         num_categories: int,
         num_potentials: int,
-        num_test_samples: int,
         batch_size: int,
         input_dist: Literal['gaussian', 'uniform'],
         benchmark_config: Dict[str, Any],
@@ -61,8 +60,8 @@ class BenchmarkDataModule(LightningDataModule):
             ###################### TRAINING DATASET ######################
             self.data_train = InfiniteCoupleDataset(
                 self.batch_size_per_device,
-                input_dataset=self.benchmark.sample_input,
-                target_dataset=self.benchmark.sample_target,
+                sample_input=self.benchmark.sample_input,
+                sample_target=self.benchmark.sample_target,
             )
 
             ####################### VALIDATION DATASET ######################
