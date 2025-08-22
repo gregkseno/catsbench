@@ -32,7 +32,7 @@ method:
   distr_init: gaussian
 
 trainer:
-  max_epochs: 10
+  max_epochs: 5
   limit_train_batches: 20000 # controls number of IMF inner iterations
   val_check_interval: 1000
   accumulate_grad_batches: 1
