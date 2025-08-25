@@ -13,6 +13,7 @@ from src.utils import convert_to_numpy, fig2img
 class ToyLogger(Callback):
     def __init__(
         self,
+        num_samples: int,
         num_trajectories: int, 
         num_translations: int,
         axlim: Optional[Tuple[float, float]] = None,
@@ -21,8 +22,14 @@ class ToyLogger(Callback):
         dpi: int = 100
     ):
         super().__init__()
+        self.num_samples = num_samples
         self.num_trajectories = num_trajectories
         self.num_translations = num_translations
+        self._buffers = {
+            stage: {'x_start': [], 'x_end': []} \
+                for stage in ('train', 'val', 'test')
+        }
+
         self.axlim = [7, 43] if axlim is None else axlim
         self.samples_fig_config = {
             'figsize': (12, 4) if samples_figsize is None else samples_figsize,
@@ -58,6 +65,38 @@ class ToyLogger(Callback):
             'front': {'c': 'grey', 'markeredgecolor': 'black', 'linewidth': 1, 'zorder': 2}
         }
 
+    def _reset_buf(self, stage: Literal['train','val','test']) -> None:
+        self._buffers[stage]['x_start'].clear()
+        self._buffers[stage]['x_end'].clear()
+
+    def _accumulate_buf(
+        self, 
+        stage: Literal['train','val','test'],
+        x_start: torch.Tensor, 
+        x_end: torch.Tensor
+    ) -> None:
+        buf = self._buffers[stage]
+        have = sum(t.shape[0] for t in buf['x_start'])
+        remain = self.num_samples - have
+        if remain <= 0:
+            return
+        take = min(remain, x_start.shape[0])
+        buf['x_start'].append(x_start[:take].detach())
+        buf['x_end'].append(x_end[:take].detach())
+
+    def _log_buf(self, stage: Literal['train','val','test'], pl_module: LightningModule) -> None:
+        buf = self._buffers[stage]
+        if not buf['x_start']:
+            return
+        x_start = torch.cat(buf['x_start'], dim=0)[:self.num_samples]
+        x_end = torch.cat(buf['x_end'], dim=0)[:self.num_samples]
+        self._log_smaples(x_start, x_end, pl_module, stage)
+        self._log_trajectories(x_start, x_end, pl_module, stage=stage)
+        self._reset_buf(stage)
+
+    def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        self._reset_buf('train')
+
     def on_train_batch_end(
         self,
         trainer: Trainer,
@@ -68,10 +107,13 @@ class ToyLogger(Callback):
     ) -> None:
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
+        self._accumulate_buf('train', x_start, x_end)
 
-        if batch_idx == 0:
-            self._log_smaples(x_start, x_end, pl_module, 'train')
-            self._log_trajectories(x_start, pl_module, stage='train')
+    def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        self._log_buf('train', pl_module)
+
+    def on_validation_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        self._reset_buf('val')
 
     def on_validation_batch_end(
         self,
@@ -83,10 +125,13 @@ class ToyLogger(Callback):
     ) -> None:
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
+        self._accumulate_buf('val', x_start, x_end)
 
-        if batch_idx == len(trainer.val_dataloaders) - 2:
-            self._log_smaples(x_start, x_end, pl_module, 'val')
-            self._log_trajectories(x_start, pl_module, stage='val')
+    def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
+        self._log_buf('val', pl_module)
+
+    def on_test_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        self._reset_buf('test')
 
     def on_test_batch_end(
         self,
@@ -98,10 +143,10 @@ class ToyLogger(Callback):
     ) -> None:
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
+        self._accumulate_buf('test', x_start, x_end)
 
-        if batch_idx == len(trainer.test_dataloaders) - 2:
-            self._log_smaples(x_start, x_end, pl_module, 'test')
-            self._log_trajectories(x_start, pl_module, stage='test')
+    def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
+        self._log_buf('test', pl_module)
 
     @rank_zero_only
     def _log_smaples(
