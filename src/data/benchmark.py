@@ -48,7 +48,7 @@ class BenchmarkDataModule(LightningDataModule):
                     f"Batch size ({self.hparams.batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."
                 )
             self.batch_size_per_device = self.hparams.batch_size // self.trainer.world_size
-            self.val_batch_size_per_device = self.hparams.val_batch_size_per_device // self.trainer.world_size
+            self.val_batch_size_per_device = self.hparams.val_batch_size // self.trainer.world_size
 
         # here is an `if` because the `setup` method is called multiple times 
         # for trainer.fit, trainer.validate, trainer.test, etc.
