@@ -2,7 +2,8 @@ _target_: src.data.BenchmarkDataModule
 dim: 16
 num_categories: 100
 num_potentials: 4
-batch_size: 128 
+batch_size: 128
+val_batch_size: 32
 input_dist: gaussian
 num_workers: 0
 pin_memory: false

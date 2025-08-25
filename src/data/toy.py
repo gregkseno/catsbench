@@ -142,6 +142,7 @@ class ToyDataModule(LightningDataModule):
         num_samples: int,
         train_test_split: Tuple[float, float, float],
         batch_size: int,
+        val_batch_size: int,
         num_workers: int = 0,
         pin_memory: bool = False,
     ) -> None:
@@ -176,6 +177,7 @@ class ToyDataModule(LightningDataModule):
                     f"Batch size ({self.hparams.batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."
                 )
             self.batch_size_per_device = self.hparams.batch_size // self.trainer.world_size
+            self.val_batch_size_per_device = self.hparams.val_batch_size_per_device // self.trainer.world_size
 
         # here is an `if` because the `setup` method is called multiple times 
         # for trainer.fit, trainer.validate, trainer.test, etc.
@@ -208,7 +210,7 @@ class ToyDataModule(LightningDataModule):
         """Create and return the validation dataloader."""
         return DataLoader(
             dataset=self.data_val,
-            batch_size=self.batch_size_per_device,
+            batch_size=self.val_batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
@@ -218,7 +220,7 @@ class ToyDataModule(LightningDataModule):
         """Create and return the test dataloader."""
         return DataLoader(
             dataset=self.data_val,
-            batch_size=self.batch_size_per_device,
+            batch_size=self.val_batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
