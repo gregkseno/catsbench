@@ -58,7 +58,7 @@ class CSBM_AR(LightningModule):
             'forward': self.model_forward,
             'backward': self.model_backward,
         }
-        self.emas = {
+        self.emas: Dict[str, ExponentialMovingAverage] = {
             'forward': ema(self.models['forward'].parameters()),
             'backward': ema(self.models['backward'].parameters())
         }
@@ -277,6 +277,16 @@ class CSBM_AR(LightningModule):
                 {'optimizer': optimizer_backward, 'lr_scheduler': scheduler_backward}
             ]
         return [{'optimizer': optimizer_forward}, {'optimizer': optimizer_backward}]
+
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        checkpoint['ema_forward'] = self.emas['forward'].state_dict()
+        checkpoint['ema_backward'] = self.emas['backward'].state_dict()
+
+    def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        if 'ema_forward' in checkpoint:
+            self.emas['forward'].load_state_dict(checkpoint['ema_forward'])
+        if 'ema_backward' in checkpoint:
+            self.emas['backward'].load_state_dict(checkpoint['ema_backward'])
 
     def markov_sample(
         self, x: torch.Tensor, t: torch.Tensor, fb: Literal['forward', 'backward']
