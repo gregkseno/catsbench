@@ -3,7 +3,7 @@ _target_: src.methods.dlight_sb_m.DLightSB_M
 optimizer:
   _target_: torch.optim.AdamW
   _partial_: true
-  lr: 1e-2
+  lr: 1e-3
   betas: [0.95, 0.99]
 
 prior: ${prior}
