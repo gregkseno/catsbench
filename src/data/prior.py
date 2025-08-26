@@ -242,18 +242,18 @@ class Prior(nn.Module):
         assert x_end_logits.shape == x_t.shape + (self.num_categories,), \
             f"x_end_logits.shape: {x_end_logits.shape}, x_t.shape: {x_t.shape}"
 
-        log_fact1 = self.extract('onestep', t+1, column_id=x_t)  # shape: x_t.shape + (num_categories,)
+        log_fact1 = self.extract('onestep', t+1, row_id=x_t)  # shape: x_t.shape + (num_categories,)
 
         x_end_logits = x_end_logits.log_softmax(dim=-1)
         log_fact2 = log_space_product(
-            x_end_logits, self.log_p_cum[self.num_timesteps - t].transpose(-2, -1)
+            x_end_logits, self.log_p_cum[self.num_timesteps - t] #.transpose(-2, -1)
         )
 
         p_posterior_logits = log_fact1 + log_fact2
         p_posterior_logits = p_posterior_logits - p_posterior_logits.logsumexp(dim=-1, keepdim=True)
 
-        is_last_step = broadcast(t, x_t.dim()) == self.num_timesteps
-        p_posterior_logits = torch.where(is_last_step, x_end_logits, p_posterior_logits)
+        # is_last_step = broadcast(t, x_t.dim()) == self.num_timesteps
+        # p_posterior_logits = torch.where(is_last_step, x_end_logits, p_posterior_logits)
         return p_posterior_logits
 
 

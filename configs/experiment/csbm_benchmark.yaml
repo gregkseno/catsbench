@@ -2,7 +2,7 @@
 
 defaults:
   - override /data: benchmark
-  - override /model: simple_dit
+  - override /model: simple_mlp
   - override /method: csbm
   - override /callbacks:
     - rich_progress_bar
@@ -42,6 +42,6 @@ method:
 trainer:
   max_epochs: 14
   limit_train_batches: 20000 # controls number of IMF inner iterations
-  val_check_interval: 1000
+  val_check_interval: null
   accumulate_grad_batches: 1
   gradient_clip_val: null
