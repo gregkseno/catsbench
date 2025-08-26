@@ -91,7 +91,7 @@ class ToyLogger(Callback):
         x_start = torch.cat(buf['x_start'], dim=0)[:self.num_samples]
         x_end = torch.cat(buf['x_end'], dim=0)[:self.num_samples]
         self._log_smaples(x_start, x_end, pl_module, stage)
-        self._log_trajectories(x_start, x_end, pl_module, stage=stage)
+        self._log_trajectories(x_start, pl_module, stage=stage)
         self._reset_buf(stage)
 
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
