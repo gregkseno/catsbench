@@ -223,8 +223,6 @@ class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
         device='cpu',
         save_bench: bool = True,
     ):
-        print('Loading StyleGAN2 generator checkpoint...')
-        self.generator = self.load_generator(generator_pkl_path)
         self.dim = dim
         self.num_potentials = num_potentials
         self.prior  = Prior(
@@ -236,6 +234,9 @@ class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
         ).to(device)
         self.save_path = save_path
         self.device    = device
+
+        print('Loading StyleGAN2 generator checkpoint...')
+        self.generator = self.load_generator(generator_pkl_path)
         
         self.folder_name = f"{save_path}/num_categories_{num_categories}/prior_{prior_type}/alpha_{alpha}/"
         

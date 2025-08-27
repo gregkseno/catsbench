@@ -19,7 +19,7 @@ from src.benchmark import BenchmarkDiscreteEOTImagesGenerated
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-class BenchmarkLogger(Callback):
+class BenchmarkImagesLogger(Callback):
     benchmark: BenchmarkDiscreteEOTImagesGenerated
 
     def __init__(

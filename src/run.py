@@ -1,12 +1,15 @@
 from typing import List
 
+import sys
+sys.path.append('src/benchmark/stylegan2')
+
 from omegaconf import DictConfig, OmegaConf
 import hydra
 from hydra.utils import instantiate
 
 import lightning as L
 from lightning import Callback, LightningDataModule, LightningModule, Trainer
-from lightning.pytorch.loggers import Logger, WandbLogger, CometLogger
+from lightning.pytorch.loggers import Logger
 
 from src.utils.logging.console import RankedLogger
 from src.utils import instantiate_callbacks, instantiate_loggers
