@@ -16,7 +16,7 @@ data:
   dim: 3072
   num_categories: 256
   num_potentials: 4
-  batch_size: 128
+  batch_size: 32
   num_workers: 0
   pin_memory: false
   dir: ${paths.data_dir}/benchmark_images
