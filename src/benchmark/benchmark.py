@@ -258,9 +258,16 @@ class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
         else:
             print('Computing validation benchmark pairs...')
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
-            noise = torch.randn((num_val_samples, 512)).to(device)
-            input_samples = self.generator(noise)*0.5 + 0.5
-            self.input_dataset = (input_samples * 255).to(torch.int32).reshape(-1, self.dim)
+
+            samples_per_batch = 2000
+            n_batches = num_val_samples // samples_per_batch
+            input_samples_list = []
+            for _ in range(n_batches):
+                noise = torch.randn((samples_per_batch, 512), device=self.device)
+                input_samples = self.generator(noise).reshape(-1, self.dim)
+                input_samples_list.append(input_samples)
+        
+            self.input_dataset = torch.cat(input_samples_list, dim=0)
 
             print(self.input_dataset.shape)
 
@@ -270,9 +277,8 @@ class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
 
             print('Sampling validation target points...')
             target_samples = []
-            n_batches = num_val_samples//5000
             for ix in range(n_batches):
-                target_batch = self.sample_target_given_input(self.input_dataset[ix*5000:(ix+1)*5000], return_trajectories=False)
+                target_batch = self.sample_target_given_input(self.input_dataset[ix*samples_per_batch:(ix+1)*samples_per_batch], return_trajectories=False)
                 target_samples.append(target_batch)
 
             self.target_dataset = torch.cat(target_samples, dim=0)
