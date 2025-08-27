@@ -24,7 +24,7 @@ class BenchmarkLogger(Callback):
 
     def __init__(
         self,
-        dim: Tuple[int, int, int],
+        dim: int,
         num_categories: int,
         num_samples: int, 
         num_trajectories: int, 
@@ -282,7 +282,7 @@ class BenchmarkLogger(Callback):
         traj_start = x_start[:self.num_trajectories]
         repeats = [self.num_translations] + [1] * traj_start.dim()
         traj_start = traj_start.unsqueeze(0).repeat(*repeats)
-        traj_start = traj_start.reshape(-1, *self.dim)
+        traj_start = traj_start.reshape(-1, *x_start.shape[1:])
 
         pred_trajectories = pl_module.sample_trajectory(traj_start)
         num_timesteps, nrow = pred_trajectories.shape[:2]

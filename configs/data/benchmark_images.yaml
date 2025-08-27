@@ -1,5 +1,5 @@
 _target_: src.data.BenchmarkImagesDataModule
-dim: [3, 32, 32]
+dim: 3072
 num_categories: 256
 num_potentials: 4
 batch_size: 128
@@ -19,7 +19,6 @@ benchmark_config:
   num_skip_steps: ${prior.num_skip_steps}
   num_val_samples: null
   prior_type: ${prior.prior_type}
-  input_dist: ${data.input_dist}
   save_path: ${data.dir}
   benchmark_type: gaussian_mixture
   save_bench: false

@@ -9,12 +9,11 @@ from src.benchmark import BenchmarkDiscreteEOTImagesGenerated
 class BenchmarkImagesDataModule(LightningDataModule):
     def __init__(
         self,
-        dim: Tuple[int, int, int],
+        dim: int,
         num_categories: int,
         num_potentials: int,
         batch_size: int,
         val_batch_size: int,
-        input_dist: Literal['gaussian', 'uniform'],
         benchmark_config: Dict[str, Any],
         num_workers: int = 0,
         pin_memory: bool = False,

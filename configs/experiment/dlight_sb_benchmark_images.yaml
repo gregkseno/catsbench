@@ -13,7 +13,7 @@ defaults:
   - _self_
 
 data:
-  dim: [3, 32, 32]
+  dim: 3072
   num_categories: 256
   num_potentials: 4
   batch_size: 128
