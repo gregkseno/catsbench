@@ -1,4 +1,4 @@
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Tuple
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -6,11 +6,10 @@ from lightning import LightningDataModule
 from src.utils import CoupleDataset, InfiniteCoupleDataset
 from src.benchmark import BenchmarkDiscreteEOTImagesGenerated
 
-
 class BenchmarkImagesDataModule(LightningDataModule):
     def __init__(
         self,
-        dim: int,
+        dim: Tuple[int, int, int],
         num_categories: int,
         num_potentials: int,
         batch_size: int,
@@ -19,7 +18,8 @@ class BenchmarkImagesDataModule(LightningDataModule):
         benchmark_config: Dict[str, Any],
         num_workers: int = 0,
         pin_memory: bool = False,
-        dir: str = './data',
+        dir: str = './data/benchmark_images',
+        generator_ckpt_path: str = './checkpoints/stylegan.pkl'
     ) -> None:
         super().__init__()
         # somehow this function is able to load all 
