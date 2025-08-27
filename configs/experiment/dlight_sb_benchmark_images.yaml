@@ -1,0 +1,40 @@
+# @package _global_
+
+defaults:
+  - override /data: benchmark_images
+  - override /model: null
+  - override /method: dlight_sb
+  - override /callbacks:
+    - rich_progress_bar
+    - model_checkpoint
+    - model_summary
+    - benchmark_images_metric
+  - override /trainer: gpu
+  - _self_
+
+data:
+  dim: [3, 32, 32]
+  num_categories: 256
+  num_potentials: 4
+  batch_size: 128
+  num_workers: 0
+  pin_memory: false
+  dir: ${paths.data_dir}/benchmark_images
+  generator_ckpt_path: ${paths.ckpt_dir}/...
+
+prior:
+  alpha: 0.02
+  prior_type: gaussian
+  num_timesteps: 15
+  num_skip_steps: 8
+
+method:
+  num_potentials: 1000
+  distr_init: gaussian
+
+trainer:
+  max_epochs: 5
+  limit_train_batches: 20000 # controls number of IMF inner iterations
+  val_check_interval: 1000
+  accumulate_grad_batches: 1
+  gradient_clip_val: null
