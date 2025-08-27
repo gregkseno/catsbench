@@ -16,3 +16,4 @@ src/methods/light_sb_d_conv.py
 src/benchmark/benchmark_old.py
 gan_training_loss.png
 methods/light_sb_d.py
+checkpoints/*
