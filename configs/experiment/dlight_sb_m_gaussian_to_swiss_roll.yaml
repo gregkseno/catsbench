@@ -8,7 +8,7 @@ defaults:
     - rich_progress_bar
     - model_checkpoint
     - model_summary
-    - toy_metric_callback
+    - toy_metric
   - override /trainer: gpu
   - _self_
 
