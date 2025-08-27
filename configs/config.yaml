@@ -3,7 +3,7 @@ defaults:
   - prior: default
   - model: simple_mlp 
   - method: csbm
-  - callbacks: [rich_progress_bar, model_summary, toy_metric]
+  - callbacks: [rich_progress_bar, model_summary, toy_metrics]
   - logger: comet
   - trainer: gpu
   - experiment: null

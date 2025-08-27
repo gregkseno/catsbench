@@ -19,7 +19,7 @@ class BenchmarkImagesDataModule(LightningDataModule):
         num_workers: int = 0,
         pin_memory: bool = False,
         dir: str = './data/benchmark_images',
-        generator_ckpt_path: str = './checkpoints/stylegan.pkl'
+        generator_ckpt_path: str = './checkpoints/cmnist_stylegan.pkl'
     ) -> None:
         super().__init__()
         # somehow this function is able to load all 

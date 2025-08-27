@@ -8,7 +8,7 @@ defaults:
     - rich_progress_bar
     - model_checkpoint
     - model_summary
-    - benchmark_metric
+    - benchmark_metrics
   - override /trainer: gpu
   - _self_
 

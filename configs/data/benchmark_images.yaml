@@ -7,7 +7,7 @@ val_batch_size: 32
 num_workers: 0
 pin_memory: false
 dir: ${paths.data_dir}/benchmark_images
-generator_ckpt_path: ${paths.ckpt_dir}/...
+generator_ckpt_path: ${paths.ckpt_dir}/cmnist_stylegan.pkl
 
 benchmark_config:
   generator_pkl_path: ${data.generator_ckpt_path}
