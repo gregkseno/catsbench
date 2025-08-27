@@ -290,18 +290,18 @@ class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
         generator = lambda x: ((G(x, None)*0.5 + 0.5).clamp(0, 1)*255).to(torch.int32)
         return generator
     
-    def sample_input(self, num_samples: int, seed: int) -> torch.tensor:
+    def sample_input(self, num_samples: int) -> torch.tensor:
         noise = torch.randn((num_samples, 512), device=self.device)
         output = self.generator(noise).reshape(-1, self.dim)
         return output
     
-    def sample_target(self, num_samples: int, seed: int) -> torch.tensor:
+    def sample_target(self, num_samples: int) -> torch.tensor:
         noise = torch.randn((num_samples, 512), device=self.device)
         output = self.generator(noise).reshape(-1, self.dim)
         noised_output = self.sample_target_given_input(output)
         return noised_output
     
-    def sample_input_target(self, num_samples: int, seed: int)-> torch.tensor:
+    def sample_input_target(self, num_samples: int)-> torch.tensor:
         noise = torch.randn((num_samples, 512), device=self.device)
         output = self.generator(noise).reshape(-1, self.dim)
         noised_output = self.sample_target_given_input(output)

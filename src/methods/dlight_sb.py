@@ -26,7 +26,8 @@ class DLightSB(LightningModule):
         num_potentials: int, 
         optimizer: Optimizer, # partially initialized 
         scheduler: Optional[LRScheduler] = None, # partially initialized 
-        distr_init: Literal['uniform', 'gaussian'] = 'gaussian', 
+        distr_init: Literal['uniform', 'gaussian', 'samples'] = 'gaussian',
+        init_samples: torch.tensor = None 
     ):
         super().__init__()
 
@@ -49,10 +50,19 @@ class DLightSB(LightningModule):
                     torch.ones(num_potentials, prior.num_categories) /
                     (prior.num_categories * num_potentials)
                 )
+            elif distr_init == 'samples':
+                assert init_samples is not None, 'init_samples are required'
+                cur_log_core = self.init_by_samples(init_samples)
+
             else:
                 raise ValueError(f'Invalid distr_init: {distr_init}')
             self.log_cp_cores.append(nn.Parameter(cur_log_core))
-        
+
+    def init_by_samples(self, samples: torch.Tensor, a: float = 0.9):
+        cp_cores = torch.full((self.hparams.dim, self.prior.num_categories), (1 - a) / (self.prior.num_categories - 1))
+        cp_cores[torch.arange(self.hparams.dim), samples] = a
+        self.log_cp_cores = torch.log(cp_cores)
+
     def get_log_v(self, x_end: torch.Tensor) -> torch.Tensor:
         log_terms = self.log_alpha[None, :]  # (1, K)
         
