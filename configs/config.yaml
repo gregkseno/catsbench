@@ -14,6 +14,7 @@ defaults:
 paths:
   root_dir: .
   data_dir: ${paths.root_dir}/data
+  ckpt_dir: ${paths.root_dir}/checkpoints
   log_dir: ${paths.root_dir}/logs
   output_dir: ${hydra:runtime.output_dir}
 

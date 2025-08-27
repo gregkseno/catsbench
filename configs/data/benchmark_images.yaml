@@ -1,15 +1,16 @@
-_target_: src.data.BenchmarkDataModule
-dim: 16
-num_categories: 100
+_target_: src.data.BenchmarkImagesDataModule
+dim: [3, 32, 32]
+num_categories: 256
 num_potentials: 4
 batch_size: 128
 val_batch_size: 32
-input_dist: gaussian
 num_workers: 0
 pin_memory: false
-dir: ${paths.data_dir}/benchmark
+dir: ${paths.data_dir}/benchmark_images
+generator_ckpt_path: ${paths.ckpt_dir}/...
 
 benchmark_config:
+  generator_pkl_path: ${data.generator_ckpt_path}
   alpha: ${prior.alpha}
   dim: ${data.dim}
   num_categories: ${data.num_categories}

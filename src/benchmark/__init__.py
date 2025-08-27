@@ -1,1 +1,1 @@
-from .benchmark import BenchmarkDiscreteEOT
+from .benchmark import BenchmarkDiscreteEOT, BenchmarkDiscreteEOTImagesGenerated

@@ -121,7 +121,7 @@ class BenchmarkDiscreteEOT(BenchmarkDiscreteEOTBase):
             'gaussian_log',
         ] = 'uniform',
         input_dist: Literal['gaussian', 'uniform'] = 'gaussian',
-        save_path: str = ',../data/benchmark',
+        save_path: str = '../data/benchmark',
         benchmark_type: Literal['gaussian_mixture'] = 'gaussian_mixture',
         device = 'cpu',
         save_bench = True
@@ -218,7 +218,7 @@ class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
             'gaussian',
             'gaussian_log',
         ] = 'gaussian',
-        save_path: str = '../data/cmnist',
+        save_path: str = '../data/benchmark_images',
         benchmark_type: Literal['gaussian_mixture'] = 'gaussian_mixture',
         device='cpu',
         save_bench: bool = True,
