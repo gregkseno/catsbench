@@ -15,7 +15,8 @@ import re
 import numpy as np
 import torch
 import dnnlib
-import misc
+
+from . import misc
 
 #----------------------------------------------------------------------------
 
