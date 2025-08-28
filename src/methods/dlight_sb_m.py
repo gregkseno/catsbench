@@ -87,6 +87,7 @@ class DLightSB_M(LightningModule):
         return mse_loss 
 
     def get_sb_transition_logits(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        x_t = x_t.flatten(start_dim=1)
         t_orig = t  # keep original for onestep
         t = self.prior.num_timesteps + 1 - t_orig
         tp1 = self.prior.num_timesteps - t_orig
@@ -221,6 +222,9 @@ class DLightSB_M(LightningModule):
 
     @torch.no_grad()
     def markov_sample(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        input_shape = x_t.shape
+        x_t = x_t.flatten(start_dim=1)
+
         t_orig = t  # keep original for onestep
         t   = self.prior.num_timesteps + 1 - t_orig
         tp1 = self.prior.num_timesteps - t_orig
@@ -259,7 +263,7 @@ class DLightSB_M(LightningModule):
             x_tp1[:, d] = torch.multinomial(
                 torch.softmax(logits_x_tp1_d, dim=-1), num_samples=1
             ).squeeze(-1)
-        return x_tp1
+        return x_tp1.reshape(input_shape)
 
     @torch.no_grad()
     def sample(self, x: torch.Tensor) -> torch.Tensor:

@@ -62,6 +62,7 @@ class DLightSB(LightningModule):
             self.log_cp_cores.append(nn.Parameter(cur_log_core))
 
     def get_log_v(self, x_end: torch.Tensor) -> torch.Tensor:
+        x_end = x_end.flatten(start_dim=1)
         log_terms = self.log_alpha[None, :]  # (1, K)
         
         for d in range(x_end.shape[1]):
@@ -73,6 +74,7 @@ class DLightSB(LightningModule):
         return log_v
 
     def get_log_c(self, x_start: torch.Tensor) -> torch.Tensor:
+        x_start = x_start.flatten(start_dim=1)
         log_z = torch.zeros(x_start.shape[0], self.hparams.num_potentials, device=self.device)
         
         for d in range(self.hparams.dim):
@@ -157,6 +159,9 @@ class DLightSB(LightningModule):
 
     @torch.no_grad()
     def sample(self, x: torch.Tensor) -> torch.Tensor:
+        input_shape = x.shape
+        x = x.flatten(start_dim=1)
+
         log_z = torch.zeros(x.shape[0], self.hparams.num_potentials, device=self.device)
         log_pi_ref_list = []
         for d in range(self.hparams.dim):
@@ -188,7 +193,7 @@ class DLightSB(LightningModule):
             y_d = torch.multinomial(p_d, num_samples=1).squeeze(1) #(batch_size,)
             y_samples[:, d] = y_d
         
-        return y_samples
+        return y_samples.reshape(input_shape)
     
     @torch.no_grad()
     def sample_trajectory(self, x_start: torch.Tensor) -> torch.Tensor:

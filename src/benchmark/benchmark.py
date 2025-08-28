@@ -53,6 +53,9 @@ class BenchmarkBase:
     
     @torch.no_grad()
     def sample_target_given_input(self, x: torch.Tensor, return_trajectories: bool = False) -> torch.Tensor:
+        input_shape = x.shape
+        x = x.flatten(start_dim=1)
+
         log_z = torch.zeros(x.shape[0], self.num_potentials, device=x.device)
         log_pi_ref_list = []
         for d in range(self.dim):
@@ -83,9 +86,9 @@ class BenchmarkBase:
             y_samples[:, d] = y_d
         
         if not return_trajectories:
-            return y_samples
+            return y_samples.reshape(input_shape)
         else:
-            return torch.stack([x, y_samples], dim=0)
+            return torch.stack([x.reshape(input_shape), y_samples.reshape(input_shape)], dim=0)
     
     def save(
         self, solver_path: str, source_path: str, target_path: str, dir: str
@@ -232,7 +235,6 @@ class BenchmarkImages(BenchmarkBase):
     ):
         super().__init__()
         self.dim = 3 * 32 * 32
-        self.input_shape = (3, 32, 32)
         self.num_potentials = num_potentials
         self.prior  = Prior(
             alpha=alpha, 
@@ -259,8 +261,8 @@ class BenchmarkImages(BenchmarkBase):
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
             samples_per_batch = 2000
             num_batches = num_val_samples // samples_per_batch
-            self.input_dataset = torch.empty((num_batches * samples_per_batch, *self.input_shape), dtype=torch.int)
-            self.target_dataset = torch.empty((num_batches * samples_per_batch, *self.input_shape), dtype=torch.int)
+            self.input_dataset = torch.empty((num_batches * samples_per_batch, 3, 32, 32), dtype=torch.int)
+            self.target_dataset = torch.empty((num_batches * samples_per_batch, 3, 32, 32), dtype=torch.int)
             for i in range(num_batches):
                 noise = torch.randn((samples_per_batch, 512), device=self.device)
                 start, end = samples_per_batch * i, samples_per_batch * (i + 1)
@@ -273,7 +275,7 @@ class BenchmarkImages(BenchmarkBase):
 
     @staticmethod
     def _postporcess(outputs: torch.Tensor) -> torch.Tensor:
-        return ((outputs *0.5 + 0.5).clamp(0, 1) * 255).to(torch.int)
+        return ((outputs * 0.5 + 0.5).clamp(0, 1) * 255).to(torch.int)
 
     def _load_generator(self, generator_path: str):
         log.info('Loading StyleGAN2 generator checkpoint...')
@@ -293,12 +295,12 @@ class BenchmarkImages(BenchmarkBase):
     def sample_target(self, num_samples: int) -> torch.Tensor:
         noise = torch.randn((num_samples, 512), device=self.device)
         input_samples = self._postporcess(self.generator(noise, None))
-        target_samples = self.sample_target_given_input(torch.flatten(input_samples, start_dim=1))
+        target_samples = self.sample_target_given_input(input_samples)
         return target_samples.reshape_as(input_samples)
     
     @torch.no_grad()
     def sample_input_target(self, num_samples: int)-> Tuple[torch.Tensor, torch.Tensor]:
         noise = torch.randn((num_samples, 512), device=self.device)
         input_samples = self._postporcess(self.generator(noise, None))
-        target_samples = self.sample_target_given_input(torch.flatten(input_samples, start_dim=1))
+        target_samples = self.sample_target_given_input(input_samples)
         return input_samples, target_samples.reshape_as(input_samples)
