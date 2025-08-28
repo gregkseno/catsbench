@@ -41,31 +41,35 @@ class DLightSB(LightningModule):
         nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
 
         # NOTE: I placed it here to save time if this is not the type of init required
+        log_cp_cores = torch.empty(dim, num_potentials, prior.num_categories)
+
+        if distr_init == 'uniform':
+            uniform_val = torch.log(torch.ones(num_potentials, prior.num_categories) / 
+                                (prior.num_categories * num_potentials))
+
         if distr_init == 'samples':
-            init_samples = benchmark.sample_input(num_potentials) #(K, dim)
-            cp_cores = torch.full((dim, num_potentials, prior.num_categories), (1 - sample_prob) / (prior.num_categories - 1))
+            init_samples = benchmark.sample_input(num_potentials)  # (K, dim)
+            log_sample_prob = torch.log(torch.tensor((1 - sample_prob) / (prior.num_categories - 1)))
 
         for d in range(dim):
             if distr_init == 'gaussian':
                 cur_core = (-1.0 + 0.5**2 * torch.randn(num_potentials, prior.num_categories)) \
-                   / (prior.num_categories * num_potentials)
-                cur_log_core = torch.log(cur_core ** 2)
+                    / (prior.num_categories * num_potentials)
+                log_cp_cores[d] = torch.log(cur_core ** 2)
+
             elif distr_init == 'uniform':
-                cur_log_core = torch.log(
-                    torch.ones(num_potentials, prior.num_categories) /
-                    (prior.num_categories * num_potentials)
-                )
+                log_cp_cores[d] = uniform_val
 
-            # NOTE: @Ark-130994 I think it is better to implement using loop for clarity and match the previous initializations
             elif distr_init == 'samples':
-                sample_indices = torch.arange(num_potentials) 
+                log_cp_cores[d] = log_sample_prob
+                
+                sample_indices = torch.arange(num_potentials)
                 category_indices = init_samples[:, d]
-                cp_cores[d, sample_indices, category_indices] = sample_prob
-                cur_log_core = torch.log(cp_cores)
-
+                log_cp_cores[d, sample_indices, category_indices] = torch.log(torch.tensor(sample_prob))
             else:
                 raise ValueError(f'Invalid distr_init: {distr_init}')
-            self.log_cp_cores.append(nn.Parameter(cur_log_core))
+
+        self.log_cp_cores = nn.ParameterList([nn.Parameter(log_cp_cores[d]) for d in range(dim)])
 
     def get_log_v(self, x_end: torch.Tensor) -> torch.Tensor:
         x_end = x_end.flatten(start_dim=1)
