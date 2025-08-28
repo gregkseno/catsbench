@@ -32,7 +32,7 @@ def make_infinite_dataloader(dataloader: DataLoader[Any]) -> Any:
 
 class CoupleDataset(Dataset):
     """A dataset that couples two datasets together, allowing for paired sampling."""
-    def __init__(self, input_dataset: Dataset, target_dataset: Dataset):
+    def __init__(self, input_dataset: torch.Tensor, target_dataset: torch.Tensor):
         self.input_dataset, self.target_dataset = input_dataset, target_dataset
         self.len_input, self.len_target = len(input_dataset), len(target_dataset)
         self.length = max(self.len_input, self.len_target)
@@ -71,7 +71,7 @@ def optimize_coupling(x: torch.Tensor, y: torch.Tensor):
         y = y.reshape(y.shape[0], -1)
     y = y.reshape(y.shape[0], -1)
     M = torch.cdist(x, y) ** 2
-    pi = ot.emd(a, b, M.detach().cpu().numpy())
+    pi: np.ndarray = ot.emd(a, b, M.detach().cpu().numpy()) # type: ignore
     
     # sample mapping
     p = pi.flatten()

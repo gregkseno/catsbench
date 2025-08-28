@@ -18,6 +18,8 @@ class BenchmarkBase:
     prior: Prior
     log_alpha: torch.Tensor
     log_cp_cores: torch.Tensor
+    input_dataset: torch.Tensor
+    target_dataset: torch.Tensor
 
     def _get_log_cp_cores(
         self, 

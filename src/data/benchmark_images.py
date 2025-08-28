@@ -1,8 +1,9 @@
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import torch
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
+
 from src.utils import CoupleDataset, InfiniteCoupleDataset
 from benchmark import BenchmarkImages
 
@@ -59,16 +60,18 @@ class BenchmarkImagesDataModule(LightningDataModule):
             self.benchmark.target_dataset = self.benchmark.target_dataset[random_indices]
 
             ###################### TRAINING DATASET ######################
+            # NOTE: The desired generation direction is:
+            # target (noiced digit) -> input (clean digit) 
             self.data_train = InfiniteCoupleDataset(
                 self.batch_size_per_device,
-                sample_input=self.benchmark.sample_input,
-                sample_target=self.benchmark.sample_target,
+                sample_input=self.benchmark.sample_target,
+                sample_target=self.benchmark.sample_input,
             )
 
             ####################### VALIDATION DATASET ######################
             self.data_val = CoupleDataset(
-                input_dataset=self.benchmark.input_dataset,
-                target_dataset=self.benchmark.target_dataset,
+                input_dataset=self.benchmark.target_dataset,
+                target_dataset=self.benchmark.input_dataset,
             )
 
     def train_dataloader(self) -> DataLoader[Any]:
