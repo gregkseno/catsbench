@@ -14,6 +14,7 @@ defaults:
 
 data:
   dim: 3072
+  input_shape: [3, 32, 32]
   num_categories: 256
   num_potentials: 4
   batch_size: 32

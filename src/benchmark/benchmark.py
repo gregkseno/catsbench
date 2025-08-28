@@ -232,6 +232,7 @@ class BenchmarkImages(BenchmarkBase):
     ):
         super().__init__()
         self.dim = 3 * 32 * 32
+        self.input_shape = (3, 32, 32)
         self.num_potentials = num_potentials
         self.prior  = Prior(
             alpha=alpha, 
@@ -258,8 +259,8 @@ class BenchmarkImages(BenchmarkBase):
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
             samples_per_batch = 2000
             num_batches = num_val_samples // samples_per_batch
-            self.input_dataset = torch.empty((num_batches * samples_per_batch, 3, 32, 32), dtype=torch.int)
-            self.target_dataset = torch.empty((num_batches * samples_per_batch, 3, 32, 32), dtype=torch.int)
+            self.input_dataset = torch.empty((num_batches * samples_per_batch, *self.input_shape), dtype=torch.int)
+            self.target_dataset = torch.empty((num_batches * samples_per_batch, *self.input_shape), dtype=torch.int)
             for i in range(num_batches):
                 noise = torch.randn((samples_per_batch, 512), device=self.device)
                 start, end = samples_per_batch * i, samples_per_batch * (i + 1)

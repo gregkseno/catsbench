@@ -1,5 +1,6 @@
 _target_: src.data.BenchmarkImagesDataModule
 dim: 3072
+input_shape: [3, 32, 32]
 num_categories: 256
 num_potentials: 1000
 batch_size: 32
@@ -12,7 +13,6 @@ generator_path: ${paths.ckpt_dir}/cmnist_stylegan.pkl
 benchmark_config:
   generator_path: ${data.generator_path}
   alpha: ${prior.alpha}
-  dim: ${data.dim}
   num_categories: ${data.num_categories}
   num_potentials: ${data.num_potentials}
   num_timesteps: ${prior.num_timesteps}

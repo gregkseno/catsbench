@@ -25,6 +25,7 @@ class BenchmarkImagesLogger(Callback):
     def __init__(
         self,
         dim: int,
+        input_shape: Tuple[int, int, int],
         num_categories: int,
         num_samples: int, 
         num_trajectories: int, 
@@ -32,6 +33,7 @@ class BenchmarkImagesLogger(Callback):
     ):
         super().__init__()
         self.dim = dim
+        self.input_shape = input_shape
         self.num_categories = num_categories
     
         self.num_samples = num_samples
@@ -294,7 +296,7 @@ class BenchmarkImagesLogger(Callback):
                 pred_trajectories[-1]
             ], dim=0
         )
-        pred_trajectories = convert_to_numpy(make_grid(pred_trajectories.reshape(-1, self.dim), nrow=nrow))
+        pred_trajectories = convert_to_numpy(make_grid(pred_trajectories.reshape(-1, *self.input_shape), nrow=nrow))
 
         ax.imshow(pred_trajectories.transpose(1, 2, 0))           
         ax.get_xaxis().set_ticklabels([])
