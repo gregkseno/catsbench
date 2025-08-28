@@ -12,8 +12,8 @@ import re
 import copy
 import numpy as np
 import torch
-import dnnlib
-from torch_utils import misc
+from benchmark.stylegan2 import dnnlib
+from benchmark.stylegan2.torch_utils import misc
 
 #----------------------------------------------------------------------------
 
@@ -66,9 +66,19 @@ class _TFNetworkStub(dnnlib.EasyDict):
 
 class _LegacyUnpickler(pickle.Unpickler):
     def find_class(self, module, name):
+        # Old TF stub → map to stub
         if module == 'dnnlib.tflib.network' and name == 'Network':
             return _TFNetworkStub
+        
+        # Redirect legacy StyleGAN2 imports to your package
+        if module == 'torch_utils.persistence':
+            module = 'benchmark.stylegan2.torch_utils.persistence'
+        elif module == 'dnnlib':
+            module = 'benchmark.stylegan2.dnnlib'
+        elif module == 'dnnlib.util':
+            module = 'benchmark.stylegan2.dnnlib.util'
         return super().find_class(module, name)
+
 
 #----------------------------------------------------------------------------
 

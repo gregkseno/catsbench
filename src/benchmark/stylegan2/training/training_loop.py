@@ -15,11 +15,11 @@ import psutil
 import PIL.Image
 import numpy as np
 import torch
-import dnnlib
-from torch_utils import misc
-from torch_utils import training_stats
-from torch_utils.ops import conv2d_gradfix
-from torch_utils.ops import grid_sample_gradfix
+from benchmark.stylegan2 import dnnlib
+from benchmark.stylegan2.torch_utils import misc
+from benchmark.stylegan2.torch_utils import training_stats
+from benchmark.stylegan2.torch_utils.ops import conv2d_gradfix
+from benchmark.stylegan2.torch_utils.ops import grid_sample_gradfix
 
 import legacy
 from metrics import metric_main
