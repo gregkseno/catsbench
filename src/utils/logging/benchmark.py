@@ -14,13 +14,13 @@ from src.metrics.c2st import ClassifierTwoSampleTest
 from src.metrics.contingency_similarity import ContingencySimilarity
 from src.metrics.tv_complement import TVComplement
 from src.utils.logging.console import RankedLogger
-from src.benchmark import BenchmarkDiscreteEOT
+from src.benchmark import Benchmark
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
 class BenchmarkLogger(Callback):
-    benchmark: BenchmarkDiscreteEOT
+    benchmark: Benchmark
 
     def __init__(
         self,

@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 from src.utils import CoupleDataset, InfiniteCoupleDataset
-from src.benchmark import BenchmarkDiscreteEOT
+from src.benchmark import Benchmark
 
 
 class BenchmarkDataModule(LightningDataModule):
@@ -26,7 +26,7 @@ class BenchmarkDataModule(LightningDataModule):
         # the method arguments and put to `self.hparams`
         self.save_hyperparameters(logger=False)
 
-        self.benchmark: Optional[BenchmarkDiscreteEOT] = None
+        self.benchmark: Optional[Benchmark] = None
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
@@ -53,7 +53,7 @@ class BenchmarkDataModule(LightningDataModule):
         # here is an `if` because the `setup` method is called multiple times 
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.benchmark and not self.data_train and not self.data_val and not self.data_test:
-            self.benchmark = BenchmarkDiscreteEOT(**self.hparams.benchmark_config)
+            self.benchmark = Benchmark(**self.hparams.benchmark_config)
 
             # Permute the target dataset to ensure unpaired setup
             random_indices = torch.randperm(len(self.benchmark.target_dataset))

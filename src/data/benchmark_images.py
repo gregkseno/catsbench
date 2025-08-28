@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 from src.utils import CoupleDataset, InfiniteCoupleDataset
-from src.benchmark import BenchmarkDiscreteEOTImagesGenerated
+from src.benchmark import BenchmarkImages
 
 class BenchmarkImagesDataModule(LightningDataModule):
     def __init__(
@@ -18,14 +18,14 @@ class BenchmarkImagesDataModule(LightningDataModule):
         num_workers: int = 0,
         pin_memory: bool = False,
         dir: str = './data/benchmark_images',
-        generator_ckpt_path: str = './checkpoints/cmnist_stylegan.pkl'
+        generator_path: str = './checkpoints/cmnist_stylegan.pkl'
     ) -> None:
         super().__init__()
         # somehow this function is able to load all 
         # the method arguments and put to `self.hparams`
         self.save_hyperparameters(logger=False)
 
-        self.benchmark: Optional[BenchmarkDiscreteEOTImagesGenerated] = None
+        self.benchmark: Optional[BenchmarkImages] = None
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
@@ -52,7 +52,7 @@ class BenchmarkImagesDataModule(LightningDataModule):
         # here is an `if` because the `setup` method is called multiple times 
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.benchmark and not self.data_train and not self.data_val and not self.data_test:
-            self.benchmark = BenchmarkDiscreteEOTImagesGenerated(**self.hparams.benchmark_config)
+            self.benchmark = BenchmarkImages(**self.hparams.benchmark_config)
 
             # Permute the target dataset to ensure unpaired setup
             random_indices = torch.randperm(len(self.benchmark.target_dataset))

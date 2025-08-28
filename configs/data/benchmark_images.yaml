@@ -7,10 +7,10 @@ val_batch_size: 32
 num_workers: 0
 pin_memory: false
 dir: ${paths.data_dir}/benchmark_images
-generator_ckpt_path: ${paths.ckpt_dir}/cmnist_stylegan.pkl
+generator_path: ${paths.ckpt_dir}/cmnist_stylegan.pkl
 
 benchmark_config:
-  generator_pkl_path: ${data.generator_ckpt_path}
+  generator_path: ${data.generator_path}
   alpha: ${prior.alpha}
   dim: ${data.dim}
   num_categories: ${data.num_categories}
@@ -21,4 +21,4 @@ benchmark_config:
   prior_type: ${prior.prior_type}
   save_path: ${data.dir}
   benchmark_type: gaussian_mixture
-  save_bench: false
+

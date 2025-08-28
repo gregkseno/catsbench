@@ -21,4 +21,4 @@ benchmark_config:
   input_dist: ${data.input_dist}
   save_path: ${data.dir}
   benchmark_type: gaussian_mixture
-  save_bench: false
+

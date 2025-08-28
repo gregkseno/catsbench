@@ -20,7 +20,7 @@ data:
   num_workers: 0
   pin_memory: false
   dir: ${paths.data_dir}/benchmark_images
-  generator_ckpt_path: ${paths.ckpt_dir}/cmnist_stylegan.pkl
+  generator_path: ${paths.ckpt_dir}/cmnist_stylegan.pkl
 
 prior:
   alpha: 0.02
