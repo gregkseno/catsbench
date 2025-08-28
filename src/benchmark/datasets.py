@@ -1,13 +1,8 @@
-from typing import Any, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
-from sklearn.datasets import make_swiss_roll
 import torch
-from torch.utils.data import Dataset, DataLoader
-
-from torch.distributions.mixture_same_family import MixtureSameFamily
-from torch.distributions.categorical import Categorical
-from torch.distributions.multivariate_normal import MultivariateNormal
+from torch.utils.data import Dataset
 
 from torchvision import transforms, datasets
 
@@ -55,48 +50,6 @@ class DiscreteGaussianDataset(Dataset):
             
         dataset = _continuous_to_discrete(dataset, num_categories)
         self.dataset = dataset
-
-    def __getitem__(self, idx):
-        return self.dataset[idx]
-    
-    def __len__(self):
-        return len(self.dataset)
-
-class DiscreteMixtureGaussianDataset(Dataset):
-    def __init__(
-        self, num_samples: int, dim: int, num_potentials: int = 4, num_categories: int = 100, spread: float = 0.8
-    ):                  
-        means = get_means(dim, num_potentials)
-        covs = torch.eye(dim).repeat(num_potentials, 1, 1) * (spread ** 2)
-
-        probs = torch.ones(num_potentials) / num_potentials
-        mix = Categorical(probs=probs)
-        comp = MultivariateNormal(loc=means, covariance_matrix=covs)
-        gmm = MixtureSameFamily(mix, comp)
-
-        continuous_samples = gmm.sample((num_samples,))
-
-        samples = _continuous_to_discrete(continuous_samples, num_categories=num_categories, quantize_range=(-15, 15))
-        self.dataset = samples
-
-    def __getitem__(self, idx):
-        return self.dataset[idx]
-    
-    def __len__(self):
-        return len(self.dataset)
-    
-class DiscreteSwissRollDataset(Dataset):
-    def __init__(
-            self, num_samples: int, noise: float = 0.8, num_categories: int = 100, train: bool = True
-        ):
-        dataset = make_swiss_roll(
-            n_samples=num_samples,
-            noise=noise
-        )[0][:, [0, 2]]  / 7.5
-        if not train:
-            dataset[:4] = torch.tensor([[0.0, 0.0], [1.75, -1.75], [-1.5, 1.5], [2, 2]])
-        dataset = _continuous_to_discrete(dataset, num_categories)
-        self.dataset = dataset   
 
     def __getitem__(self, idx):
         return self.dataset[idx]

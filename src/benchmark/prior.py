@@ -5,16 +5,8 @@ import torch.nn.functional as F
 import torch
 from torch import nn
 
-def broadcast(tensor: torch.Tensor, num_add_dims: int, dim: int = -1) -> torch.Tensor:
-    if dim < 0:
-        dim += tensor.dim() + 1
-    shape = [*tensor.shape[:dim], *([1] * num_add_dims), *tensor.shape[dim:]]
-    return tensor.reshape(*shape)
+from benchmark.utils import broadcast, log_space_product
 
-def log_space_product(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
-    log_matrix1 = log_matrix1[..., :, None]
-    log_matrix2 = log_matrix2[..., None, :, :]
-    return torch.logsumexp(log_matrix1 + log_matrix2, dim=-2)
 
 def get_cum_matrices(num_timesteps: int, log_onestep_matrix: torch.Tensor) -> torch.Tensor:
     num_categories = log_onestep_matrix.shape[0]
@@ -38,8 +30,8 @@ def uniform_prior(
     num_skip_steps: int
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     
-    log_equal = log(1 - alpha)                  #log((1 - alpha)/(num_categories - 1) + 1e-20)
-    log_diff  = log(alpha/(num_categories - 1)) #log(alpha + (1 - alpha)/(num_categories - 1) + 1e-20)
+    log_equal = log(1 - alpha)                  # log((1 - alpha)/(num_categories - 1) + 1e-20)
+    log_diff  = log(alpha/(num_categories - 1)) # log(alpha + (1 - alpha)/(num_categories - 1) + 1e-20)
 
     log_p_onestep_mat = torch.full((num_categories, num_categories), log_diff)  
     rows = torch.arange(num_categories).to(torch.int32)
@@ -94,12 +86,11 @@ def gaussian_prior(
 # 0         1           2           ...         N           N+1
 # 0->0      0->1        0->2        ...         0->N        0->N+1       
 
-# Onestep returns with following pattern
-# 0         1           2           ...         N           N+1
-# 0->0      0->1        1->2        ...         N-1->N      N->N+1     
-
 # Inherit from nn.Module to do device casting automatically
 class Prior(nn.Module):
+    log_p_onestep: torch.Tensor
+    log_p_cum: torch.Tensor
+    
     def __init__(
         self, 
         alpha: float,
@@ -162,8 +153,12 @@ class Prior(nn.Module):
         
         elif row_id is None and column_id is not None:
             t = broadcast(t, column_id.dim() - 1)
-            if mat_type  == 'onestep':
-                return self.log_p_onestep[:, column_id]
+            if mat_type == 'onestep':
+                result = torch.index_select(
+                    self.log_p_onestep, dim=1, 
+                    index=column_id.reshape(-1)
+                )
+                return result.reshape(*column_id.shape, self.num_categories)
             else:
                 return self.log_p_cum[t, :, column_id]
         else:   
@@ -175,63 +170,3 @@ class Prior(nn.Module):
             fill_value=self.num_timesteps, 
         )
         return self.extract('cumulative', last_timestep, row_id=x)
-
-    def sample_bridge(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        r"""Samples from bridge $p(x_{t} | x_{0}, x_{1})$."""
-        log_p_start_t = self.extract('cumulative', t, row_id=x_start)
-        log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
-        log_probs = log_p_start_t + log_p_t_end
-        log_probs = log_probs - log_probs.logsumexp(dim=-1, keepdim=True)
-        
-        noise = torch.rand_like(log_probs)
-        noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
-        gumbel_noise = -torch.log(-torch.log(noise))
-        x_t = torch.argmax(log_probs + gumbel_noise, dim=-1)
-
-        is_final_step = broadcast(t, x_start.dim() - 1) == self.num_timesteps + 1
-        x_t = torch.where(is_final_step, x_end, x_t)
-
-        is_first_step = broadcast(t, x_start.dim() - 1) == 1
-        x_t = torch.where(is_first_step, x_start, x_t)
-
-        return x_t
-    
-    def bridge_logits(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        r"""Calculates log probability of $p(x_{t} | x_{0}, x_{1})$."""
-        log_p_start_t = self.extract('cumulative', t, row_id=x_start)
-        log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
-        log_probs = log_p_start_t + log_p_t_end
-
-        log_probs = log_probs - log_probs.logsumexp(dim=-1, keepdim=True)
-        return log_probs
-    
-    def posterior_logits(
-        self, 
-        x_start: torch.Tensor, 
-        x_t: torch.Tensor, 
-        t: torch.Tensor, 
-        logits: bool = False
-    ) -> torch.Tensor:
-        r"""Calculates logits of $p(x_{t-1} | x_{t}, x_{0})$.
-        If logits is True, the output is summed over x_0 and transition matrix returned.""" 
-        if not logits:
-            x_start_logits = torch.log(torch.nn.functional.one_hot(x_start, self.num_categories) + self.eps)
-        else:
-            x_start_logits = x_start.clone()
-        assert x_start_logits.shape == x_t.shape + (self.num_categories,), f"x_start_logits.shape: {x_start_logits.shape}, x_t.shape: {x_t.shape}"
-        x_start_logits = x_start_logits.to(self.dtype)
-        # fact1 is "guess of x_{t}" from x_{t-1}
-        log_fact1 = self.extract('onestep', t, row_id=x_t)
-
-        if not logits:
-            # fact2 is "guess of x_{t-1}" from x_{0}
-            x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
-        log_fact2 = log_space_product(x_start_logits, self.log_p_cum[t-1]) 
-
-        p_posterior_logits = log_fact1 + log_fact2
-        p_posterior_logits = p_posterior_logits - p_posterior_logits.logsumexp(dim=-1, keepdim=True) # Normalize
-        
-        # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already
-        is_first_step = broadcast(t, x_t.dim()) == 1
-        p_posterior_logits = torch.where(is_first_step, x_start_logits, p_posterior_logits)
-        return p_posterior_logits

@@ -1,37 +1,30 @@
-from typing import Literal
-from .samplers import (
-    DiscreteGaussianDataset, 
-    DiscreteUniformDataset,
-)
-import torch
-from torch.utils.data import DataLoader
-from .utils import LoaderSampler, sample_separated_means
-
-import os
-from .prior import Prior
-from pathlib import Path
-
 from typing import Literal, Optional
-from .samplers import (
+import os
+from pathlib import Path
+
+import torch
+from torch import nn
+
+from benchmark.prior import Prior
+from benchmark.datasets import (
     DiscreteGaussianDataset, 
     DiscreteUniformDataset,
+
 )
-import torch
-from torch.utils.data import DataLoader
-from .utils import LoaderSampler, sample_separated_means
-
-import os
-from .prior import Prior
-from pathlib import Path
-from src.benchmark.samplers import DiscreteColoredMNISTDataset
-from transformers import PreTrainedTokenizerFast
-
-from .stylegan2 import legacy, dnnlib
+from benchmark.stylegan2 import legacy, dnnlib
+from benchmark.utils import  sample_separated_means
 
 
-class BenchmarkDiscreteEOTBase:
-        
-    def get_log_cp_cores(self, benchmark_type, spread=15):
+class BenchmarkDiscreteEOTBase(nn.Module):
+    dim: int
+    num_potentials: int
+    prior: Prior
+
+    def get_log_cp_cores(
+        self, 
+        benchmark_type: Literal['gaussian_mixture', 'log_gaussian', 'uniform'], 
+        spread: float = 15.0
+    ):
         if benchmark_type == 'gaussian_mixture':
             means = sample_separated_means(self.num_potentials, self.dim, self.prior.num_categories, min_dist=10)
             stds = torch.full((self.num_potentials, self.dim), spread)                          # (K, D)
@@ -87,15 +80,7 @@ class BenchmarkDiscreteEOTBase:
         if not return_trajectories:
             return y_samples
         else:
-            return torch.stack([x.cpu(), y_samples.cpu()], dim=0)
-        
-    def to(self, device: str) -> None:
-        self.device = device
-        self.input_dataset = self.input_dataset.to(device)
-        self.target_dataset = self.target_dataset.to(device)
-        self.log_alpha = self.log_alpha.to(device)
-        self.log_cp_cores = self.log_cp_cores.to(device)
-        self.prior = self.prior.to(device)
+            return torch.stack([x, y_samples], dim=0)
     
     def save(self):
         print(f'Saving benchmark to {self.folder_name}...')
@@ -105,7 +90,7 @@ class BenchmarkDiscreteEOTBase:
         torch.save(self.input_dataset, self.source_path)
         torch.save(self.target_dataset, self.target_path)
 
-class BenchmarkDiscreteEOT(BenchmarkDiscreteEOTBase):
+class Benchmark(BenchmarkDiscreteEOTBase):
     def __init__(
         self, 
         alpha: float,
@@ -118,7 +103,6 @@ class BenchmarkDiscreteEOT(BenchmarkDiscreteEOTBase):
         prior_type: Literal[
             'uniform', 
             'gaussian',
-            'gaussian_log',
         ] = 'uniform',
         input_dist: Literal['gaussian', 'uniform'] = 'gaussian',
         save_path: str = '../data/benchmark',
@@ -202,7 +186,7 @@ class BenchmarkDiscreteEOT(BenchmarkDiscreteEOTBase):
         target_data = self.sample_target_given_input(input_data)
         return input_data, target_data
 
-class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
+class BenchmarkImages(Benchmark):
     def __init__(
         self, 
         generator_pkl_path: str,
@@ -216,7 +200,6 @@ class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
         prior_type: Literal[
             'uniform', 
             'gaussian',
-            'gaussian_log',
         ] = 'gaussian',
         save_path: str = '../data/benchmark_images',
         benchmark_type: Literal['gaussian_mixture'] = 'gaussian_mixture',
@@ -307,225 +290,3 @@ class BenchmarkDiscreteEOTImagesGenerated(BenchmarkDiscreteEOT):
         output = self.generator(noise).reshape(-1, self.dim)
         noised_output = self.sample_target_given_input(output)
         return output, noised_output
-
-class BenchmarkDiscreteEOTImages(BenchmarkDiscreteEOT):
-    def __init__(
-        self, 
-        alpha: float,
-        dim: int, 
-        num_categories: int,
-        num_timesteps: int,
-        num_skip_steps: int,
-        num_potentials: int,
-        samples_per_digit: int = 5000,
-        prior_type: Literal[
-            'uniform', 
-            'gaussian',
-            'gaussian_log',
-        ] = 'uniform',
-        save_path: str = '../data/cmnist',
-        benchmark_type: Literal['gaussian_mixture'] = 'gaussian_mixture',
-        device='cpu',
-        save_bench=True,
-        batch_size = 128  # Useful if we want to train iterating over all batches.
-    ):
-        self.dim = dim
-        self.num_potentials = num_potentials
-        self.prior  = Prior(
-            alpha=alpha, 
-            num_categories=num_categories, 
-            num_timesteps=num_timesteps, 
-            num_skip_steps=num_skip_steps, 
-            prior_type=prior_type
-        ).to(device)
-        self.save_path = save_path
-        self.device    = device
-        
-        self.folder_name = f"{save_path}/num_categories_{num_categories}/prior_{prior_type}/alpha_{alpha}/"
-        
-        self.solver_path = self.folder_name + f'D_c0_{benchmark_type}.pth'
-        self.source_path = self.folder_name + f'X0_c0_{benchmark_type}.pt'
-        self.target_path = self.folder_name + f'X1_c0_{benchmark_type}.pt'
-
-        if os.path.exists(self.source_path) and os.path.exists(self.target_path) and os.path.exists(self.solver_path):
-            print('Loading saved solver and benchmark pairs...')
-
-            self.log_params   = torch.load(self.solver_path, map_location=device)
-            self.log_alpha    = self.log_params['log_alpha']
-            self.log_cp_cores = self.log_params['log_cp_cores']
-
-            self.input_dataset  = torch.load(self.source_path)
-            self.target_dataset = torch.load(self.target_path) 
-
-        elif save_bench:
-            print('Computing benchmark...')
-
-            input_samples = []
-            
-            for ix in range(10):
-                samples_digit = DiscreteColoredMNISTDataset(ix, data_dir='../data',  img_size=32).dataset[:samples_per_digit]
-                input_samples.append(samples_digit.view(samples_per_digit, -1))
-            
-            self.input_dataset = torch.cat(input_samples, dim=0)
-            print(self.input_dataset.shape)
-
-            self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device)/self.num_potentials)
-
-            if benchmark_type == 'gaussian_mixture':
-                dim = 32*32*3
-                means = sample_separated_means(num_potentials, dim, num_categories, min_dist=10)
-                stds = torch.full((num_potentials, dim), 15)                          # (K, D)
-                y_d = torch.arange(num_categories).view(num_categories, 1).repeat(1, dim)  # (S, D)
-                y_d = y_d.unsqueeze(0)          
-                means = means.unsqueeze(1)      
-                stds = stds.unsqueeze(1)        
-                log_cp_cores = -0.5 * torch.log(torch.tensor(2 * torch.pi) )- torch.log(stds) - 0.5 * ((y_d - means) / stds) ** 2
-            
-            elif benchmark_type == 'log_gaussian':
-                mu = torch.zeros(dim)          
-                sigma = torch.ones(dim) * 0.5  
-
-                log_normal = torch.distributions.LogNormal(mu, sigma)
-                log_cp_cores = log_normal.sample((num_potentials, num_categories,))
-
-            elif benchmark_type == 'uniform':
-                log_cp_cores = torch.rand(size=(num_potentials, num_categories, dim))       
-            
-            self.log_cp_cores = log_cp_cores.permute(2, 0, 1).to(device) #(K, S, D) -> (D, K, S)
-
-            print('Sampling target points...')
-            target_samples = []
-            for ix in range(10):
-                target_batch = self.sample_target_given_input(self.input_dataset[ix*samples_per_digit:(ix+1)*samples_per_digit], return_trajectories=False)
-                target_samples.append(target_batch)
-
-            self.target_dataset = torch.cat(target_samples)
-            
-            self.log_params = {
-                'log_alpha': self.log_alpha,
-                'log_cp_cores': self.log_cp_cores
-            }
-
-        random_indices      = torch.randperm(len(self.input_dataset))
-        self.input_dataset  = self.input_dataset[random_indices]
-        self.target_dataset = self.target_dataset[random_indices]
-
-        input_dataloader  = DataLoader(self.input_dataset, batch_size=batch_size, shuffle=False)
-        target_dataloader = DataLoader(self.target_dataset, batch_size=batch_size, shuffle=False)
-        target_dataloader_shuffled = DataLoader(self.target_dataset, batch_size=batch_size, shuffle=True)
-
-        self.input_sampler  = LoaderSampler(input_dataloader)
-        self.target_sampler = LoaderSampler(target_dataloader)
-        self.target_sampler_shuffled = LoaderSampler(target_dataloader_shuffled)
-
-
-
-class BenchmarkDiscreteEOTImagesGenerated_old(BenchmarkDiscreteEOT):
-    def __init__(
-        self, 
-        alpha: float,
-        dim: int, 
-        num_categories: int,
-        num_timesteps: int,
-        num_skip_steps: int,
-        num_potentials: int,
-        samples_per_batch: int = 5000,
-        gen_idx: bool = 0,
-        prior_type: Literal[
-            'uniform', 
-            'gaussian',
-            'gaussian_log',
-        ] = 'uniform',
-        save_path: str = '../data/cmnist',
-        benchmark_type: Literal['gaussian_mixture'] = 'gaussian_mixture',
-        device='cpu',
-        save_bench=True,
-        batch_size = 128  # Useful if we want to train iterating over all batches.
-    ):
-        self.dim = dim
-        self.num_potentials = num_potentials
-        self.prior  = Prior(
-            alpha=alpha, 
-            num_categories=num_categories, 
-            num_timesteps=num_timesteps, 
-            num_skip_steps=num_skip_steps, 
-            prior_type=prior_type
-        ).to(device)
-        self.save_path = save_path
-        self.device    = device
-        
-        self.folder_name = f"{save_path}/num_categories_{num_categories}/prior_{prior_type}/alpha_{alpha}/"
-        
-        self.solver_path = self.folder_name + f'D_c0_{benchmark_type}_gen_{gen_idx}.pth'
-        self.source_path = self.folder_name + f'X0_c0_{benchmark_type}_gen_{gen_idx}.pt'
-        self.target_path = self.folder_name + f'X1_c0_{benchmark_type}_gen_{gen_idx}.pt'
-        print('Path: ', self.solver_path)
-        if os.path.exists(self.source_path) and os.path.exists(self.target_path) and os.path.exists(self.solver_path):
-            print('Loading saved solver and benchmark pairs...')
-
-            self.log_params   = torch.load(self.solver_path, map_location=device)
-            self.log_alpha    = self.log_params['log_alpha']
-            self.log_cp_cores = self.log_params['log_cp_cores']
-
-            self.input_dataset  = torch.load(self.source_path, map_location=device)
-            self.target_dataset = torch.load(self.target_path, map_location=device) 
-
-        else:
-            print('Computing benchmark...')
-
-            input_samples = torch.load(f'../ckpts/ddpm_100K_generated_samples_{gen_idx}.pth')
-            self.input_dataset = (input_samples * 255).to(torch.int32).reshape(-1, 32*32*3)
-
-            print(self.input_dataset.shape)
-
-            self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device)/self.num_potentials)
-
-            if benchmark_type == 'gaussian_mixture':
-                dim = 32*32*3
-                means = sample_separated_means(num_potentials, dim, num_categories, min_dist=10)
-                stds = torch.full((num_potentials, dim), 15)                          # (K, D)
-                y_d = torch.arange(num_categories).view(num_categories, 1).repeat(1, dim)  # (S, D)
-                y_d = y_d.unsqueeze(0)          
-                means = means.unsqueeze(1)      
-                stds = stds.unsqueeze(1)        
-                log_cp_cores = -0.5 * torch.log(torch.tensor(2 * torch.pi) )- torch.log(stds) - 0.5 * ((y_d - means) / stds) ** 2
-            
-            elif benchmark_type == 'log_gaussian':
-                mu = torch.zeros(dim)          
-                sigma = torch.ones(dim) * 0.5  
-
-                log_normal = torch.distributions.LogNormal(mu, sigma)
-                log_cp_cores = log_normal.sample((num_potentials, num_categories,))
-
-            elif benchmark_type == 'uniform':
-                log_cp_cores = torch.rand(size=(num_potentials, num_categories, dim))       
-            
-            self.log_cp_cores = log_cp_cores.permute(2, 0, 1).to(device) #(K, S, D) -> (D, K, S)
-
-            print('Sampling target points...')
-            target_samples = []
-            n_batches = 100000//samples_per_batch
-            for ix in range(n_batches):
-                target_batch = self.sample_target_given_input(self.input_dataset[ix*samples_per_batch:(ix+1)*samples_per_batch], return_trajectories=False)
-                target_samples.append(target_batch)
-
-            self.target_dataset = torch.cat(target_samples, dim=0)
-            
-            self.log_params = {
-                'log_alpha': self.log_alpha,
-                'log_cp_cores': self.log_cp_cores
-            }
-            if save_bench:
-                self.save()
-
-        random_indices      = torch.randperm(len(self.input_dataset))
-        self.input_dataset  = self.input_dataset[random_indices]
-        self.target_dataset = self.target_dataset[random_indices]
-
-        input_dataloader  = DataLoader(self.input_dataset, batch_size=batch_size, shuffle=False)
-        target_dataloader = DataLoader(self.target_dataset, batch_size=batch_size, shuffle=False)
-        target_dataloader_shuffled = DataLoader(self.target_dataset, batch_size=batch_size, shuffle=True)
-
-        self.input_sampler  = LoaderSampler(input_dataloader)
-        self.target_sampler = LoaderSampler(target_dataloader)
-        self.target_sampler_shuffled = LoaderSampler(target_dataloader_shuffled)
