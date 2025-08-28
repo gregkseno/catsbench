@@ -35,7 +35,7 @@ class BenchmarkBase:
                 self.prior.num_categories
             ).view(self.prior.num_categories, 1).repeat(1, self.dim).unsqueeze(0)  # (S, D)
             log_cp_cores = -0.5 * torch.log(torch.tensor(2 * torch.pi)) - torch.log(stds) - 0.5 * ((y_d - means) / stds) ** 2
-        
+
         elif benchmark_type == 'log_gaussian':
             mu = torch.zeros(self.dim)          
             sigma = torch.ones(self.dim) * 0.5  
@@ -215,6 +215,8 @@ class BenchmarkImages(BenchmarkBase):
 
     def __init__(
         self, 
+        dim: int,
+        input_shape: Tuple[int, int, int],
         num_potentials: int,
         alpha: float,
         num_categories: int,
@@ -234,7 +236,8 @@ class BenchmarkImages(BenchmarkBase):
         save_path: str = '../data/benchmark_images',
     ):
         super().__init__()
-        self.dim = 3 * 32 * 32
+        self.dim = dim
+        self.input_shape = input_shape
         self.num_potentials = num_potentials
         self.prior  = Prior(
             alpha=alpha, 
@@ -261,8 +264,8 @@ class BenchmarkImages(BenchmarkBase):
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
             samples_per_batch = 2000
             num_batches = num_val_samples // samples_per_batch
-            self.input_dataset = torch.empty((num_batches * samples_per_batch, 3, 32, 32), dtype=torch.int)
-            self.target_dataset = torch.empty((num_batches * samples_per_batch, 3, 32, 32), dtype=torch.int)
+            self.input_dataset = torch.empty((num_batches * samples_per_batch, *self.input_shape), dtype=torch.int)
+            self.target_dataset = torch.empty((num_batches * samples_per_batch, *self.input_shape), dtype=torch.int)
             for i in range(num_batches):
                 noise = torch.randn((samples_per_batch, 512), device=self.device)
                 start, end = samples_per_batch * i, samples_per_batch * (i + 1)

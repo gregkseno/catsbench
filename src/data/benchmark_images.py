@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -11,6 +11,7 @@ class BenchmarkImagesDataModule(LightningDataModule):
     def __init__(
         self,
         dim: int,
+        input_shape: Tuple[int, int, int],
         num_categories: int,
         num_potentials: int,
         batch_size: int,

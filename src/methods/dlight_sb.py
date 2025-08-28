@@ -5,7 +5,6 @@ from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from lightning import LightningModule
-import numpy as np
 
 from src.utils.logging.console import RankedLogger
 from src.data.prior import Prior

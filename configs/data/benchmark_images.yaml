@@ -1,5 +1,5 @@
 _target_: src.data.BenchmarkImagesDataModule
-dim: 3072
+dim: 3072 # Must be equal to prod(input_shape)
 input_shape: [3, 32, 32]
 num_categories: 256
 num_potentials: 1000
@@ -11,6 +11,8 @@ dir: ${paths.data_dir}/benchmark_images
 generator_path: ${paths.ckpt_dir}/cmnist_stylegan.pkl
 
 benchmark_config:
+  dim: 3072
+  input_shape: [3, 32, 32]
   generator_path: ${data.generator_path}
   alpha: ${prior.alpha}
   num_categories: ${data.num_categories}
