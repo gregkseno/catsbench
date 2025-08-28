@@ -159,7 +159,7 @@ class Benchmark(BenchmarkBase):
             log.info('Sampling validation dataset...')
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
             self.input_dataset = self.sample_input(num_val_samples)
-            self.target_dataset = self.sample_target_given_input(self.input_dataset, return_trajectories=False)
+            self.target_dataset = self.sample_target_given_input(self.input_dataset)
 
             random_indices = torch.randperm(len(self.target_dataset))
             self.input_dataset  = self.input_dataset[random_indices]
@@ -244,17 +244,17 @@ class BenchmarkImages(Benchmark):
 
             log.info('Sampling validation dataset...')
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
-            noise = torch.randn((num_val_samples, 512))
-            input_samples = 0.5 * self.generator(noise, None) + 0.5
-            self.input_dataset = (input_samples * 255).to(torch.int).reshape(-1, self.dim)
-
-            num_batches = num_val_samples // 5000
-            self.target_dataset = torch.empty((num_batches * 5000, self.dim), dtype=torch.int)
+            samples_per_batch = 2000
+            num_batches = num_val_samples // samples_per_batch
+            self.input_dataset = torch.empty((num_batches * samples_per_batch, 3, 32, 32), dtype=torch.int)
+            self.target_dataset = torch.empty((num_batches * samples_per_batch, 3, 32, 32), dtype=torch.int)
             for i in range(num_batches):
-                start, end = 5000 * i, 5000 * (i + 1)
+                noise = torch.randn((samples_per_batch, 512), device=self.device)
+                start, end = samples_per_batch * i, samples_per_batch * (i + 1)
+                self.input_dataset[start:end] = self._postporcess(self.generator(noise, None))
                 self.target_dataset[start:end] = self.sample_target_given_input(
-                    self.input_dataset[start:end], return_trajectories=False
-                )
+                    torch.flatten(self.input_dataset[start:end], start_dim=1)
+                ).reshape_as(self.input_dataset[start:end])
 
             self.save(solver_path, source_path, target_path, benchmark_dir)
 
@@ -272,17 +272,17 @@ class BenchmarkImages(Benchmark):
     #       - Target: noised CMNIST images.
     def sample_input(self, num_samples: int) -> torch.Tensor:
         noise = torch.randn((num_samples, 512), device=self.device)
-        input_samples = self._postporcess(self.generator(noise))
+        input_samples = self._postporcess(self.generator(noise, None))
         return input_samples
     
     def sample_target(self, num_samples: int) -> torch.Tensor:
         noise = torch.randn((num_samples, 512), device=self.device)
-        input_samples = self._postporcess(self.generator(noise))
+        input_samples = self._postporcess(self.generator(noise, None))
         target_samples = self.sample_target_given_input(torch.flatten(input_samples, start_dim=1))
         return target_samples.reshape_as(input_samples)
     
     def sample_input_target(self, num_samples: int)-> Tuple[torch.Tensor, torch.Tensor]:
         noise = torch.randn((num_samples, 512), device=self.device)
-        input_samples = self._postporcess(self.generator(noise))
+        input_samples = self._postporcess(self.generator(noise, None))
         target_samples = self.sample_target_given_input(torch.flatten(input_samples, start_dim=1))
         return input_samples, target_samples.reshape_as(input_samples)
