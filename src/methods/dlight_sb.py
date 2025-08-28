@@ -39,7 +39,13 @@ class DLightSB(LightningModule):
         self.log_cp_cores = nn.ParameterList()
 
         nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
-        for _ in range(dim):
+
+        # NOTE: I placed it here to save time if this is not the type of init required
+        if distr_init == 'samples':
+            init_samples = benchmark.sample_input(num_potentials) #(K, dim)
+            cp_cores = torch.full((dim, num_potentials, prior.num_categories), (1 - sample_prob) / (prior.num_categories - 1))
+
+        for d in range(dim):
             if distr_init == 'gaussian':
                 cur_core = (-1.0 + 0.5**2 * torch.randn(num_potentials, prior.num_categories)) \
                    / (prior.num_categories * num_potentials)
@@ -52,10 +58,10 @@ class DLightSB(LightningModule):
 
             # NOTE: @Ark-130994 I think it is better to implement using loop for clarity and match the previous initializations
             elif distr_init == 'samples':
-                init_samples = benchamrk.sample_target(dim * prior.num_categories)
-                cp_cores = torch.full((dim, prior.num_categories), (1 - sample_prob) / (prior.num_categories - 1))
-                cp_cores[torch.arange(dim), init_samples] = sample_prob
-                self.log_cp_cores = torch.log(cp_cores)
+                sample_indices = torch.arange(num_potentials) 
+                category_indices = init_samples[:, d]
+                cp_cores[d, sample_indices, category_indices] = sample_prob
+                cur_log_core = torch.log(cp_cores)
 
             else:
                 raise ValueError(f'Invalid distr_init: {distr_init}')
