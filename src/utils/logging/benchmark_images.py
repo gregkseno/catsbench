@@ -127,8 +127,8 @@ class BenchmarkImagesLogger(Callback):
         pl_module.fid.update(x_end, real=True)
         pl_module.fid.update(pred_x_end, real=False)
         pl_module.c2st.update(
-            torch.cat([x_start, x_end], dim=-1), 
-            torch.cat([x_start, pred_x_end], dim=-1)
+            torch.cat([x_start.flatten(start_dim=1), x_end.flatten(start_dim=1)], dim=-1), 
+            torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1)
         )
 
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
@@ -163,8 +163,8 @@ class BenchmarkImagesLogger(Callback):
         pl_module.fid.update(x_end, real=True)
         pl_module.fid.update(pred_x_end, real=False)
         pl_module.c2st.update(
-            torch.cat([x_start, x_end], dim=-1), 
-            torch.cat([x_start, pred_x_end], dim=-1)
+            torch.cat([x_start.flatten(start_dim=1), x_end.flatten(start_dim=1)], dim=-1), 
+            torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1)
         )
 
     def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
