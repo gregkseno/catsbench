@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 from src.utils import CoupleDataset, InfiniteCoupleDataset
-from src.benchmark import Benchmark
+from benchmark import Benchmark
 
 
 class BenchmarkDataModule(LightningDataModule):
@@ -36,7 +36,7 @@ class BenchmarkDataModule(LightningDataModule):
 
     def prepare_data(self) -> None:
         pass
-        # BenchmarkDiscreteEOT.download(...)
+        # Benchmark.download(...)
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data by seting variables: `self.data_train`, `self.data_val`, `self.data_test`."""

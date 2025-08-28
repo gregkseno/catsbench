@@ -14,7 +14,7 @@ from src.metrics.c2st import ClassifierTwoSampleTest
 from src.metrics.contingency_similarity import ContingencySimilarity
 from src.metrics.tv_complement import TVComplement
 from src.utils.logging.console import RankedLogger
-from src.benchmark import BenchmarkImages
+from benchmark import BenchmarkImages
 
 
 log = RankedLogger(__name__, rank_zero_only=True)

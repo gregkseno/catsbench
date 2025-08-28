@@ -1,7 +1,7 @@
 from typing import List
 
 import sys
-sys.path.append('src/benchmark/stylegan2')
+sys.path.append('src/')
 
 from omegaconf import DictConfig, OmegaConf
 import hydra

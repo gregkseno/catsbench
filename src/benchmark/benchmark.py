@@ -12,7 +12,7 @@ from benchmark.utils import  continuous_to_discrete, sample_separated_means, Log
 log = Logger(__name__, rank_zero_only=True)
 SPREADS = {50:{2:1.5, 16:1.5, 64:2.5}, 200:{2:4, 16:8, 64:16}}
 
-class BenchmarkBase(nn.Module):
+class BenchmarkBase:
     dim: int
     num_potentials: int
     prior: Prior
@@ -90,24 +90,30 @@ class BenchmarkBase(nn.Module):
     ):
         log.info(f'Saving benchmark to {dir}...')
         os.makedirs(dir, exist_ok=True)
-        torch.save({'log_alpha': self.log_alpha, 'log_cp_cores': self.log_cp_cores}, solver_path)
-        torch.save(self.input_dataset, source_path)
-        torch.save(self.target_dataset, target_path)
+        torch.save({'log_alpha': self.log_alpha.cpu(), 'log_cp_cores': self.log_cp_cores.cpu()}, solver_path)
+        torch.save(self.input_dataset.cpu(), source_path)
+        torch.save(self.target_dataset.cpu(), target_path)
 
     def load(
         self, solver_path: str, source_path: str, target_path: str, dir: str
     ):
         log.info(f'Loading saved solver and benchmark pairs from {dir}...')
-        log_params = torch.load(solver_path)
+        log_params = torch.load(solver_path, map_location=torch.device('cpu'))
         self.log_alpha = log_params['log_alpha']
         self.log_cp_cores = log_params['log_cp_cores']
 
-        self.input_dataset  = torch.load(source_path)
-        self.target_dataset = torch.load(target_path) 
+        self.input_dataset  = torch.load(source_path, map_location=torch.device('cpu'))
+        self.target_dataset = torch.load(target_path, map_location=torch.device('cpu')) 
 
     @property
     def device(self) -> torch.device:
         return self.log_alpha.device
+    
+    def to(self, device: torch.device):
+        self.log_alpha = self.log_alpha.to(device)
+        self.log_cp_cores = self.log_cp_cores.to(device)
+        if hasattr(self, 'generator'):
+            self.generator = self.generator.to(device)
 
 class Benchmark(BenchmarkBase):
     def __init__(
@@ -131,6 +137,7 @@ class Benchmark(BenchmarkBase):
         input_dist: Literal['gaussian', 'uniform'] = 'gaussian',
         save_path: str = '../data/benchmark',
     ):
+        super().__init__()
         self.dim = dim
         self.num_potentials = num_potentials
         self.prior  = Prior(
@@ -167,6 +174,7 @@ class Benchmark(BenchmarkBase):
 
             self.save(solver_path, source_path, target_path, benchmark_dir)
 
+    @torch.no_grad()
     def sample_input(self, num_samples: int) -> torch.Tensor:
         '''Sample independent source data'''
         if self.input_dist == 'gaussian':
@@ -183,24 +191,25 @@ class Benchmark(BenchmarkBase):
             raise ValueError(f'Unknown input distribution: {self.input_dist}')
         return samples
     
+    @torch.no_grad()
     def sample_target(self, num_samples: int) -> torch.Tensor:
         '''Sample independent target data'''
         input_samples = self.sample_input(num_samples)
         target_samples = self.sample_target_given_input(input_samples)
         return target_samples
     
+    @torch.no_grad()
     def sample_input_target(self, num_samples: int) -> Tuple[torch.Tensor, torch.Tensor]:
         '''Sample paired input and target data'''
         input_samples = self.sample_input(num_samples)
         target_samples = self.sample_target_given_input(input_samples)
         return input_samples, target_samples
 
-class BenchmarkImages(Benchmark):
+class BenchmarkImages(BenchmarkBase):
     generator: nn.Module
 
     def __init__(
         self, 
-        dim: int, 
         num_potentials: int,
         alpha: float,
         num_categories: int,
@@ -216,10 +225,11 @@ class BenchmarkImages(Benchmark):
             'uniform'
         ]  = 'gaussian_mixture',
         num_val_samples: Optional[int] = None,
-        generator_path: str = '../checkpoints/stylegan2.pkl',
+        generator_path: str = '../checkpoints/cmnist_stylegan2.pkl',
         save_path: str = '../data/benchmark_images',
     ):
-        self.dim = dim
+        super().__init__()
+        self.dim = 3 * 32 * 32
         self.num_potentials = num_potentials
         self.prior  = Prior(
             alpha=alpha, 
@@ -270,17 +280,20 @@ class BenchmarkImages(Benchmark):
     # NOTE: Here we have reversed setup:
     #       - Input: CMNIST images;
     #       - Target: noised CMNIST images.
+    @torch.no_grad()
     def sample_input(self, num_samples: int) -> torch.Tensor:
         noise = torch.randn((num_samples, 512), device=self.device)
         input_samples = self._postporcess(self.generator(noise, None))
         return input_samples
     
+    @torch.no_grad()
     def sample_target(self, num_samples: int) -> torch.Tensor:
         noise = torch.randn((num_samples, 512), device=self.device)
         input_samples = self._postporcess(self.generator(noise, None))
         target_samples = self.sample_target_given_input(torch.flatten(input_samples, start_dim=1))
         return target_samples.reshape_as(input_samples)
     
+    @torch.no_grad()
     def sample_input_target(self, num_samples: int)-> Tuple[torch.Tensor, torch.Tensor]:
         noise = torch.randn((num_samples, 512), device=self.device)
         input_samples = self._postporcess(self.generator(noise, None))
