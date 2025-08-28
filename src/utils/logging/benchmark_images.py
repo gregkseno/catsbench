@@ -4,15 +4,13 @@ import numpy as np
 import torch
 
 from torchvision.utils import make_grid
-from torchmetrics import MetricCollection
+from torchmetrics.image import FrechetInceptionDistance
 from lightning.pytorch import Callback, Trainer, LightningModule
 from lightning.pytorch.loggers import WandbLogger, CometLogger
 from lightning.pytorch.utilities import rank_zero_only
 
 from src.utils import convert_to_numpy, fig2img
 from src.metrics.c2st import ClassifierTwoSampleTest
-from src.metrics.contingency_similarity import ContingencySimilarity
-from src.metrics.tv_complement import TVComplement
 from src.utils.logging.console import RankedLogger
 from benchmark import BenchmarkImages
 
@@ -89,12 +87,7 @@ class BenchmarkImagesLogger(Callback):
         self.benchmark.to(pl_module.device)
 
         # initialize metrics
-        pl_module.metrics = MetricCollection(
-            {
-                'tv_complement': TVComplement(self.dim, self.num_categories),
-                'contingency_similarity': ContingencySimilarity(self.dim, self.num_categories),
-            },
-        )
+        pl_module.fid = FrechetInceptionDistance(normalize=True)
         pl_module.c2st = ClassifierTwoSampleTest()
 
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
@@ -131,41 +124,23 @@ class BenchmarkImagesLogger(Callback):
         self._accumulate_buf('val', x_start, x_end)
 
         pred_x_end = pl_module.sample(x_start)
-        pl_module.metrics.update(x_end, pred_x_end)
+        pl_module.fid.update(x_end, real=True)
+        pl_module.fid.update(pred_x_end, real=False)
         pl_module.c2st.update(
             torch.cat([x_start, x_end], dim=-1), 
             torch.cat([x_start, pred_x_end], dim=-1)
         )
 
-        repeated_x_end = x_end[0].unsqueeze(0).expand(self.num_cond_samples, -1)
-        cond_x_end = self.benchmark.sample_target_given_input(repeated_x_end)
-        cond_pred_x_end = pl_module.sample(repeated_x_end)
-        pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
-        pl_module.cond_c2st.update(
-            torch.cat([repeated_x_end, cond_x_end], dim=-1), 
-            torch.cat([repeated_x_end, cond_pred_x_end], dim=-1)
-        )
-
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         
-        metrics = pl_module.metrics.compute()
-        metrics = {f'val/{k}_{fb}': v for k, v in metrics.items()}
-        pl_module.log_dict(metrics)
-        pl_module.metrics.reset()
+        fid = pl_module.fid.compute()
+        pl_module.log(f'val/fid_{fb}', fid)
+        pl_module.fid.reset()
 
         c2st = pl_module.c2st.compute()
         pl_module.log(f'val/c2st_{fb}', c2st)
         pl_module.c2st.reset()
-
-        cond_c2st = pl_module.cond_c2st.compute()
-        pl_module.log(f'val/cond_c2st_{fb}', cond_c2st)
-        pl_module.cond_c2st.reset()
-        
-        cond_metrics = pl_module.cond_metrics.compute()
-        cond_metrics = {f'val/{k}_{fb}': v for k, v in cond_metrics.items()}
-        pl_module.log_dict(cond_metrics)
-        pl_module.cond_metrics.reset()
 
         self._log_buf('val', pl_module)
 
@@ -185,41 +160,23 @@ class BenchmarkImagesLogger(Callback):
         self._accumulate_buf('test', x_start, x_end)
 
         pred_x_end = pl_module.sample(x_start)
-        pl_module.metrics.update(x_end, pred_x_end)
+        pl_module.fid.update(x_end, real=True)
+        pl_module.fid.update(pred_x_end, real=False)
         pl_module.c2st.update(
             torch.cat([x_start, x_end], dim=-1), 
             torch.cat([x_start, pred_x_end], dim=-1)
-        )
-        
-        repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
-        cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
-        cond_pred_x_end = pl_module.sample(repeated_x_start)
-        pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
-        pl_module.cond_c2st.update(
-            torch.cat([repeated_x_start, cond_x_end], dim=-1), 
-            torch.cat([repeated_x_start, cond_pred_x_end], dim=-1)
         )
 
     def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         
-        metrics = pl_module.metrics.compute()
-        metrics = {f'test/{k}_{fb}': v for k, v in metrics.items()}
-        pl_module.log_dict(metrics)
-        pl_module.metrics.reset()
+        fid = pl_module.fid.compute()
+        pl_module.log(f'val/fid_{fb}', fid)
+        pl_module.fid.reset()
 
         c2st = pl_module.c2st.compute()
         pl_module.log(f'test/c2st_{fb}', c2st)
         pl_module.c2st.reset()
-
-        cond_c2st = pl_module.cond_c2st.compute()
-        pl_module.log(f'test/cond_c2st_{fb}', cond_c2st)
-        pl_module.cond_c2st.reset()
-
-        cond_metrics = pl_module.cond_metrics.compute()
-        cond_metrics = {f'test/{k}_{fb}': v for k, v in cond_metrics.items()}
-        pl_module.log_dict(cond_metrics)
-        pl_module.cond_metrics.reset()
 
         self._log_buf('test', pl_module)
 
