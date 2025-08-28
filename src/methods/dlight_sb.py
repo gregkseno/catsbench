@@ -26,7 +26,6 @@ class DLightSB(LightningModule):
         optimizer: Optimizer, # partially initialized 
         scheduler: Optional[LRScheduler] = None, # partially initialized 
         distr_init: Literal['uniform', 'gaussian', 'samples'] = 'gaussian',
-        init_samples: Optional[torch.Tensor] = None,
         sample_prob: float = 0.9
     ):
         super().__init__()
@@ -50,10 +49,12 @@ class DLightSB(LightningModule):
                     torch.ones(num_potentials, prior.num_categories) /
                     (prior.num_categories * num_potentials)
                 )
+
+            # NOTE: @Ark-130994 I think it is better to implement using loop for clarity and match the previous initializations
             elif distr_init == 'samples':
-                assert init_samples is not None, 'init_samples are required'
-                cp_cores = torch.full((self.hparams.dim, self.prior.num_categories), (1 - sample) / (self.prior.num_categories - 1))
-                cp_cores[torch.arange(self.hparams.dim), init_samples] = sample_prob
+                init_samples = benchamrk.sample_target(dim * prior.num_categories)
+                cp_cores = torch.full((dim, prior.num_categories), (1 - sample_prob) / (prior.num_categories - 1))
+                cp_cores[torch.arange(dim), init_samples] = sample_prob
                 self.log_cp_cores = torch.log(cp_cores)
 
             else:
