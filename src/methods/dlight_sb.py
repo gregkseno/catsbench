@@ -29,47 +29,68 @@ class DLightSB(LightningModule):
         sample_prob: float = 0.9
     ):
         super().__init__()
-
         self.save_hyperparameters(*HPARAMS, logger=False)        
-        self.bidirectional = False  
-        self.iteration = 1
         self.prior = prior
         
         self.log_alpha = nn.Parameter(torch.zeros(num_potentials))
-        self.log_cp_cores = nn.ParameterList()
+        self.log_cp_cores = nn.Parameter(torch.empty(
+            dim, num_potentials, prior.num_categories,
+            device=self.log_alpha.device, dtype=self.log_alpha.dtype
+        ))
 
+        self.bidirectional = False  
+        self.iteration = 1
+        self._did_weight_init = False
+        self._loaded_from_ckpt = False
+
+    @torch.no_grad()
+    def init_weights(self, init_samples: Optional[torch.Tensor] = None):
         nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
 
-        # NOTE: I placed it here to save time if this is not the type of init required
-        log_cp_cores = torch.empty(dim, num_potentials, prior.num_categories)
+        if self.hparams.distr_init == 'gaussian':
+            cur = (-1.0 + (0.5**2) * torch.randn(
+                self.hparams.dim, self.hparams.num_potentials, self.prior.num_categories,
+                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype
+            )) / (self.prior.num_categories * self.hparams.num_potentials)
+            self.log_cp_cores.copy_(torch.log((cur ** 2).clamp_min(1e-12)))
 
-        if distr_init == 'uniform':
-            uniform_val = torch.log(torch.ones(num_potentials, prior.num_categories) / 
-                                (prior.num_categories * num_potentials))
+        elif self.hparams.distr_init == 'uniform':
+            val = torch.log(torch.tensor(
+                1.0 / (self.prior.num_categories * self.hparams.num_potentials),
+                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype)
+            )
+            self.log_cp_cores.fill_(val)
 
-        if distr_init == 'samples':
-            init_samples = benchmark.sample_input(num_potentials)  # (K, dim)
-            log_sample_prob = torch.log(torch.tensor((1 - sample_prob) / (prior.num_categories - 1)))
+        elif self.hparams.distr_init == 'samples':
+            assert init_samples is not None, "init_samples should not be None when using benchmark samples"
+            init_samples = torch.as_tensor(init_samples, device=self.log_cp_cores.device)
+            base_val = torch.log(torch.tensor(
+                (1 - self.hparams.sample_prob) / (self.prior.num_categories - 1),
+                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype)
+            )
+            self.log_cp_cores.fill_(base_val)
 
-        for d in range(dim):
-            if distr_init == 'gaussian':
-                cur_core = (-1.0 + 0.5**2 * torch.randn(num_potentials, prior.num_categories)) \
-                    / (prior.num_categories * num_potentials)
-                log_cp_cores[d] = torch.log(cur_core ** 2)
+            idx = init_samples.t().unsqueeze(-1).long()  # (dim, num_potentials, 1)
+            special_val = torch.log(torch.tensor(
+                self.hparams.sample_prob, device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype
+            ))
+            self.log_cp_cores.scatter_(2, idx, special_val)
 
-            elif distr_init == 'uniform':
-                log_cp_cores[d] = uniform_val
+        else:
+            raise ValueError(f"Invalid distr_init: {self.hparams.distr_init}")
+        
+        self._did_weight_init = True
 
-            elif distr_init == 'samples':
-                log_cp_cores[d] = log_sample_prob
-                
-                sample_indices = torch.arange(num_potentials)
-                category_indices = init_samples[:, d]
-                log_cp_cores[d, sample_indices, category_indices] = torch.log(torch.tensor(sample_prob))
-            else:
-                raise ValueError(f'Invalid distr_init: {distr_init}')
+    def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        self._loaded_from_ckpt = True
 
-        self.log_cp_cores = nn.ParameterList([nn.Parameter(log_cp_cores[d]) for d in range(dim)])
+    def setup(self, stage: Literal['fit', 'validate', 'test']):
+        if stage in (None, "fit") and not self._did_weight_init and not self._loaded_from_ckpt:
+            assert hasattr(self.trainer, 'datamodule'), "Trainer has no datamodule attribute"
+            assert hasattr(self.trainer.datamodule, 'benchmark'), "Datamodule has no benchmark attribute"
+            init_samples: torch.Tesnor = self.trainer.datamodule.benchmark.sample_input(self.hparams.num_potentials)
+            init_samples = init_samples.flatten(start_dim=1) # (num_potentials, dim)
+            self.init_weights(init_samples)
 
     def get_log_v(self, x_end: torch.Tensor) -> torch.Tensor:
         x_end = x_end.flatten(start_dim=1)
