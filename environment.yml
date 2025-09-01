@@ -17,10 +17,11 @@ dependencies:
   - transformers=4.52.4
   - wandb=0.20.1
   - pip:
-    - --extra-index-url https://download.pytorch.org/whl/cu124
-    - flash-attn==2.7.3 
+    - --index-url https://download.pytorch.org/whl/cu124
     - torch==2.6.0
     - torchvision==0.21.0
-    - torchmetrics[images]==1.8.1
+    - --index-url https://pypi.org/simple
+    - flash-attn==2.7.3 
+    - torch-fidelity==0.3.0
     - pqm==0.6.3
     - comet_ml==3.49.12
