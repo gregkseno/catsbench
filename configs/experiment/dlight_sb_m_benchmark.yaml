@@ -8,7 +8,7 @@ defaults:
     - rich_progress_bar
     - model_checkpoint
     - model_summary
-    - benchmark_metric
+    - benchmark_metrics
   - override /trainer: gpu
   - _self_
 
@@ -36,7 +36,7 @@ method:
 
 trainer:
   max_epochs: 5
-  limit_train_batches: 20000 # controls number of IMF inner iterations
+  limit_train_batches: 20000
   val_check_interval: 1000
   accumulate_grad_batches: 1
   gradient_clip_val: null
