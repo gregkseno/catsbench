@@ -20,31 +20,35 @@ class BenchmarkBase:
     log_cp_cores: torch.Tensor
     input_dataset: torch.Tensor
     target_dataset: torch.Tensor
+    device: str
 
     def _get_log_cp_cores(
         self, 
         benchmark_type: Literal['gaussian_mixture', 'log_gaussian', 'uniform'], 
-        spread: float = 15.0
+        spread: float = 15.0,
+        device: str = 'cpu'
     ) -> torch.Tensor:
         if benchmark_type == 'gaussian_mixture':
             means = sample_separated_means(
-                self.num_potentials, self.dim, self.prior.num_categories, min_dist=10
+                self.num_potentials, self.dim, self.prior.num_categories, min_dist=10, device=device
             ).unsqueeze(1)
-            stds = torch.full((self.num_potentials, self.dim), spread).unsqueeze(1) # (K, D)
+            stds = torch.full((self.num_potentials, self.dim), spread, device=device).unsqueeze(1) # (K, D)
             y_d = torch.arange(
-                self.prior.num_categories
+                self.prior.num_categories, device=device
             ).view(self.prior.num_categories, 1).repeat(1, self.dim).unsqueeze(0)  # (S, D)
-            log_cp_cores = -0.5 * torch.log(torch.tensor(2 * torch.pi)) - torch.log(stds) - 0.5 * ((y_d - means) / stds) ** 2
+            log_cp_cores = -0.5 * torch.log(torch.tensor(2 * torch.pi, device=device)) - torch.log(stds) - 0.5 * ((y_d - means) / stds) ** 2
 
         elif benchmark_type == 'log_gaussian':
-            mu = torch.zeros(self.dim)          
-            sigma = torch.ones(self.dim) * 0.5  
+            mu = torch.zeros(self.dim, device=device)          
+            sigma = torch.ones(self.dim, device=device) * 0.5  
 
             log_normal = torch.distributions.LogNormal(mu, sigma)
             log_cp_cores: torch.Tensor = log_normal.sample((self.num_potentials, self.prior.num_categories,)) # type: ignore
 
         elif benchmark_type == 'uniform':
-            log_cp_cores = torch.rand(size=(self.num_potentials, self.prior.num_categories, self.dim))     
+            log_cp_cores = torch.rand(
+                (self.num_potentials, self.prior.num_categories, self.dim), device=device
+            )     
 
         else:
             raise ValueError(f'Unknown benchmark type: {benchmark_type}')
@@ -109,16 +113,13 @@ class BenchmarkBase:
 
         self.input_dataset  = torch.load(source_path, map_location=torch.device('cpu'))
         self.target_dataset = torch.load(target_path, map_location=torch.device('cpu')) 
-
-    @property
-    def device(self) -> torch.device:
-        return self.log_alpha.device
     
     def to(self, device: torch.device):
         self.log_alpha = self.log_alpha.to(device)
         self.log_cp_cores = self.log_cp_cores.to(device)
         if hasattr(self, 'generator'):
             self.generator = self.generator.to(device)
+        self.device = device
 
 class Benchmark(BenchmarkBase):
     def __init__(
@@ -141,6 +142,7 @@ class Benchmark(BenchmarkBase):
         num_val_samples: Optional[int] = None,
         input_dist: Literal['gaussian', 'uniform'] = 'gaussian',
         save_path: str = '../data/benchmark',
+        device: str = 'cpu'
     ):
         super().__init__()
         self.dim = dim
@@ -153,6 +155,7 @@ class Benchmark(BenchmarkBase):
             prior_type=prior_type
         )
         self.input_dist = input_dist
+        self.device = device
 
         benchmark_dir = f"{save_path}/dim_{dim}/num_categories_{num_categories}/prior_{prior_type}/alpha_{alpha}/"
         solver_path = os.path.join(benchmark_dir, f'D_P0_{input_dist}.pth') 
@@ -160,12 +163,13 @@ class Benchmark(BenchmarkBase):
         target_path = os.path.join(benchmark_dir, f'X1_P0_{input_dist}.pt')
         if os.path.exists(source_path) and os.path.exists(target_path) and os.path.exists(solver_path):
             self.load(solver_path, source_path, target_path, benchmark_dir)
+            self.to(device)
 
         else:
-            log.info('Loading parameters...')
-            self.log_alpha = torch.log(torch.ones(self.num_potentials) / self.num_potentials)
+            log.info('Initializing parameters...')
+            self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device) / self.num_potentials)
             self.log_cp_cores = self._get_log_cp_cores(
-                benchmark_type, spread=SPREADS[self.prior.num_categories][dim]
+                benchmark_type, spread=SPREADS[self.prior.num_categories][dim], device=device
             ).permute(2, 0, 1) # (D, K, S)
 
             log.info('Sampling validation dataset...')
@@ -176,7 +180,7 @@ class Benchmark(BenchmarkBase):
             random_indices = torch.randperm(len(self.target_dataset))
             self.input_dataset  = self.input_dataset[random_indices]
             self.target_dataset = self.target_dataset[random_indices]
-
+            
             self.save(solver_path, source_path, target_path, benchmark_dir)
 
     @torch.no_grad()
@@ -234,6 +238,7 @@ class BenchmarkImages(BenchmarkBase):
         num_val_samples: Optional[int] = None,
         generator_path: str = '../checkpoints/cmnist_stylegan2.pkl',
         save_path: str = '../data/benchmark_images',
+        device: str = 'cpu'
     ):
         super().__init__()
         self.dim = dim
@@ -246,7 +251,8 @@ class BenchmarkImages(BenchmarkBase):
             num_skip_steps=num_skip_steps, 
             prior_type=prior_type
         )
-        self._load_generator(generator_path)
+        self._load_generator(generator_path, device=device)
+        self.device = device
         
         benchmark_dir = f"{save_path}/num_categories_{num_categories}/prior_{prior_type}/alpha_{alpha}/"
         solver_path = os.path.join(benchmark_dir, f'D_c0_{benchmark_type}.pth') 
@@ -254,11 +260,12 @@ class BenchmarkImages(BenchmarkBase):
         target_path = os.path.join(benchmark_dir, f'X1_c0_{benchmark_type}.pt')
         if os.path.exists(source_path) and os.path.exists(target_path) and os.path.exists(solver_path):
             self.load(solver_path, source_path, target_path, benchmark_dir)
-           
+            self.to(device)
+
         else:
             log.info('Loading parameters...')
-            self.log_alpha = torch.log(torch.ones(self.num_potentials) / self.num_potentials)
-            self.log_cp_cores = self._get_log_cp_cores(benchmark_type, spread=15).permute(2, 0, 1) # (D, K, S)
+            self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device) / self.num_potentials)
+            self.log_cp_cores = self._get_log_cp_cores(benchmark_type, spread=15, device=device).permute(2, 0, 1) # (D, K, S)
 
             log.info('Sampling validation dataset...')
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
@@ -269,9 +276,9 @@ class BenchmarkImages(BenchmarkBase):
             for i in range(num_batches):
                 noise = torch.randn((samples_per_batch, 512), device=self.device)
                 start, end = samples_per_batch * i, samples_per_batch * (i + 1)
-                self.input_dataset[start:end] = self._postporcess(self.generator(noise, None))
+                self.input_dataset[start:end] = self._postporcess(self.generator(noise, None)).cpu()
                 self.target_dataset[start:end] = self.sample_target_given_input(
-                    torch.flatten(self.input_dataset[start:end], start_dim=1)
+                    torch.flatten(self.input_dataset[start:end].to(device), start_dim=1)
                 ).reshape_as(self.input_dataset[start:end])
 
             self.save(solver_path, source_path, target_path, benchmark_dir)
@@ -280,10 +287,10 @@ class BenchmarkImages(BenchmarkBase):
     def _postporcess(outputs: torch.Tensor) -> torch.Tensor:
         return ((outputs * 0.5 + 0.5).clamp(0, 1) * 255).to(torch.int)
 
-    def _load_generator(self, generator_path: str):
+    def _load_generator(self, generator_path: str, device: str = 'cpu'):
         log.info('Loading StyleGAN2 generator checkpoint...')
         with dnnlib.util.open_url(generator_path) as f:
-            self.generator: nn.Module = legacy.load_network_pkl(f)['G_ema'] # type: ignore
+            self.generator: nn.Module = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
     
     # NOTE: Here we have reversed setup:
     #       - Input: CMNIST images;

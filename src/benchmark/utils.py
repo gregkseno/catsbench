@@ -34,13 +34,20 @@ def continuous_to_discrete(
     discrete_batch = torch.bucketize(batch, bin_edges)
     return discrete_batch
 
-def sample_separated_means(num_potentials, dim, num_categories, min_dist=5, max_attempts=5000):
+def sample_separated_means(
+    num_potentials: int, 
+    dim: int, 
+    num_categories: int, 
+    min_dist: float = 5,
+    max_attempts: int = 5000,
+    device: str ='cpu'
+):
     means = []
     attempts = 0
     low, high = 5, num_categories - 5
 
     while len(means) < num_potentials and attempts < max_attempts:
-        candidate = torch.randint(low, high, (dim,))
+        candidate = torch.randint(low, high, (dim,), device=device)
         if all(torch.norm(candidate - m.float()) >= min_dist for m in means):
             means.append(candidate)
         attempts += 1
