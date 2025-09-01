@@ -54,8 +54,8 @@ class BenchmarkImagesDataModule(LightningDataModule):
         # here is an `if` because the `setup` method is called multiple times 
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.benchmark and not self.data_train and not self.data_val and not self.data_test:
-            self.benchmark = BenchmarkImages(**self.hparams.benchmark_config)
-            self.benchmark.to(device=self.trainer.device)
+            device = self.trainer.device if self.trainer is not None else 'cpu'
+            self.benchmark = BenchmarkImages(**self.hparams.benchmark_config, device=device)
 
             # Permute the target dataset to ensure unpaired setup
             random_indices = torch.randperm(len(self.benchmark.target_dataset))
