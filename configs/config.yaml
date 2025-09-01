@@ -8,7 +8,6 @@ defaults:
   - trainer: gpu
   - experiment: null
   - hydra: default
-  - override hydra/launcher: slurm
   - _self_
 
 paths:
