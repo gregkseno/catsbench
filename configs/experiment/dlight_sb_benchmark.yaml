@@ -29,7 +29,7 @@ prior:
 
 method:
   num_potentials: 1000
-  distr_init: gaussian
+  distr_init: samples
 
 trainer:
   max_epochs: 5
