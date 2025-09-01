@@ -1,0 +1,8 @@
+# @package _global_
+hydra:
+  sweeper:
+    params:
+      experiment=dlight_sb_benchmark seed=1 paths.data_dir="/filestore/benchmark/data" paths.log_dir="/filestore/benchmark/logs" data.dim=2 prior.prior_type=gaussian prior.alpha=0.02
+      experiment=dlight_sb_benchmark seed=1 paths.data_dir="/filestore/benchmark/data" paths.log_dir="/filestore/benchmark/logs" data.dim=2 prior.prior_type=gaussian prior.alpha=0.05
+      experiment=dlight_sb_benchmark seed=1 paths.data_dir="/filestore/benchmark/data" paths.log_dir="/filestore/benchmark/logs" data.dim=2 prior.prior_type=uniform prior.alpha=0.005
+      experiment=dlight_sb_benchmark seed=1 paths.data_dir="/filestore/benchmark/data" paths.log_dir="/filestore/benchmark/logs" data.dim=2 prior.prior_type=uniform prior.alpha=0.01

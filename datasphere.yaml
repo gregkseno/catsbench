@@ -1,0 +1,15 @@
+name: benchmark
+desc: Train DLight on synthetic benchmark dataset
+cmd: >
+  python -m src.run -m \
+    hydra/sweeper=list hydra.mode=MULTIRUN \
+    "hydra.sweeper.params.experiment=dlight_sb_benchmark,dlight_sb_benchmark,dlight_sb_benchmark,dlight_sb_benchmark" \
+    "hydra.sweeper.params.seed=1,1,1,1" \
+    "hydra.sweeper.params.data.dim=2,2,2,2" \
+    "hydra.sweeper.params.paths.data_dir=/filestore/benchmark/data,/filestore/benchmark/data,/filestore/benchmark/data,/filestore/benchmark/data" \
+    "hydra.sweeper.params.paths.log_dir=/filestore/benchmark/logs,/filestore/benchmark/logs,/filestore/benchmark/logs,/filestore/benchmark/logs" \
+    "hydra.sweeper.params.prior.prior_type=gaussian,gaussian,uniform,uniform" \
+    "hydra.sweeper.params.prior.alpha=0.02,0.05,0.005,0.01"
+env:
+  python: auto
+cloud-instance-type: g1.1
