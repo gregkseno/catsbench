@@ -14,7 +14,7 @@ log = RankedLogger(__name__, rank_zero_only=True)
 
 HPARAMS = (
     'dim', 'num_potentials', 'distr_init', 
-    'optimizer', 'scheduler'
+    'sample_prob', 'optimizer', 'scheduler'
 )
 
 class DLightSB(LightningModule):

@@ -13,7 +13,7 @@ from src.utils.logging.console import RankedLogger
 
 
 HPARAMS = (
-    'dim', 'num_potentials', 
+    'dim', 'num_potentials', 'sample_prob',
     'use_mini_batch', 'distr_init',
     'kl_loss_coeff', 'mse_loss_coeff', 
     'optimizer', 'scheduler'
