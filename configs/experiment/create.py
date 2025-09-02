@@ -1,12 +1,15 @@
 import os
 import yaml
 
-# --- base config skeleton ---
 def make_config(dim, prior_type, alpha, num_timesteps, num_skip_steps,
                 kl_loss_coeff, mse_loss_coeff):
     return {
-        "defaults": ["dlight_sb_m/benchmark/default"],
-        "data": {"dim": dim},
+        "defaults": [
+            "dlight_sb_m/benchmark/default"
+        ],
+        "data": {
+            "dim": dim,
+        },
         "prior": {
             "prior_type": prior_type,
             "alpha": alpha,
@@ -38,7 +41,7 @@ loss_coeffs = [
 ]
 
 # --- output folder ---
-out_dir = "configs/experiment/dlight_sb_m/benchmark"
+out_dir = "configs/experiment/csbm/benchmark"
 os.makedirs(out_dir, exist_ok=True)
 
 # --- generate ---
@@ -51,13 +54,13 @@ for dim in dims:
                                       num_timesteps, num_skip_steps,
                                       kl, mse)
 
-                    # filename convention: d{dim}_{p}{alpha*1000}_t{num_timesteps}_{loss}.yaml
                     loss_tag = "kl" if kl == 1.0 else "mse"
                     alpha_tag = str(alpha).replace(".", "")
                     fname = f"d{dim}_{prior_type[0]}{alpha_tag}_t{num_timesteps}_{loss_tag}.yaml"
 
                     path = os.path.join(out_dir, fname)
                     with open(path, "w") as f:
+                        f.write("# @package _global_\n\n")
                         yaml.dump(cfg, f, sort_keys=False)
 
 print(f"✅ Generated configs in {out_dir}")

@@ -1,3 +1,5 @@
+# @package _global_
+
 defaults:
 - dlight_sb_m/benchmark/default
 data:
