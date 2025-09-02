@@ -1,5 +1,5 @@
 defaults:
-  - default
+  - dlight_sb/benchmark/default
 
 data:
   dim: 2
