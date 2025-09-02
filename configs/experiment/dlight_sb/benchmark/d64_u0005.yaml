@@ -1,0 +1,9 @@
+defaults:
+  - default
+
+data:
+  dim: 64
+
+prior:
+  prior_type: uniform
+  alpha: 0.005

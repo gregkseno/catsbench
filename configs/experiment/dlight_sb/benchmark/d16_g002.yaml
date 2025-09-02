@@ -1,0 +1,9 @@
+defaults:
+  - default
+
+data:
+  dim: 16
+
+prior:
+  prior_type: gaussian
+  alpha: 0.02
