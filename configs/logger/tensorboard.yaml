@@ -1,0 +1,6 @@
+tensorboard:
+  _target_: lightning.pytorch.loggers.tensorboard.TensorBoardLogger
+  save_dir: ${paths.output_dir}
+  name: ${hydra:runtime.choices.data}_${hydra:runtime.choices.method}_${prior.prior_type}_dim_${data.dim}_alpha_${prior.alpha}
+  version: ${task_name}
+  default_hp_metric: false

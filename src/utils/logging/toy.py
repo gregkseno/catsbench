@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from lightning.pytorch import Callback, Trainer, LightningModule
-from lightning.pytorch.loggers import WandbLogger, CometLogger
+from lightning.pytorch.loggers import WandbLogger, CometLogger, TensorBoardLogger
 from lightning.pytorch.utilities import rank_zero_only
 
 from src.utils import convert_to_numpy, fig2img
@@ -184,9 +184,17 @@ class ToyLogger(Callback):
             pl_module.logger.experiment.log_image(
                 image_data=img, name=f'{stage}/samples_{fb}', step=pl_module.global_step
             )
+        elif isinstance(pl_module.logger, TensorBoardLogger): # can be optimized with add_fig 
+            img_np = np.array(img)
+            if img_np.ndim == 2:
+                img_np = img_np[:, :, None]            
+            pl_module.logger.experiment.add_image(
+                tag=f'{stage}/samples_{fb}', img_tensor=img_np, global_step=pl_module.global_step,
+                dataformats='HWC'
+            )
         else:
             raise ValueError(
-                f'Unsupported logger type: {type(pl_module.logger)}. Expected WandbLogger or CometLogger.'
+                f'Unsupported logger type: {type(pl_module.logger)}. Expected WandbLogger, TensorBoardLogger or CometLogger.'
             )
         plt.close()
 
@@ -246,8 +254,17 @@ class ToyLogger(Callback):
             pl_module.logger.experiment.log_image(
                 image_data=img, name=f'{stage}/trajectories_{fb}', step=pl_module.global_step
             )
+        # Still doesn't work for images
+        elif isinstance(pl_module.logger, TensorBoardLogger):
+            img_np = np.array(img)
+            if img_np.ndim == 2:
+                img_np = img_np[:, :, None]
+            pl_module.logger.experiment.add_image(
+                image_data=img, name=f'{stage}/trajectories_{fb}', step=pl_module.global_step,
+                dataformats='HWC'
+            )
         else:
             raise ValueError(
-                f'Unsupported logger type: {type(pl_module.logger)}. Expected WandbLogger or CometLogger.'
+                f'Unsupported logger type: {type(pl_module.logger)}. Expected WandbLogger, TensorBoardLogger or CometLogger.'
             )
         plt.close()

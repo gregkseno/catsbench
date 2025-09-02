@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch
 from torch import nn
 
-from src.utils import broadcast, log_space_product
+from src.utils import broadcast, log_space_product, logits_prod
 
 
 def get_cum_matrices(num_timesteps: int, log_onestep_matrix: torch.Tensor) -> torch.Tensor:
@@ -216,7 +216,7 @@ class Prior(nn.Module):
 
         # fact2 is "guess of x_{t-1}" from x_{0}
         x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
-        log_fact2 = log_space_product(x_start_logits, self.log_p_cum[t-1]) 
+        log_fact2 = logits_prod(x_start_logits, self.log_p_cum[t-1]) 
 
         p_posterior_logits = log_fact1 + log_fact2
         p_posterior_logits = p_posterior_logits - p_posterior_logits.logsumexp(dim=-1, keepdim=True) # Normalize
@@ -245,7 +245,7 @@ class Prior(nn.Module):
         log_fact1 = self.extract('onestep', t+1, row_id=x_t)  # shape: x_t.shape + (num_categories,)
 
         x_end_logits = x_end_logits.log_softmax(dim=-1)
-        log_fact2 = log_space_product(
+        log_fact2 = logits_prod(
             x_end_logits, self.log_p_cum[self.num_timesteps - t] #.transpose(-2, -1)
         )
 

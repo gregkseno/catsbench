@@ -14,7 +14,13 @@ from lightning.pytorch.loggers import Logger
 from src.utils.logging.console import RankedLogger
 from src.utils import instantiate_callbacks, instantiate_loggers
 
-
+try:
+    import torch
+    import torch_npu
+    from torch_npu.contrib import transfer_to_npu
+    torch.cuda.get_device_capability = lambda x: (7,None)
+except ImportError:
+    pass
 log = RankedLogger(__name__, rank_zero_only=True)
 
 @hydra.main(version_base='1.1', config_path='../configs', config_name='config.yaml')
