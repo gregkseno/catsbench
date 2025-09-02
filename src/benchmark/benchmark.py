@@ -115,6 +115,7 @@ class BenchmarkBase:
         self.target_dataset = torch.load(target_path, map_location=torch.device('cpu')) 
     
     def to(self, device: torch.device):
+        self.prior.to(device)
         self.log_alpha = self.log_alpha.to(device)
         self.log_cp_cores = self.log_cp_cores.to(device)
         if hasattr(self, 'generator'):
@@ -153,7 +154,7 @@ class Benchmark(BenchmarkBase):
             num_timesteps=num_timesteps, 
             num_skip_steps=num_skip_steps, 
             prior_type=prior_type
-        )
+        ).to(device)
         self.input_dist = input_dist
         self.device = device
 
@@ -250,7 +251,7 @@ class BenchmarkImages(BenchmarkBase):
             num_timesteps=num_timesteps, 
             num_skip_steps=num_skip_steps, 
             prior_type=prior_type
-        )
+        ).to(device)
         self._load_generator(generator_path, device=device)
         self.device = device
         
