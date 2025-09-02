@@ -29,7 +29,8 @@ def continuous_to_discrete(
     bin_edges = torch.linspace(
         quantize_range[0], 
         quantize_range[1], 
-        num_categories - 1
+        num_categories - 1,
+        device=batch.device
     )
     discrete_batch = torch.bucketize(batch, bin_edges)
     return discrete_batch
