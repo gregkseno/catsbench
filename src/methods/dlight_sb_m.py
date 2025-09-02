@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+import math
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -78,10 +79,11 @@ class DLightSB_M(LightningModule):
             self.log_cp_cores.fill_(base_val)
 
             idx = init_samples.t().unsqueeze(-1).long()  # (dim, num_potentials, 1)
-            special_val = torch.log(torch.tensor(
-                self.hparams.sample_prob, device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype
-            ))
-            self.log_cp_cores.scatter_(2, idx, special_val)
+            src = torch.full(
+                idx.shape, math.log(self.hparams.sample_prob),
+                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype
+            )
+            self.log_cp_cores.scatter_(2, idx, src)
 
         else:
             raise ValueError(f"Invalid distr_init: {self.hparams.distr_init}")
