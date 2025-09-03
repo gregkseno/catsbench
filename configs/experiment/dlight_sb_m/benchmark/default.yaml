@@ -37,6 +37,6 @@ method:
 trainer:
   max_epochs: 5
   limit_train_batches: 20000
-  val_check_interval: 1000
+  val_check_interval: null
   accumulate_grad_batches: 1
   gradient_clip_val: null
