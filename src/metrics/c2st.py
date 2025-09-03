@@ -30,8 +30,8 @@ class ClassifierTwoSampleTest(Metric):
     def update(self, real_data: torch.Tensor, pred_data: torch.Tensor) -> None:
         assert real_data.shape == pred_data.shape, \
             "real_data and pred_data must have the same shape!"
-        self.real_data.append(real_data.detach().float())
-        self.pred_data.append(pred_data.detach().float())
+        self.real_data.append(real_data.detach().float().cpu())
+        self.pred_data.append(pred_data.detach().float().cpu())
 
     def compute(self):
         real_data = convert_to_numpy(dim_zero_cat(self.real_data))

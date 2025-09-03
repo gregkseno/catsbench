@@ -38,11 +38,12 @@ class TVComplement(Metric):
         if real_data.shape != pred_data.shape or real_data.ndim != 2:
             raise ValueError("Expect two equal‑shaped 2‑D tensors (batch_size, dim).")
 
-        real_batch_counts = F.one_hot(real_data, self.num_categories).sum(dim=0)
-        pred_batch_counts = F.one_hot(pred_data, self.num_categories).sum(dim=0)
+        device = real_data.device
+        real_batch_counts = F.one_hot(real_data.cpu(), self.num_categories).sum(dim=0)
+        pred_batch_counts = F.one_hot(pred_data.cpu(), self.num_categories).sum(dim=0)
 
-        self.real_counts += real_batch_counts
-        self.pred_counts += pred_batch_counts
+        self.real_counts += real_batch_counts.to(device)
+        self.pred_counts += pred_batch_counts.to(device)
 
     def compute(self) -> torch.Tensor:
         real_totals = self.real_counts.sum(dim=1, keepdim=True) # (D, 1)

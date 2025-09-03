@@ -40,14 +40,15 @@ class ContingencySimilarity(Metric):
         if real_data.shape[1] != self.dim:
             raise ValueError(f"Expected second dim = {self.dim}, got {real_data.shape[1]}")
         
-        real_batch_one_hot = F.one_hot(real_data, self.num_categories) # (B, D, S)
-        pred_batch_one_hot = F.one_hot(pred_data, self.num_categories) # (B, D, S)
+        device = real_data.device
+        real_batch_one_hot = F.one_hot(real_data.cpu(), self.num_categories) # (B, D, S)
+        pred_batch_one_hot = F.one_hot(pred_data.cpu(), self.num_categories) # (B, D, S)
 
         real_batch_counts = torch.einsum('bis,bjc->bijsc', real_batch_one_hot, real_batch_one_hot) # (B, D, D, S, S)
         pred_batch_counts = torch.einsum('bis,bjc->bijsc', pred_batch_one_hot, pred_batch_one_hot) # (B, D, D, S, S)
 
-        self.real_counts += real_batch_counts.sum(dim=0)
-        self.pred_counts += pred_batch_counts.sum(dim=0)
+        self.real_counts += real_batch_counts.sum(dim=0).to(device)
+        self.pred_counts += pred_batch_counts.sum(dim=0).to(device)
 
     def compute(self) -> torch.Tensor:
         real_total = self.real_counts.sum(dim=[2, 3], keepdim=True) # (D, D, 1, 1)
