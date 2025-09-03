@@ -1,6 +1,5 @@
 from typing import Literal
 import torch
-from torch.nn import functional as F
 from torchmetrics import Metric
 
 
@@ -21,12 +20,12 @@ class ContingencySimilarity(Metric):
         
         self.add_state(
             "real_counts",
-            default=torch.zeros(dim, dim, num_categories, num_categories, dtype=torch.long),
+            default=torch.zeros(dim, dim, num_categories, num_categories, dtype=torch.int),
             dist_reduce_fx="sum",
         )
         self.add_state(
             "pred_counts",
-            default=torch.zeros(dim, dim, num_categories, num_categories, dtype=torch.long),
+            default=torch.zeros(dim, dim, num_categories, num_categories, dtype=torch.int),
             dist_reduce_fx="sum",
         )
 
@@ -40,22 +39,31 @@ class ContingencySimilarity(Metric):
         if real_data.shape[1] != self.dim:
             raise ValueError(f"Expected second dim = {self.dim}, got {real_data.shape[1]}")
         
-        device = real_data.device
-        real_batch_one_hot = F.one_hot(real_data.cpu(), self.num_categories) # (B, D, S)
-        pred_batch_one_hot = F.one_hot(pred_data.cpu(), self.num_categories) # (B, D, S)
+        for d in range(self.dim):
+            r_d = real_data[:, d]  # (B,)
+            p_d = pred_data[:, d]  # (B,)
+            for j in range(self.dim):
+                r_idx = r_d * self.num_categories + real_data[:, j]
+                p_idx = p_d * self.num_categories + pred_data[:, j]
 
-        real_batch_counts = torch.einsum('bis,bjc->bijsc', real_batch_one_hot, real_batch_one_hot) # (B, D, D, S, S)
-        pred_batch_counts = torch.einsum('bis,bjc->bijsc', pred_batch_one_hot, pred_batch_one_hot) # (B, D, D, S, S)
+                r_cnt = torch.bincount(r_idx, minlength=self.num_categories**2).to(torch.int)
+                p_cnt = torch.bincount(p_idx, minlength=self.num_categories**2).to(torch.int)
 
-        self.real_counts += real_batch_counts.sum(dim=0).to(device)
-        self.pred_counts += pred_batch_counts.sum(dim=0).to(device)
+                self.real_counts[d, j] += r_cnt.reshape(self.num_categories, self.num_categories)
+                self.pred_counts[d, j] += p_cnt.reshape(self.num_categories, self.num_categories)
 
     def compute(self) -> torch.Tensor:
         real_total = self.real_counts.sum(dim=[2, 3], keepdim=True) # (D, D, 1, 1)
         pred_total = self.pred_counts.sum(dim=[2, 3], keepdim=True) # (D, D, 1, 1)
 
-        reals = self.real_counts.float() / real_total
-        preds = self.pred_counts.float() / pred_total
+        reals = torch.where(
+            real_total > 0, self.real_counts.float() / real_total.float(), 
+            torch.zeros_like(self.real_counts, dtype=torch.float)
+        )
+        preds = torch.where(
+            pred_total > 0, self.pred_counts.float() / pred_total.float(), 
+            torch.zeros_like(self.pred_counts, dtype=torch.float)
+        )
 
         tvd = 0.5 * torch.abs(reals - preds).sum(dim=[2, 3]) # (D, D)
         scores = 1.0 - tvd

@@ -1,6 +1,5 @@
 from typing import Literal
 import torch
-from torch.nn import functional as F
 from torchmetrics import Metric
 
 
@@ -21,12 +20,12 @@ class TVComplement(Metric):
 
         self.add_state(
             "real_counts",
-            default=torch.zeros(dim, num_categories, dtype=torch.long),
+            default=torch.zeros(dim, num_categories, dtype=torch.int),
             dist_reduce_fx="sum",
         )
         self.add_state(
             "pred_counts",
-            default=torch.zeros(dim, num_categories, dtype=torch.long),
+            default=torch.zeros(dim, num_categories, dtype=torch.int),
             dist_reduce_fx="sum",
         )
 
@@ -38,19 +37,26 @@ class TVComplement(Metric):
         if real_data.shape != pred_data.shape or real_data.ndim != 2:
             raise ValueError("Expect two equal‑shaped 2‑D tensors (batch_size, dim).")
 
-        device = real_data.device
-        real_batch_counts = F.one_hot(real_data.cpu(), self.num_categories).sum(dim=0)
-        pred_batch_counts = F.one_hot(pred_data.cpu(), self.num_categories).sum(dim=0)
-
-        self.real_counts += real_batch_counts.to(device)
-        self.pred_counts += pred_batch_counts.to(device)
+        for d in range(self.dim):
+            r_cnt = torch.bincount(real_data[:, d], minlength=self.num_categories).to(torch.int)  # (S,)
+            p_cnt = torch.bincount(pred_data[:, d], minlength=self.num_categories).to(torch.int)  # (S,)
+            self.real_counts[d] += r_cnt
+            self.pred_counts[d] += p_cnt
 
     def compute(self) -> torch.Tensor:
         real_totals = self.real_counts.sum(dim=1, keepdim=True) # (D, 1)
         pred_totals = self.pred_counts.sum(dim=1, keepdim=True) # (D, 1)
 
-        reals = self.real_counts.float() / real_totals
-        preds = self.pred_counts.float() / pred_totals
+        reals = torch.where(
+            real_totals > 0,
+            self.real_counts.float() / real_totals.float(),
+            torch.zeros_like(self.real_counts, dtype=torch.float),
+        )
+        preds = torch.where(
+            pred_totals > 0,
+            self.pred_counts / pred_totals.float(),
+            torch.zeros_like(self.pred_counts, dtype=torch.float),
+        )
         tvd = 0.5 * torch.abs(reals - preds).sum(dim=1) # (D)
         scores = 1.0 - tvd
         
