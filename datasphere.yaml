@@ -4,7 +4,19 @@ cmd: >
   python -m src.run -m \
     paths.data_dir="${DS_PROJECT_HOME}/data" seed=1 \
     hydra/launcher=joblib hydra.launcher.n_jobs=4 hydra.launcher.backend=loky \
-    experiment=csbm/benchmark/d2_g002_t63_kl,csbm/benchmark/d2_g002_t63_mse,csbm/benchmark/d2_g002_t15_kl,csbm/benchmark/d2_g002_t15_mse
+    experiment=csbm/benchmark/d64_g002_t63_kl,csbm/benchmark/d64_g002_t63_mse,csbm/benchmark/d64_g002_t15_kl,csbm/benchmark/d64_g002_t15_mse
+  python -m src.run -m \
+    paths.data_dir="${DS_PROJECT_HOME}/data" seed=1 \
+    hydra/launcher=joblib hydra.launcher.n_jobs=4 hydra.launcher.backend=loky \
+    experiment=csbm/benchmark/d64_g005_t63_kl,csbm/benchmark/d64_g005_t63_mse,csbm/benchmark/d64_g005_t15_kl,csbm/benchmark/d64_g005_t15_mse
+  python -m src.run -m \
+    paths.data_dir="${DS_PROJECT_HOME}/data" seed=1 \
+    hydra/launcher=joblib hydra.launcher.n_jobs=4 hydra.launcher.backend=loky \
+    experiment=csbm/benchmark/d64_u0005_t63_kl,csbm/benchmark/d64_u0005_t63_mse,csbm/benchmark/d64_u0005_t15_kl,csbm/benchmark/d64_u0005_t15_mse
+  python -m src.run -m \
+    paths.data_dir="${DS_PROJECT_HOME}/data" seed=1 \
+    hydra/launcher=joblib hydra.launcher.n_jobs=4 hydra.launcher.backend=loky \
+    experiment=csbm/benchmark/d64_u001_t63_kl,csbm/benchmark/d64_u001_t63_mse,csbm/benchmark/d64_u001_t15_kl,csbm/benchmark/d64_u001_t15_mse
 env:
   python:
     type: manual
