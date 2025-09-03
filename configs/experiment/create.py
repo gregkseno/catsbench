@@ -5,7 +5,7 @@ def make_config(dim, prior_type, alpha, num_timesteps, num_skip_steps,
                 kl_loss_coeff, mse_loss_coeff):
     return {
         "defaults": [
-            "dlight_sb_m/benchmark/default"
+            "csbm/benchmark/default"
         ],
         "data": {
             "dim": dim,
