@@ -5,7 +5,6 @@ defaults:
   - override /model: simple_mlp
   - override /method: csbm
   - override /callbacks:
-    - rich_progress_bar
     - model_checkpoint
     - model_summary
     - benchmark_metrics

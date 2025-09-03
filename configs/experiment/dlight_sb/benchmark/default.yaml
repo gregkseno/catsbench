@@ -5,7 +5,6 @@ defaults:
   - override /model: null
   - override /method: dlight_sb
   - override /callbacks:
-    - rich_progress_bar
     - model_checkpoint
     - model_summary
     - benchmark_metrics
