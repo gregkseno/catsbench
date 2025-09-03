@@ -1,5 +1,7 @@
 from typing import List
 
+import os
+from pathlib import Path
 import sys
 sys.path.append('src/')
 
@@ -18,12 +20,31 @@ try:
     import torch
     import torch_npu
     from torch_npu.contrib import transfer_to_npu
-    torch.cuda.get_device_capability = lambda x: (7,None)
+    torch.cuda.get_device_capability = lambda x: (7, None)
 except ImportError:
     pass
 log = RankedLogger(__name__, rank_zero_only=True)
 
-@hydra.main(version_base='1.1', config_path='../configs', config_name='config.yaml')
+def _detect_config_dir() -> str:
+    candidates = []
+    ds_home = os.environ.get("DS_PROJECT_HOME")
+    if ds_home: candidates.append(Path(ds_home) / "configs")
+
+    here = Path(__file__).resolve()
+    candidates.append(here.parents[1] / "configs")
+
+    for p in candidates:
+        if p.is_dir(): return str(p)
+
+    tried = " | ".join(str(p) for p in candidates)
+    raise RuntimeError(
+        f"[Hydra] Config directory not found. Tried: {tried}"
+    )
+
+CONFIG_DIR = _detect_config_dir()
+
+
+@hydra.main(version_base='1.1', config_path=CONFIG_DIR, config_name='config.yaml')
 def main(config: DictConfig):
     if config.get('seed'):
         L.seed_everything(config.seed, workers=True)

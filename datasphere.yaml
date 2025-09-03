@@ -1,15 +1,21 @@
 name: benchmark
-desc: Train DLight on synthetic benchmark dataset
+desc: Train CSBM on synthetic benchmark dataset
 cmd: >
   python -m src.run -m \
-    hydra/sweeper=list hydra.mode=MULTIRUN \
-    "hydra.sweeper.params.experiment=dlight_sb_benchmark,dlight_sb_benchmark,dlight_sb_benchmark,dlight_sb_benchmark" \
-    "hydra.sweeper.params.seed=1,1,1,1" \
-    "hydra.sweeper.params.data.dim=2,2,2,2" \
-    "hydra.sweeper.params.paths.data_dir=/filestore/benchmark/data,/filestore/benchmark/data,/filestore/benchmark/data,/filestore/benchmark/data" \
-    "hydra.sweeper.params.paths.log_dir=/filestore/benchmark/logs,/filestore/benchmark/logs,/filestore/benchmark/logs,/filestore/benchmark/logs" \
-    "hydra.sweeper.params.prior.prior_type=gaussian,gaussian,uniform,uniform" \
-    "hydra.sweeper.params.prior.alpha=0.02,0.05,0.005,0.01"
+    paths.data_dir="${DS_PROJECT_HOME}/data" seed=1 \
+    hydra/launcher=joblib hydra.launcher.n_jobs=4 hydra.launcher.backend=loky \
+    experiment=csbm/benchmark/d2_g002_t63_kl,csbm/benchmark/d2_g002_t63_mse,csbm/benchmark/d2_g002_t15_kl,csbm/benchmark/d2_g002_t15_mse
 env:
-  python: auto
-cloud-instance-type: g1.1
+  python:
+    type: manual
+    version: 3.12
+    pip:
+      index-url: https://pypi.org/simple
+      extra-index-urls:
+        - https://download.pytorch.org/whl/cu124
+    requirements-file: requirements.txt
+    # vars:
+    # - PIP_NO_BUILD_ISOLATION: "1"
+flags:
+  - attach-project-disk
+cloud-instance-type: g2.1
