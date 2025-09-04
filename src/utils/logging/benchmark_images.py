@@ -101,7 +101,7 @@ class BenchmarkImagesLogger(Callback):
 
         # initialize metrics
         pl_module.fid = FrechetInceptionDistance(normalize=True)
-        pl_module.c2st = ClassifierTwoSampleTest()
+        pl_module.c2st = ClassifierTwoSampleTest(2*self.dim)
 
     @clear_cache
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
@@ -147,7 +147,7 @@ class BenchmarkImagesLogger(Callback):
         pl_module.c2st.update(
             torch.cat([x_start.flatten(start_dim=1), x_end.flatten(start_dim=1)], dim=-1), 
             torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1),
-            train=batch_idx < int(len(trainer.train_dataloader) * self.train_test_split)
+            train=batch_idx < int(len(trainer.val_dataloaders) * self.train_test_split)
         )
 
     @clear_cache
@@ -187,7 +187,7 @@ class BenchmarkImagesLogger(Callback):
         pl_module.c2st.update(
             torch.cat([x_start.flatten(start_dim=1), x_end.flatten(start_dim=1)], dim=-1), 
             torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1),
-            train=batch_idx < int(len(trainer.train_dataloader) * self.train_test_split)
+            train=batch_idx < int(len(trainer.test_dataloaders) * self.train_test_split)
         )
 
     @clear_cache
