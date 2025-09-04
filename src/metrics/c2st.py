@@ -23,7 +23,7 @@ class ClassifierTwoSampleTest(Metric):
         self.weight_decay = weight_decay
 
         # Initialize an inivisible linear layer parameters of which won't be accesible from outside
-        w = torch.nn.Parameter(torch.empty(1, dim))
+        w = torch.nn.Parameter(torch.empty(1, self.dim))
         b = torch.nn.Parameter(torch.empty(1))
         torch.nn.init.kaiming_uniform_(w, a=5**0.5)
         torch.nn.init.zeros_(b)
