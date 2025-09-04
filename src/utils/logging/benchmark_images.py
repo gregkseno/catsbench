@@ -14,6 +14,17 @@ from src.metrics.c2st import ClassifierTwoSampleTest
 from src.utils.logging.console import RankedLogger
 from benchmark import BenchmarkImages
 
+from functools import wraps
+import gc
+
+def clear_cache(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        gc.collect(); torch.cuda.empty_cache()
+        result = func(*args, **kwargs)
+        gc.collect(); torch.cuda.empty_cache()
+        return result
+    return wrapper
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
@@ -90,9 +101,11 @@ class BenchmarkImagesLogger(Callback):
         pl_module.fid = FrechetInceptionDistance(normalize=True)
         pl_module.c2st = ClassifierTwoSampleTest()
 
+    @clear_cache
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._reset_buf('train')
 
+    @clear_cache
     def on_train_batch_end(
         self,
         trainer: Trainer,
@@ -105,12 +118,15 @@ class BenchmarkImagesLogger(Callback):
         x_start, x_end = outputs['x_start'], outputs['x_end']
         self._accumulate_buf('train', x_start, x_end)
 
+    @clear_cache
     def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._log_buf('train', pl_module)
 
+    @clear_cache
     def on_validation_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._reset_buf('val')
 
+    @clear_cache
     def on_validation_batch_end(
         self,
         trainer: Trainer,
@@ -131,6 +147,7 @@ class BenchmarkImagesLogger(Callback):
             torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1)
         )
 
+    @clear_cache
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         
@@ -144,9 +161,11 @@ class BenchmarkImagesLogger(Callback):
 
         self._log_buf('val', pl_module)
 
+    @clear_cache
     def on_test_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._reset_buf('test')
 
+    @clear_cache
     def on_test_batch_end(
         self,
         trainer: Trainer,
@@ -167,6 +186,7 @@ class BenchmarkImagesLogger(Callback):
             torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1)
         )
 
+    @clear_cache
     def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         
