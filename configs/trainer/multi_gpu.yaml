@@ -4,7 +4,8 @@ default_root_dir: ${paths.output_dir}
 
 max_epochs: 50
 limit_train_batches: 500
-val_check_interval: 1000 # for num_timestep==15
+check_val_every_n_epoch: 2 # for num_timestep==15
+#val_check_interval: 1000 # for num_timestep==15
 
 strategy: ddp_find_unused_parameters_true
 accelerator: gpu
