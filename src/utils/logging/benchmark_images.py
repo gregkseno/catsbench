@@ -25,6 +25,7 @@ class BenchmarkImagesLogger(Callback):
         dim: int,
         input_shape: Tuple[int, int, int],
         num_categories: int,
+        train_test_split: float,
         num_samples: int, 
         num_trajectories: int, 
         num_translations: int,
@@ -33,7 +34,8 @@ class BenchmarkImagesLogger(Callback):
         self.dim = dim
         self.input_shape = input_shape
         self.num_categories = num_categories
-    
+
+        self.train_test_split = train_test_split
         self.num_samples = num_samples
         self.num_trajectories = num_trajectories
         self.num_translations = num_translations
@@ -128,7 +130,8 @@ class BenchmarkImagesLogger(Callback):
         pl_module.fid.update(pred_x_end, real=False)
         pl_module.c2st.update(
             torch.cat([x_start.flatten(start_dim=1), x_end.flatten(start_dim=1)], dim=-1), 
-            torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1)
+            torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1),
+            train=batch_idx < int(len(trainer.train_dataloader) * self.train_test_split)
         )
 
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
@@ -164,7 +167,8 @@ class BenchmarkImagesLogger(Callback):
         pl_module.fid.update(pred_x_end, real=False)
         pl_module.c2st.update(
             torch.cat([x_start.flatten(start_dim=1), x_end.flatten(start_dim=1)], dim=-1), 
-            torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1)
+            torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1),
+            train=batch_idx < int(len(trainer.train_dataloader) * self.train_test_split)
         )
 
     def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
