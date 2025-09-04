@@ -28,20 +28,31 @@ class TVComplement(Metric):
             default=torch.zeros(dim, num_categories, dtype=torch.int),
             dist_reduce_fx="sum",
         )
-
+        
+    @torch.no_grad()
     def update(
         self,
         real_data: torch.Tensor,
         pred_data: torch.Tensor,
     ) -> None:
         if real_data.shape != pred_data.shape or real_data.ndim != 2:
-            raise ValueError("Expect two equal‑shaped 2‑D tensors (batch_size, dim).")
+            raise ValueError("Expect two equal-shaped 2-D tensors (batch_size, dim).")
 
-        for d in range(self.dim):
-            r_cnt = torch.bincount(real_data[:, d], minlength=self.num_categories).to(torch.int)  # (S,)
-            p_cnt = torch.bincount(pred_data[:, d], minlength=self.num_categories).to(torch.int)  # (S,)
-            self.real_counts[d] += r_cnt
-            self.pred_counts[d] += p_cnt
+        batch_size = real_data.shape[0]
+        # лениво кэшируем оффсеты d * num_categories
+        if not hasattr(self, "_dim_offsets") or self._dim_offsets.device != real_data.device \
+           or self._dim_offsets.numel() != self.dim or getattr(self, "_cached_S", None) != self.num_categories:
+            self._dim_offsets = torch.arange(self.dim, device=real_data.device, dtype=torch.long) * self.num_categories
+
+        offsets = self._dim_offsets.repeat(batch_size) # (B*dim,)
+        r_code = offsets + real_data.reshape(-1)
+        p_code = offsets + pred_data.reshape(-1)
+
+        r_cnt = torch.bincount(r_code, minlength=self.dim * self.num_categories).int()
+        p_cnt = torch.bincount(p_code, minlength=self.dim * self.num_categories).int()
+
+        self.real_counts += r_cnt.reshape(self.dim, self.num_categories)
+        self.pred_counts += p_cnt.reshape(self.dim, self.num_categories)
 
     def compute(self) -> torch.Tensor:
         real_totals = self.real_counts.sum(dim=1, keepdim=True) # (D, 1)
