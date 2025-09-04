@@ -1,61 +1,100 @@
-from typing import Any, Dict, Optional
 import torch
-import numpy as np
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import roc_auc_score
-from sklearn.preprocessing import OneHotEncoder
+from torch import nn
+import torch.nn.functional as F
 from torchmetrics import Metric
 from torchmetrics.utilities import dim_zero_cat
-
-from src.utils import convert_to_numpy
+from torchmetrics.functional import auroc
 
 
 class ClassifierTwoSampleTest(Metric):
+    is_differentiable = False
+    higher_is_better = True
+    full_state_update = False
+
     def __init__(
-        self,
-        train_fraction: float = 0.7,
-        model_kwargs: Optional[Dict[str, Any]] = None,
+        self, 
+        dim: int, 
+        lr: float = 1e-2, 
+        weight_decay: float = 0.0
     ):
         super().__init__()
-        if not 0.0 < train_fraction < 1.0:
-            raise ValueError("train_fraction must be in (0, 1)")
-        self.train_fraction = train_fraction
-        self.model_kwargs = model_kwargs or {'max_iter': 1000, 'solver': 'lbfgs'}
+        self.dim = dim
+        self.lr = lr
+        self.weight_decay = weight_decay
 
-        # Local storage of samples; not aggregated across processes.
-        self.add_state("real_data", default=[], dist_reduce_fx='cat')
-        self.add_state("pred_data", default=[], dist_reduce_fx='cat')
+        # Initialize an inivisible linear layer parameters of which won't be accesible from outside
+        w = torch.nn.Parameter(torch.empty(1, dim))
+        b = torch.nn.Parameter(torch.empty(1))
+        torch.nn.init.kaiming_uniform_(w, a=5**0.5)
+        torch.nn.init.zeros_(b)
 
-    def update(self, real_data: torch.Tensor, pred_data: torch.Tensor) -> None:
-        assert real_data.shape == pred_data.shape, \
-            "real_data and pred_data must have the same shape!"
-        self.real_data.append(real_data.detach().float().cpu())
-        self.pred_data.append(pred_data.detach().float().cpu())
+        self.register_buffer("weight", w.detach().clone().requires_grad_(True))
+        self.register_buffer("bias", b.detach().clone().requires_grad_(True))
+        self.optimizer = torch.optim.SGD([self.weight, self.bias], lr=lr, weight_decay=weight_decay)
+        self.criterion = nn.BCEWithLogitsLoss()
 
-    def compute(self):
-        real_data = convert_to_numpy(dim_zero_cat(self.real_data))
-        pred_data = convert_to_numpy(dim_zero_cat(self.pred_data))
-        pred_target = np.ones(pred_data.shape[0], dtype=np.int64)
-        real_target = np.zeros(real_data.shape[0], dtype=np.int64)
+        self.add_state("probs", default=[], dist_reduce_fx="cat")
+        self.add_state("targets", default=[], dist_reduce_fx="cat")
 
-        X = OneHotEncoder().fit_transform(np.vstack([real_data, pred_data]))
-        y = np.concatenate([real_target, pred_target])
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, train_size=self.train_fraction, stratify=y, shuffle=True,
+    def reset(self) -> None:
+        super().reset()
+        torch.nn.init.kaiming_uniform_(self.weight, a=5 ** 0.5)
+        torch.nn.init.zeros_(self.bias)
+        self.optimizer = torch.optim.SGD(
+            [self.weight, self.bias], lr=self.lr, weight_decay=self.weight_decay
         )
 
-        model = LogisticRegression(**self.model_kwargs)
-        model.fit(X_train, y_train)
-        score = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
-        score = 1 - abs(score - 0.5) * 2
+    def update(self, real_data: torch.Tensor, pred_data: torch.Tensor, train: bool) -> None:
+        assert real_data.shape == pred_data.shape, "real_data and pred_data must have the same shape!"
+        x_real = real_data.detach().float()
+        x_pred = pred_data.detach().float()
 
-        return torch.tensor(score, dtype=torch.float32)
+        x = torch.cat([x_real, x_pred], dim=0)
+        y = torch.cat(
+            [
+                torch.zeros(x_real.size(0), device=x.device, dtype=torch.float),
+                torch.ones(x_pred.size(0), device=x.device, dtype=torch.float)
+            ],
+            dim=0
+        )
 
+        if train:
+            logits = F.linear(x, self.weight, self.bias).squeeze(-1)
+            loss = self.criterion(logits, y)
+            self.optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            self.optimizer.step()
+
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                world_size = torch.distributed.get_world_size()
+                torch.distributed.all_reduce(self.weight, op=torch.distributed.ReduceOp.SUM)
+                torch.distributed.all_reduce(self.bias, op=torch.distributed.ReduceOp.SUM)
+                self.weight /= world_size
+                self.bias /= world_size
+        else:
+            with torch.no_grad():
+                logits = F.linear(x, self.weight, self.bias).squeeze(-1)
+                probs = torch.sigmoid(logits).detach().cpu()
+            targets = y.detach().long().cpu()
+
+            self.probs.append(probs)
+            self.targets.append(targets)
+
+    def compute(self) -> torch.Tensor:
+        if len(self.probs) == 0:
+            return torch.tensor(0.0, dtype=torch.float)
+        
+        probs = dim_zero_cat(self.probs)
+        targets = dim_zero_cat(self.targets)
+        auroc_value = auroc(probs, targets, task="binary")
+        score = 1.0 - torch.abs(auroc_value - 0.5) * 2.0
+        return score
 
 
 if __name__ == "__main__":
-    metric = ClassifierTwoSampleTest()
-    metric.update(torch.randn(512, 5), torch.randn(512, 5) + 0.5)
-    result = metric.compute()
-    print(result)
+    torch.manual_seed(0)
+    metric = ClassifierTwoSampleTest(dim=5, lr=1e-1)
+    metric.update(torch.randn(512, 5), torch.randn(512, 5) + 0.5, train=True)
+    metric.update(torch.randn(512, 5), torch.randn(512, 5) + 0.5, train=True)
+    metric.update(torch.randn(256, 5), torch.randn(256, 5) + 0.5, train=False)
+    print("Score:", float(metric.compute()))
