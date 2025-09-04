@@ -26,6 +26,7 @@ class BenchmarkLogger(Callback):
         self,
         dim: int,
         num_categories: int,
+        train_test_split: float,
         num_samples: int, 
         num_cond_samples: int,
         num_trajectories: int, 
@@ -39,6 +40,7 @@ class BenchmarkLogger(Callback):
         self.dim = dim
         self.num_categories = num_categories
 
+        self.train_test_split = train_test_split
         self.num_samples = num_samples
         self.num_cond_samples = num_cond_samples
         self.num_trajectories = num_trajectories
@@ -146,8 +148,8 @@ class BenchmarkLogger(Callback):
             },
         )
         pl_module.cond_metrics = pl_module.metrics.clone(prefix='cond_')
-        pl_module.c2st = ClassifierTwoSampleTest()
-        pl_module.cond_c2st = ClassifierTwoSampleTest()
+        pl_module.c2st = ClassifierTwoSampleTest(self.dim)
+        pl_module.cond_c2st = ClassifierTwoSampleTest(self.dim)
 
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._reset_buf('train')
@@ -186,7 +188,8 @@ class BenchmarkLogger(Callback):
         pl_module.metrics.update(x_end, pred_x_end)
         pl_module.c2st.update(
             torch.cat([x_start, x_end], dim=-1), 
-            torch.cat([x_start, pred_x_end], dim=-1)
+            torch.cat([x_start, pred_x_end], dim=-1),
+            train=batch_idx < int(len(trainer.train_dataloader) * self.train_test_split)
         )
 
         repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
@@ -195,7 +198,8 @@ class BenchmarkLogger(Callback):
         pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
         pl_module.cond_c2st.update(
             torch.cat([repeated_x_start, cond_x_end], dim=-1), 
-            torch.cat([repeated_x_start, cond_pred_x_end], dim=-1)
+            torch.cat([repeated_x_start, cond_pred_x_end], dim=-1),
+            train=batch_idx < int(len(trainer.train_dataloader) * self.train_test_split)
         )
 
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
@@ -240,7 +244,8 @@ class BenchmarkLogger(Callback):
         pl_module.metrics.update(x_end, pred_x_end)
         pl_module.c2st.update(
             torch.cat([x_start, x_end], dim=-1), 
-            torch.cat([x_start, pred_x_end], dim=-1)
+            torch.cat([x_start, pred_x_end], dim=-1),
+            train=batch_idx < int(len(trainer.train_dataloader) * self.train_test_split)
         )
         
         repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
@@ -249,7 +254,8 @@ class BenchmarkLogger(Callback):
         pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
         pl_module.cond_c2st.update(
             torch.cat([repeated_x_start, cond_x_end], dim=-1), 
-            torch.cat([repeated_x_start, cond_pred_x_end], dim=-1)
+            torch.cat([repeated_x_start, cond_pred_x_end], dim=-1),
+            train=batch_idx < int(len(trainer.train_dataloader) * self.train_test_split)
         )
 
     def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):

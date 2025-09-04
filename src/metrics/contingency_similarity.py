@@ -4,6 +4,9 @@ from torchmetrics import Metric
 
 
 class ContingencySimilarity(Metric):
+    is_differentiable = False
+    higher_is_better = True
+    full_state_update = False
     real_counts: torch.Tensor
     pred_counts: torch.Tensor
 
@@ -38,19 +41,45 @@ class ContingencySimilarity(Metric):
             raise ValueError("Expect real_data/pred_data of shape (batch_size, dim).")
         if real_data.shape[1] != self.dim:
             raise ValueError(f"Expected second dim = {self.dim}, got {real_data.shape[1]}")
-        
-        for d in range(self.dim):
-            r_d = real_data[:, d]  # (B,)
-            p_d = pred_data[:, d]  # (B,)
-            for j in range(self.dim):
-                r_idx = r_d * self.num_categories + real_data[:, j]
-                p_idx = p_d * self.num_categories + pred_data[:, j]
 
-                r_cnt = torch.bincount(r_idx, minlength=self.num_categories**2).to(torch.int)
-                p_cnt = torch.bincount(p_idx, minlength=self.num_categories**2).to(torch.int)
+        if not hasattr(self, "_tri_i") or self._tri_i.numel() != (self.dim * (self.dim + 1)) // 2:
+            ii, jj = torch.triu_indices(self.dim, self.dim, offset=0, device=real_data.device)
+            self._tri_i = ii # (K,)
+            self._tri_j = jj # (K,)
+            K = ii.numel()
+            self._tri_block_offsets = torch.arange(K, device=real_data.device, dtype=torch.long) \
+                * (self.num_categories * self.num_categories)
 
-                self.real_counts[d, j] += r_cnt.reshape(self.num_categories, self.num_categories)
-                self.pred_counts[d, j] += p_cnt.reshape(self.num_categories, self.num_categories)
+        r_pair_tri = (real_data.index_select(1, self._tri_i) * self.num_categories + real_data.index_select(1, self._tri_j))  # (B, K)
+        p_pair_tri = (pred_data.index_select(1, self._tri_i) * self.num_categories + pred_data.index_select(1, self._tri_j))  # (B, K)
+
+        r_code = (self._tri_block_offsets.view(1, -1) + r_pair_tri).reshape(-1)  # (B*K,)
+        p_code = (self._tri_block_offsets.view(1, -1) + p_pair_tri).reshape(-1)  # (B*K,)
+
+        K = self._tri_i.numel()
+        bins = K * self.num_categories * self.num_categories
+        r_cnt_tri = torch.bincount(r_code, minlength=bins).reshape(K, self.num_categories, self.num_categories).int()
+        p_cnt_tri = torch.bincount(p_code, minlength=bins).reshape(K, self.num_categories, self.num_categories).int()
+
+        diag_mask = (self._tri_i == self._tri_j)
+        if diag_mask.any():
+            i_d = self._tri_i[diag_mask]
+            j_d = self._tri_j[diag_mask]
+            self.real_counts.index_put_((i_d, j_d), r_cnt_tri[diag_mask], accumulate=True)
+            self.pred_counts.index_put_((i_d, j_d), p_cnt_tri[diag_mask], accumulate=True)
+
+        off_mask = ~diag_mask
+        if off_mask.any():
+            i_o = self._tri_i[off_mask]
+            j_o = self._tri_j[off_mask]
+            r_o = r_cnt_tri[off_mask]
+            p_o = p_cnt_tri[off_mask]
+
+            self.real_counts.index_put_((i_o, j_o), r_o, accumulate=True)
+            self.pred_counts.index_put_((i_o, j_o), p_o, accumulate=True)
+
+            self.real_counts.index_put_((j_o, i_o), r_o.transpose(-2, -1), accumulate=True)
+            self.pred_counts.index_put_((j_o, i_o), p_o.transpose(-2, -1), accumulate=True)
 
     def compute(self) -> torch.Tensor:
         real_total = self.real_counts.sum(dim=[2, 3], keepdim=True) # (D, D, 1, 1)

@@ -1,10 +1,6 @@
 from typing import List
 
 import os
-from pathlib import Path
-import sys
-sys.path.append('src/')
-
 from omegaconf import DictConfig, OmegaConf
 import hydra
 from hydra.utils import instantiate
@@ -23,26 +19,25 @@ try:
     torch.cuda.get_device_capability = lambda x: (7, None)
 except ImportError:
     pass
-log = RankedLogger(__name__, rank_zero_only=True)
+
 
 def _detect_config_dir() -> str:
     candidates = []
-    ds_home = os.environ.get("DS_PROJECT_HOME")
-    if ds_home: candidates.append(Path(ds_home) / "configs")
+    ds_home = os.environ.get('DS_PROJECT_HOME')
+    if ds_home: candidates.append(os.path.join(ds_home, 'configs'))
 
-    here = Path(__file__).resolve()
-    candidates.append(here.parents[1] / "configs")
+    here = os.path.abspath(__file__)
+    parent = os.path.dirname(os.path.dirname(here))  # go up 2 levels
+    candidates.append(os.path.join(parent, 'configs'))
 
     for p in candidates:
-        if p.is_dir(): return str(p)
+        if os.path.isdir(p): return p
 
-    tried = " | ".join(str(p) for p in candidates)
-    raise RuntimeError(
-        f"[Hydra] Config directory not found. Tried: {tried}"
-    )
+    tried = ' | '.join(candidates)
+    raise RuntimeError(f'[Hydra] Config directory not found. Tried: {tried}')
 
+log = RankedLogger(__name__, rank_zero_only=True)
 CONFIG_DIR = _detect_config_dir()
-
 
 @hydra.main(version_base='1.1', config_path=CONFIG_DIR, config_name='config.yaml')
 def main(config: DictConfig):
