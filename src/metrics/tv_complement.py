@@ -4,6 +4,9 @@ from torchmetrics import Metric
 
 
 class TVComplement(Metric):
+    is_differentiable = False
+    higher_is_better = True
+    full_state_update = False
     real_counts: torch.Tensor
     pred_counts: torch.Tensor
     
