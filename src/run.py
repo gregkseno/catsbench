@@ -23,18 +23,18 @@ except ImportError:
 
 def _detect_config_dir() -> str:
     candidates = []
-    ds_home = os.environ.get("DS_PROJECT_HOME")
-    if ds_home: candidates.append(os.path.join(ds_home, "configs"))
+    ds_home = os.environ.get('DS_PROJECT_HOME')
+    if ds_home: candidates.append(os.path.join(ds_home, 'configs'))
 
     here = os.path.abspath(__file__)
     parent = os.path.dirname(os.path.dirname(here))  # go up 2 levels
-    candidates.append(os.path.join(parent, "configs"))
+    candidates.append(os.path.join(parent, 'configs'))
 
     for p in candidates:
         if os.path.isdir(p): return p
 
-    tried = " | ".join(candidates)
-    raise RuntimeError(f"[Hydra] Config directory not found. Tried: {tried}")
+    tried = ' | '.join(candidates)
+    raise RuntimeError(f'[Hydra] Config directory not found. Tried: {tried}')
 
 log = RankedLogger(__name__, rank_zero_only=True)
 CONFIG_DIR = _detect_config_dir()
