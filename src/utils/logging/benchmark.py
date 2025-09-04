@@ -148,8 +148,8 @@ class BenchmarkLogger(Callback):
             },
         )
         pl_module.cond_metrics = pl_module.metrics.clone(prefix='cond_')
-        pl_module.c2st = ClassifierTwoSampleTest(self.dim)
-        pl_module.cond_c2st = ClassifierTwoSampleTest(self.dim)
+        pl_module.c2st = ClassifierTwoSampleTest(2*self.dim)
+        pl_module.cond_c2st = ClassifierTwoSampleTest(2*self.dim)
 
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._reset_buf('train')
