@@ -7,7 +7,7 @@ from torchmetrics.functional import auroc
 
 
 class ClassifierTwoSampleTest(Metric):
-    is_differentiable = False
+    is_differentiable = True
     higher_is_better = True
     full_state_update = False
 
@@ -23,13 +23,11 @@ class ClassifierTwoSampleTest(Metric):
         self.weight_decay = weight_decay
 
         # Initialize an inivisible linear layer parameters of which won't be accesible from outside
-        w = torch.nn.Parameter(torch.empty(1, self.dim))
-        b = torch.nn.Parameter(torch.empty(1))
-        torch.nn.init.kaiming_uniform_(w, a=5**0.5)
-        torch.nn.init.zeros_(b)
+        self.weight = torch.nn.Parameter(torch.empty(1, self.dim))
+        self.bias = torch.nn.Parameter(torch.empty(1))
+        torch.nn.init.kaiming_uniform_(self.weight, a=5**0.5)
+        torch.nn.init.zeros_(self.bias)
 
-        self.register_buffer("weight", w.detach().clone().requires_grad_(True))
-        self.register_buffer("bias", b.detach().clone().requires_grad_(True))
         self.optimizer = torch.optim.SGD([self.weight, self.bias], lr=lr, weight_decay=weight_decay)
         self.criterion = nn.BCEWithLogitsLoss()
 
@@ -38,8 +36,9 @@ class ClassifierTwoSampleTest(Metric):
 
     def reset(self) -> None:
         super().reset()
-        torch.nn.init.kaiming_uniform_(self.weight, a=5 ** 0.5)
-        torch.nn.init.zeros_(self.bias)
+        with torch.no_grad():
+            torch.nn.init.kaiming_uniform_(self.weight, a=5 ** 0.5)
+            torch.nn.init.zeros_(self.bias)
         self.optimizer = torch.optim.SGD(
             [self.weight, self.bias], lr=self.lr, weight_decay=self.weight_decay
         )
@@ -59,18 +58,21 @@ class ClassifierTwoSampleTest(Metric):
         )
 
         if train:
-            logits = F.linear(x, self.weight, self.bias).squeeze(-1)
-            loss = self.criterion(logits, y)
-            self.optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            self.optimizer.step()
+            with torch.enable_grad():
+                self.weight.requires_grad_(True)
+                self.bias.requires_grad_(True)
+                logits = F.linear(x, self.weight, self.bias).squeeze(-1)
+                loss = self.criterion(logits, y)
+                self.optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                self.optimizer.step()
 
-            if torch.distributed.is_available() and torch.distributed.is_initialized():
-                world_size = torch.distributed.get_world_size()
-                torch.distributed.all_reduce(self.weight, op=torch.distributed.ReduceOp.SUM)
-                torch.distributed.all_reduce(self.bias, op=torch.distributed.ReduceOp.SUM)
-                self.weight /= world_size
-                self.bias /= world_size
+                if torch.distributed.is_available() and torch.distributed.is_initialized():
+                    world_size = torch.distributed.get_world_size()
+                    torch.distributed.all_reduce(self.weight, op=torch.distributed.ReduceOp.SUM)
+                    torch.distributed.all_reduce(self.bias, op=torch.distributed.ReduceOp.SUM)
+                    self.weight.data.div_(world_size)
+                    self.bias.data.div_(world_size)
         else:
             with torch.no_grad():
                 logits = F.linear(x, self.weight, self.bias).squeeze(-1)
