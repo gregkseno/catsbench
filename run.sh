@@ -9,7 +9,6 @@
 #SBATCH --time=16-00:00:00
 
 source activate dot_bench
-export PYTHONPATH="$PWD:$PYTHONPATH"
 SEED=1
 
 case "${SLURM_ARRAY_TASK_ID}" in
