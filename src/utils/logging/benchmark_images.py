@@ -90,7 +90,7 @@ class BenchmarkImagesLogger(Callback):
 
         # initialize metrics
         pl_module.fid = FrechetInceptionDistance(normalize=True)
-        pl_module.c2st = ClassifierTwoSampleTest()
+        pl_module.c2st = ClassifierTwoSampleTest(dim=self.dim)
 
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._reset_buf('train')
