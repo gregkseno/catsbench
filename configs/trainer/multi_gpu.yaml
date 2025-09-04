@@ -2,10 +2,11 @@ _target_: lightning.pytorch.trainer.Trainer
 
 default_root_dir: ${paths.output_dir}
 
-limit_train_batches: 20000
-val_check_interval: 1000
+max_epochs: 50
+limit_train_batches: 500
+val_check_interval: 1000 # for num_timestep==15
 
-strategy: ddp
+strategy: ddp_find_unused_parameters_true
 accelerator: gpu
 devices: 4
 num_nodes: 1

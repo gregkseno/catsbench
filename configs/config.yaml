@@ -1,11 +1,11 @@
 defaults:
-  - data: toy
+  - data: benchmark_images
   - prior: default
-  - model: simple_mlp 
+  - model: unet
   - method: csbm
-  - callbacks: [rich_progress_bar, model_summary, toy_metrics]
-  - logger: comet
-  - trainer: gpu
+  - callbacks: [rich_progress_bar, model_summary, model_checkpoint, benchmark_images_metrics]
+  - logger: tensorboard
+  - trainer: multi_gpu
   - experiment: null
   - hydra: default
   - _self_
