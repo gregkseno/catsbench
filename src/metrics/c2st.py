@@ -74,8 +74,8 @@ class ClassifierTwoSampleTest(Metric):
         else:
             with torch.no_grad():
                 logits = F.linear(x, self.weight, self.bias).squeeze(-1)
-                probs = torch.sigmoid(logits).detach().cpu()
-            targets = y.detach().long().cpu()
+                probs = torch.sigmoid(logits).detach()
+            targets = y.detach().long()
 
             self.probs.append(probs)
             self.targets.append(targets)
