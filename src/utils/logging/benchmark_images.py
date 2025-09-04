@@ -283,7 +283,7 @@ class BenchmarkImagesLogger(Callback):
             if img_np.ndim == 2:
                 img_np = img_np[:, :, None]
             pl_module.logger.experiment.add_image(
-                image_data=img, name=f'{stage}/trajectories_{fb}', step=pl_module.global_step,
+                tag=f'{stage}/trajectories_{fb}', img_tensor=img_np, global_step=pl_module.global_step,
                 dataformats='HWC'
             )            
         else:
