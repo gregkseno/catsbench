@@ -7,6 +7,8 @@ from lightning import LightningDataModule
 from src.utils import CoupleDataset, InfiniteCoupleDataset
 from benchmark import BenchmarkImages
 
+MULTIPROC_CONTEXT = None # NPU doesn't like fork
+
 class BenchmarkImagesDataModule(LightningDataModule):
     def __init__(
         self,
@@ -83,7 +85,7 @@ class BenchmarkImagesDataModule(LightningDataModule):
             batch_size=None,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
-            multiprocessing_context='fork'
+            multiprocessing_context=MULTIPROC_CONTEXT
         )
 
     def val_dataloader(self) -> DataLoader[Any]:
@@ -93,7 +95,7 @@ class BenchmarkImagesDataModule(LightningDataModule):
             batch_size=self.val_batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
-            multiprocessing_context='fork'
+            multiprocessing_context=MULTIPROC_CONTEXT
         )
 
     def test_dataloader(self) -> DataLoader[Any]:
@@ -103,5 +105,5 @@ class BenchmarkImagesDataModule(LightningDataModule):
             batch_size=self.val_batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
-            multiprocessing_context='fork'
+            multiprocessing_context=MULTIPROC_CONTEXT
         )
