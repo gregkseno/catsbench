@@ -2,25 +2,25 @@ name: benchmark
 desc: Train CSBM on synthetic benchmark dataset
 cmd: >
   python -m src.run -m \
-    paths.data_dir="${DS_PROJECT_HOME}/data" \
+    paths.root_dir="${DS_PROJECT_HOME}" \
     hydra/launcher=submitit_local hydra.launcher.timeout_min=23040 hydra.launcher.gpus_per_node=1 \
     hydra.launcher.tasks_per_node=4 hydra.launcher.cpus_per_task=7 hydra.launcher.mem_gb=100 \
     seed=1 data.num_workers=6 data.pin_memory=true \
     experiment=csbm/benchmark/d64_g002_t63_kl,csbm/benchmark/d64_g002_t63_mse,csbm/benchmark/d64_g002_t15_kl,csbm/benchmark/d64_g002_t15_mse
   python -m src.run -m \
-    paths.data_dir="${DS_PROJECT_HOME}/data" \
+    paths.root_dir="${DS_PROJECT_HOME}" \
     hydra/launcher=submitit_local hydra.launcher.timeout_min=23040 hydra.launcher.gpus_per_node=1 \
     hydra.launcher.tasks_per_node=4 hydra.launcher.cpus_per_task=7 hydra.launcher.mem_gb=100 \
     seed=1 data.num_workers=6 data.pin_memory=true \
     experiment=csbm/benchmark/d64_g005_t63_kl,csbm/benchmark/d64_g005_t63_mse,csbm/benchmark/d64_g005_t15_kl,csbm/benchmark/d64_g005_t15_mse
   python -m src.run -m \
-    paths.data_dir="${DS_PROJECT_HOME}/data" \
+    paths.root_dir="${DS_PROJECT_HOME}" \
     hydra/launcher=submitit_local hydra.launcher.timeout_min=23040 hydra.launcher.gpus_per_node=1 \
     hydra.launcher.tasks_per_node=4 hydra.launcher.cpus_per_task=7 hydra.launcher.mem_gb=100 \
     seed=1 data.num_workers=6 data.pin_memory=true \
     experiment=csbm/benchmark/d64_u0005_t63_kl,csbm/benchmark/d64_u0005_t63_mse,csbm/benchmark/d64_u0005_t15_kl,csbm/benchmark/d64_u0005_t15_mse
   python -m src.run -m \
-    paths.data_dir="${DS_PROJECT_HOME}/data" \
+    paths.root_dir="${DS_PROJECT_HOME}" \
     hydra/launcher=submitit_local hydra.launcher.timeout_min=23040 hydra.launcher.gpus_per_node=1 \
     hydra.launcher.tasks_per_node=4 hydra.launcher.cpus_per_task=7 hydra.launcher.mem_gb=100 \
     seed=1 data.num_workers=6 data.pin_memory=true \
