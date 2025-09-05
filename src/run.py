@@ -44,7 +44,7 @@ def main(config: DictConfig):
     if config.get('seed'):
         L.seed_everything(config.seed, workers=True)
     
-    if config.data.num_workers > 0 and config.get('trainer.strategy', '') != 'ddp_swawn':
+    if config.data.num_workers > 0 and config.get('trainer.strategy') is None:
         try:
             import torch.multiprocessing as mp
             mp.set_start_method('spawn', force=True)
