@@ -16,15 +16,14 @@ from src.utils.logging.console import RankedLogger
 
 HPARAMS = (
     'kl_loss_coeff', 'ce_loss_coeff', 'mse_loss_coeff', 
-    'gradient_accumulation_steps', 'gradient_clip_val', 
     'use_mini_batch', 'ignore_index', 'num_first_iterations',
     'optimizer', 'scheduler'
 )
 log = RankedLogger(__name__, rank_zero_only=True)
 
-# NOTE: start and end is swapped because CSBM uses 
+# NOTE: start and end is swapped because alpha-CSBM uses 
 # reverse diffusion notation
-class CSBM_AR(LightningModule):
+class AlphaCSBM(LightningModule):
     def __init__(
         self,
         prior: Prior,
@@ -36,8 +35,6 @@ class CSBM_AR(LightningModule):
         kl_loss_coeff: float = 1.0,
         ce_loss_coeff: float = 0.001,
         mse_loss_coeff: float = 0.0,
-        gradient_accumulation_steps: int = 1,
-        gradient_clip_val: float = 1.0,
         use_mini_batch: bool = False,
         ignore_index: int = -100,
     ) -> None:
@@ -46,7 +43,7 @@ class CSBM_AR(LightningModule):
         # the method arguments and put to `self.hparams`
         # save only `HPARAMS` for memory efficiency (probably :))
         self.save_hyperparameters(*HPARAMS, logger=False)
-        self.bidirectional = True
+        self.bidirectional = False
         self.first_iteration = True
         self.iteration = 1
         self.prior = prior
@@ -63,8 +60,6 @@ class CSBM_AR(LightningModule):
             'backward': ema(self.models['backward'].parameters())
         }
     
-        self.automatic_optimization = False
-
     def kl_loss(
         self,
         true_q_posterior_logits: torch.Tensor, 
@@ -108,27 +103,7 @@ class CSBM_AR(LightningModule):
         self.emas['backward'].to(self.device)
 
     def on_train_epoch_start(self) -> None:
-        # twice, for each direction
-        self.first_iteration = self.current_epoch + 1 < (2 * self.hparams.num_first_iterations)
-
-    def forward(
-        self, 
-        x: torch.Tensor, 
-        t: torch.Tensor,
-        fb: Literal['forward', 'backward'], 
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        seq_lenght = x.shape[1]
-        preds, pred_logits = [], []
-        for _ in range(seq_lenght):
-            logits = self.models[fb](x, t)
-            pred_logits.append(logits)
-            next_token = F.gumbel_softmax(logits, dim=-1)
-            preds.append(next_token)
-            x = torch.cat([x, next_token.argmax(dim=-1).detach()], dim=1)
-
-        preds = torch.cat(preds, dim=1)
-        pred_logits = torch.cat(pred_logits, dim=1)
-        return preds, pred_logits
+        self.first_iteration = self.current_epoch + 1 < self.hparams.num_first_iterations
     
     def markovian_projection(
         self,
@@ -143,9 +118,9 @@ class CSBM_AR(LightningModule):
         )
         x_t = self.prior.sample_bridge(true_x_start, true_x_end, t)
 
-        pred_x_start, pred_x_start_logits = self.forward(x_t, t, fb)
+        pred_x_start_logits = self.models[fb](x_t, t)
         true_q_posterior_logits = self.prior.posterior_logits(true_x_start, x_t, t, logits=False)
-        pred_q_posterior_logits = self.prior.posterior_logits(pred_x_start, x_t, t, logits=True)
+        pred_q_posterior_logits = self.prior.posterior_logits(pred_x_start_logits, x_t, t, logits=True)
 
         kl = self.kl_loss(true_q_posterior_logits, pred_q_posterior_logits)
         ce = self.ce_loss(true_x_start, pred_x_start_logits)
@@ -161,82 +136,62 @@ class CSBM_AR(LightningModule):
     def training_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
-        bf = 'backward' if fb == 'forward' else 'forward'
-        self.models[fb].train()
-        self.models[bf].eval()
-        
-        # DataLoader have the x_0, x_1 order so we need to swap
-        if fb == 'forward': x_end, x_start = batch
-        else: x_start, x_end = batch
-
+        b = batch[0].shape[0] // 2
+        x_end, x_start = batch
         # if first iteration apply optional mini-batch sampling
         if self.first_iteration and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
-        # otherwise generate samples from reverse model
-        if not self.first_iteration:
-            x_start, x_end = x_start, self.sample(x_start, fb=bf) 
         outputs = {'x_start': x_end, 'x_end': x_start} # For logger
 
-        optimizers = {
-            'forward': self.optimizers()[0],
-            'backward': self.optimizers()[1],
-        }
-        if self.lr_schedulers() is not None:
-            schedulers = {
-                'forward': self.lr_schedulers()[0],
-                'backward': self.lr_schedulers()[1],
-            }
-        with self.toggled_optimizer(optimizers[fb]):
-            loss, info = self.markovian_projection(fb, x_start, x_end)
-            # logs step-wise loss, `add_dataloader_idx=False` is used to have custom fb prefix
-            info = {f"train/{k}": v for k, v in info.items()}
-            self.log_dict(info, prog_bar=True, sync_dist=True) 
-            self.log('train/iteration', self.iteration, prog_bar=True)
+        if self.first_iteration:
+            loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], x_end[:b])
+            loss_backward, info_backward = self.markovian_projection('backward', x_end[b:], x_start[b:])
+        else:
+            pred_x_end = self.sample(x_start[:b], fb='backward')
+            pred_x_start = self.sample(x_end[:b], fb='forward')
+            outputs['x_start'] = pred_x_end # for visualization forward training paris
 
-            loss = loss / self.trainer.accumulate_grad_batches
-            self.manual_backward(loss)
+            loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], pred_x_end)
+            loss_backward, info_backward = self.markovian_projection('backward', x_end[:b], pred_x_start)
+        outputs['loss'] = (loss_forward + loss_backward) / 2
+        
+        # logs step-wise loss, `add_dataloader_idx=False` is used to have custom fb prefix
+        info = {f"train/{k}": v for k, v in {**info_forward, **info_backward}.items()}
+        self.log_dict(info, prog_bar=True, sync_dist=True) 
+        self.log('train/iteration', self.iteration, prog_bar=True)
 
-            # do gradient accumulation and clipping
-            if (batch_idx + 1) % self.trainer.accumulate_grad_batches == 0:
-                self.clip_gradients(
-                    optimizers[fb], gradient_clip_val=self.hparams.gradient_clip_val
-                )
-                optimizers[fb].step()
-                if self.lr_schedulers() is not None:
-                    # pass loss in case scheduler requires metrics like ReduceLROnPlateau
-                    schedulers[fb].step(loss.detach()) 
-                self.emas[fb].update()
-                optimizers[fb].zero_grad()
         return outputs
+    
+    def on_before_zero_grad(self, optimizer) -> None:
+        self.emas['forward'].update()
+        self.emas['backward'].update()
 
     def on_train_epoch_end(self) -> None:
-        fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
-        if fb == 'backward' and not self.first_iteration: 
-            # if the ended epoch corresponds to `backward`` 
-            # then in next itreation we will be a new iteration
+        if not self.first_iteration: 
             self.iteration += 1
 
     def validation_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
-        bf = 'backward' if fb == 'forward' else 'forward'
-        
-        # DataLoader have the x_0, x_1 order so we need to swap
-        if fb == 'forward': x_end, x_start = batch
-        else: x_start, x_end = batch
-        outputs = {'x_start': x_end, 'x_end': x_start} # For logger
-
+        b = batch[0].shape[0] // 2
+        x_end, x_start = batch
         # if first iteration apply optional mini-batch sampling
         if self.first_iteration and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
-        # otherwise generate samples from reverse model
-        if not self.first_iteration:
-            x_start, x_end = x_start, self.sample(x_start, fb=bf)
+        outputs = {'x_start': x_end, 'x_end': x_start} # For logger
 
-        _, info = self.markovian_projection(fb, x_start, x_end)
-        info = {f"val/{k}": v for k, v in info.items()}
+        if self.first_iteration:
+            _, info_forward = self.markovian_projection('forward', x_start[:b], x_end[:b])
+            _, info_backward = self.markovian_projection('backward', x_end[b:], x_start[b:])
+        else:
+            pred_x_end = self.sample(x_start[:b], fb='backward')
+            pred_x_start = self.sample(x_end[:b], fb='forward')
+
+            _, info_forward = self.markovian_projection('forward', x_start[:b], pred_x_end)
+            _, info_backward = self.markovian_projection('backward', x_end[:b], pred_x_start)
+        
+        # logs step-wise loss, `add_dataloader_idx=False` is used to have custom fb prefix
+        info = {f"val/{k}": v for k, v in {**info_forward, **info_backward}.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('val/iteration', self.iteration, prog_bar=True)
         return outputs
@@ -244,39 +199,40 @@ class CSBM_AR(LightningModule):
     def test_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
-        fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
-        bf = 'backward' if fb == 'forward' else 'forward'
-        
-        # DataLoader have the x_0, x_1 order so we need to swap
-        if fb == 'forward': x_end, x_start = batch
-        else: x_start, x_end = batch
-        outputs = {'x_start': x_end, 'x_end': x_start} # For logger
-
+        b = batch[0].shape[0] // 2
+        x_end, x_start = batch
         # if first iteration apply optional mini-batch sampling
         if self.first_iteration and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
-        # otherwise generate samples from reverse model
-        if not self.first_iteration:
-            x_start, x_end = x_start, self.sample(x_start, fb=bf)
+        outputs = {'x_start': x_end, 'x_end': x_start} # For logger
 
-        _, info = self.markovian_projection(fb, x_start, x_end)
-        info = {f"test/{k}": v for k, v in info.items()}
+        if self.first_iteration:
+            _, info_forward = self.markovian_projection('forward', x_start[:b], x_end[:b])
+            _, info_backward = self.markovian_projection('backward', x_end[b:], x_start[b:])
+        else:
+            pred_x_end = self.sample(x_start[:b], fb='backward')
+            pred_x_start = self.sample(x_end[:b], fb='forward')
+
+            _, info_forward = self.markovian_projection('forward', x_start[:b], pred_x_end)
+            _, info_backward = self.markovian_projection('backward', x_end[:b], pred_x_start)
+        
+        # logs step-wise loss, `add_dataloader_idx=False` is used to have custom fb prefix
+        info = {f"test/{k}": v for k, v in {**info_forward, **info_backward}.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('test/iteration', self.iteration, prog_bar=True)
         return outputs
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
-        optimizer_forward  = self.hparams.optimizer(params=self.models['forward'].parameters())
-        optimizer_backward  = self.hparams.optimizer(params=self.models['backward'].parameters())
-
-        if self.hparams.scheduler is not None:
-            scheduler_forward = self.hparams.scheduler(optimizer=optimizer_forward)
-            scheduler_backward = self.hparams.scheduler(optimizer=optimizer_backward)
-            return [
-                {'optimizer': optimizer_forward, 'lr_scheduler': scheduler_forward},
-                {'optimizer': optimizer_backward, 'lr_scheduler': scheduler_backward}
+        optimizer  = self.hparams.optimizer(
+            params=[
+                {"params": self.model_forward.parameters()},
+                {"params": self.model_backward.parameters()},
             ]
-        return [{'optimizer': optimizer_forward}, {'optimizer': optimizer_backward}]
+        )
+        if self.hparams.scheduler is not None:
+            scheduler = self.hparams.scheduler(optimizer=optimizer)
+            return {'optimizer': optimizer, 'lr_scheduler': scheduler}
+        return {'optimizer': optimizer}
 
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         checkpoint['ema_forward'] = self.emas['forward'].state_dict()
@@ -291,36 +247,27 @@ class CSBM_AR(LightningModule):
     def markov_sample(
         self, x: torch.Tensor, t: torch.Tensor, fb: Literal['forward', 'backward']
     ) -> torch.Tensor:
-        first_step = (t == 1).long().view((x.shape[0], *[1] * (x.dim() - 1)))
-        
         with self.emas[fb].average_parameters():
-            pred_x_start, _ = self.forward(x, t, fb)
-        pred_q_posterior_logits = self.prior.posterior_logits(pred_x_start, x, t, logits=True)
+            pred_x_start_logits = self.models[fb](x, t)
+        pred_q_posterior_logits = self.prior.posterior_logits(pred_x_start_logits, x, t, logits=True)
         noise = torch.rand_like(pred_q_posterior_logits)
         noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
         gumbel_noise = -torch.log(-torch.log(noise))
         random_samples = torch.argmax(pred_q_posterior_logits + gumbel_noise, dim=-1)
-        
-        # No noise when t == 1
-        # NOTE: for t=1 this just "samples" from the argmax
-        # as opposed to "sampling" from the mean in the gaussian case.
-
-        argmax_samples = pred_q_posterior_logits.argmax(dim=-1)
-        samples = first_step * argmax_samples + (1 - first_step) * random_samples
-        return samples
+        return random_samples
         
     @torch.no_grad()
     def sample(
         self, x: torch.Tensor, fb: Optional[Literal['forward', 'backward']] = None
     ) -> torch.Tensor:
         """Sample from the model starting from `x` returning the final sample."""
-        if fb is None:
-            fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
-
+        fb = 'forward' if fb is None else fb
+        was_training = self.models[fb].training  
         self.models[fb].eval()
         for t in reversed(range(1, self.prior.num_timesteps + 2)):
             t = torch.tensor([t] * x.shape[0], device=self.device)
             x = self.markov_sample(x, t, fb)
+        if was_training: self.models[fb].train()
         return x
     
     @torch.no_grad()
@@ -328,9 +275,8 @@ class CSBM_AR(LightningModule):
         self, x: torch.Tensor, fb: Optional[Literal['forward', 'backward']] = None
     ) -> torch.Tensor:
         """Sample from the model starting from `x` returning the full trajectory."""
-        if fb is None:
-            fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
-        
+        fb = 'forward' if fb is None else fb
+        was_training = self.models[fb].training  
         self.models[fb].eval()
         trajectory = [x]
         for t in reversed(range(1, self.prior.num_timesteps + 2)):
@@ -338,4 +284,5 @@ class CSBM_AR(LightningModule):
             x = self.markov_sample(x, t, fb)
             trajectory.append(x)
         trajectory = torch.stack(trajectory, dim=0)
+        if was_training: self.models[fb].train()
         return trajectory

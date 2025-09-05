@@ -2,8 +2,8 @@
 
 defaults:
   - override /data: toy
-  - override /model: gpt
-  - override /method: csbm_ar
+  - override /model: simple_mlp
+  - override /method: alpha_csbm
   - override /callbacks:
     - rich_progress_bar
     - model_checkpoint
@@ -31,11 +31,8 @@ data:
     num_categories: ${data.num_categories}
 
 model:
-  n_layer: 1
-  n_head: 1
-  n_embd: 128
-  dropout: 0.0
-  bias: true
+  timestep_dim: 2
+  layers: [128, 128, 128]
 
 prior:
   alpha: 0.02
@@ -47,7 +44,7 @@ method:
   use_mini_batch: false
   num_first_iterations: 3
   kl_loss_coeff: 1.0
-  ce_loss_coeff: 1.0
+  ce_loss_coeff: 0
   mse_loss_coeff: 0
   ignore_index: -100
 
