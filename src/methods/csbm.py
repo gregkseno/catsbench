@@ -178,7 +178,7 @@ class CSBM(LightningModule):
             # do gradient accumulation and clipping
             if (batch_idx + 1) % self.trainer.accumulate_grad_batches == 0:
                 self.clip_gradients(
-                    optimizers[fb], gradient_clip_val=self.hparams.gradient_clip_val
+                    optimizers[fb], gradient_clip_val=self.trainer.gradient_clip_val
                 )
                 optimizers[fb].step()
                 if self.lr_schedulers() is not None:
