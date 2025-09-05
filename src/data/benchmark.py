@@ -80,7 +80,6 @@ class BenchmarkDataModule(LightningDataModule):
             batch_size=None,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
-            multiprocessing_context='fork' if self.hparams.num_workers > 0 else None
         )
 
     def val_dataloader(self) -> DataLoader[Any]:
@@ -90,7 +89,6 @@ class BenchmarkDataModule(LightningDataModule):
             batch_size=self.val_batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
-            multiprocessing_context='fork' if self.hparams.num_workers > 0 else None
         )
 
     def test_dataloader(self) -> DataLoader[Any]:
@@ -100,5 +98,4 @@ class BenchmarkDataModule(LightningDataModule):
             batch_size=self.val_batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
-            multiprocessing_context='fork' if self.hparams.num_workers > 0 else None
         )
