@@ -5,7 +5,7 @@ cmd: >
     paths.data_dir="${DS_PROJECT_HOME}/data" \
     hydra/launcher=submitit_local hydra.launcher.timeout_min=23040 hydra.launcher.gpus_per_node=1 \
     hydra.launcher.tasks_per_node=4 hydra.launcher.cpus_per_task=7 hydra.launcher.mem_gb=100 \
-    seed=1 data.num_workers=6 \
+    seed=1 data.num_workers=6 data.pin_memory=true \
     experiment=csbm/benchmark/d2_g002_t63_kl,csbm/benchmark/d2_g002_t63_mse,csbm/benchmark/d2_g002_t15_kl,csbm/benchmark/d2_g002_t15_mse
 env:
   python:
