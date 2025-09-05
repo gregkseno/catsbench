@@ -3,7 +3,7 @@ dim: 3072 # Must be equal to prod(input_shape)
 input_shape: [3, 32, 32]
 num_categories: 256
 num_potentials: 10
-batch_size: 32
+batch_size: 128
 val_batch_size: 48
 num_workers: 0
 pin_memory: false

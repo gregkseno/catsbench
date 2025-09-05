@@ -5,7 +5,7 @@ model: ${model}
 optimizer:
   _target_: torch.optim.AdamW
   _partial_: true
-  lr: 1e-4
+  lr: 2e-4
   betas: [0.95, 0.99]
 
 ema:
@@ -19,7 +19,7 @@ num_first_iterations: 10
 kl_loss_coeff: 1.0
 ce_loss_coeff: 0
 mse_loss_coeff: 0
-gradient_accumulation_steps: 1
+gradient_accumulation_steps: 4 # 128 Total batchsize / 8 NPU / 4 batchsize per NPU = 4 
 gradient_clip_val: null
-use_mini_batch: false
+use_mini_batch: true
 ignore_index: -100
