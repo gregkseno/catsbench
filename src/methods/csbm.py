@@ -16,7 +16,6 @@ from src.utils.logging.console import RankedLogger
 
 HPARAMS = (
     'kl_loss_coeff', 'ce_loss_coeff', 'mse_loss_coeff', 
-    'gradient_accumulation_steps', 'gradient_clip_val', 
     'use_mini_batch', 'ignore_index', 'num_first_iterations',
     'optimizer', 'scheduler'
 )
@@ -36,8 +35,6 @@ class CSBM(LightningModule):
         kl_loss_coeff: float = 1.0,
         ce_loss_coeff: float = 0.001,
         mse_loss_coeff: float = 0.0,
-        gradient_accumulation_steps: int = 1,
-        gradient_clip_val: float = 1.0,
         use_mini_batch: bool = False,
         ignore_index: int = -100,
     ) -> None:
