@@ -189,7 +189,7 @@ class DLightSB(LightningModule):
         )
         if self.hparams.scheduler is not None:
             scheduler = self.hparams.scheduler(optimizer=optimizer)
-            return {'optimizer': optimizer, 'lr_scheduler': scheduler},
+            return {'optimizer': optimizer, 'lr_scheduler': scheduler}
         return {'optimizer': optimizer}
 
     @torch.no_grad()
