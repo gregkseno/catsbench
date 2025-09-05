@@ -82,7 +82,6 @@ class BenchmarkImagesDataModule(LightningDataModule):
             dataset=self.data_train,
             batch_size=None,
             num_workers=self.hparams.num_workers,
-            pin_memory=self.hparams.pin_memory,
         )
 
     def val_dataloader(self) -> DataLoader[Any]:
