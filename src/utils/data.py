@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Any, Callable, Tuple
 import numpy as np
 import ot
 import torch
@@ -66,7 +66,7 @@ class InfiniteCoupleDataset(IterableDataset):
         while True:
             yield self.sample_input(self.batch_size), self.sample_target(self.batch_size)
 
-def optimize_coupling(x: torch.Tensor, y: torch.Tensor):
+def optimize_coupling(x: torch.Tensor, y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Permutes batches of data to optimize the coupling between them using Euclidian distance."""
     # get optimal transport coupling between two batches
     x, y = x.float(), y.float()
@@ -84,4 +84,4 @@ def optimize_coupling(x: torch.Tensor, y: torch.Tensor):
     p = p / p.sum()
     choices = np.random.choice(pi.shape[0] * pi.shape[1], p=p, size=x.shape[0])
     i, j = np.divmod(choices, pi.shape[1])
-    return x[i], y[j]
+    return x[i].long(), y[j].long()
