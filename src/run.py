@@ -43,6 +43,13 @@ CONFIG_DIR = _detect_config_dir()
 def main(config: DictConfig):
     if config.get('seed'):
         L.seed_everything(config.seed, workers=True)
+    
+    if config.data.num_workers > 0 and config.get('trainer.strategy', '') != 'ddp_swawn':
+        try:
+            import torch.multiprocessing as mp
+            mp.set_start_method('spawn', force=True)
+        except RuntimeError:
+            pass
 
     # NOTE: hydra will instantiate all subobjects of the object recursively
     # https://hydra.cc/docs/advanced/instantiate_objects/overview/#recursive-instantiation
