@@ -1,0 +1,29 @@
+name: benchmark
+desc: Train CSBM on synthetic benchmark dataset
+cmd: >
+  python -m src.run -m \
+    paths.data_dir="${DS_PROJECT_HOME}/data" \
+    hydra/launcher=submitit_local hydra.launcher.timeout_min=23040 hydra.launcher.gpus_per_node=1 \
+    hydra.launcher.tasks_per_node=4 hydra.launcher.cpus_per_task=7 hydra.launcher.mem_gb=100 \
+    seed=1 data.num_workers=6 \
+    experiment=csbm/benchmark/d2_g005_t63_kl,csbm/benchmark/d2_g005_t63_mse,csbm/benchmark/d2_g005_t15_kl,csbm/benchmark/d2_g005_t15_mse
+env:
+  python:
+    type: manual
+    version: 3.12
+    pip:
+      index-url: https://pypi.org/simple
+      extra-index-urls:
+        - https://download.pytorch.org/whl/cu124
+    requirements-file: requirements.txt
+    # vars:
+    # - PIP_NO_BUILD_ISOLATION: "1"
+flags:
+  - attach-project-disk
+cloud-instance-type: g2.1
+# working-storage:
+#   type: SSD
+#   size: 20Gb
+graceful-shutdown:
+  signal: SIGTERM
+  timeout: 30s
