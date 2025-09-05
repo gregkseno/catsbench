@@ -285,11 +285,12 @@ class CSBM(LightningModule):
         """Sample from the model starting from `x` returning the final sample."""
         if fb is None:
             fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
-
+        was_training = self.models[fb].training
         self.models[fb].eval()
         for t in reversed(range(1, self.prior.num_timesteps + 2)):
             t = torch.tensor([t] * x.shape[0], device=self.device)
             x = self.markov_sample(x, t, fb)
+        if was_training: self.models[fb].train()
         return x
     
     @torch.no_grad()
@@ -299,7 +300,7 @@ class CSBM(LightningModule):
         """Sample from the model starting from `x` returning the full trajectory."""
         if fb is None:
             fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
-        
+        was_training = self.models[fb].training
         self.models[fb].eval()
         trajectory = [x]
         for t in reversed(range(1, self.prior.num_timesteps + 2)):
@@ -307,5 +308,6 @@ class CSBM(LightningModule):
             x = self.markov_sample(x, t, fb)
             trajectory.append(x)
         trajectory = torch.stack(trajectory, dim=0)
+        if was_training: self.models[fb].train()
         return trajectory
 
