@@ -5,7 +5,7 @@ def make_config(dim, prior_type, alpha, num_timesteps, num_skip_steps,
                 kl_loss_coeff, mse_loss_coeff):
     return {
         "defaults": [
-            "csbm/benchmark/default"
+            "alpha_csbm/benchmark/default"
         ],
         "data": {
             "dim": dim,
@@ -41,7 +41,7 @@ loss_coeffs = [
 ]
 
 # --- output folder ---
-out_dir = "configs/experiment/csbm/benchmark"
+out_dir = "configs/experiment/alpha_csbm/benchmark"
 os.makedirs(out_dir, exist_ok=True)
 
 # --- generate ---
