@@ -18,4 +18,4 @@ SEED=1
 #   seed=${SEED} data.num_workers=1 data.pin_memory=true \
 #   experiment=dlight_sb_m/benchmark/d64_u001_t63_kl,dlight_sb_m/benchmark/d64_u001_t63_mse
 
-python -m src.run seed=1 experiment=dlight_sb_m/benchmark/d16_g002_t63_kl
+python -m src.run seed=1 experiment=csbm/gaussian_to_swiss_roll/default method.mse_loss_coeff=1.0 method.kl_loss_coeff=0.0 method.ce_loss_coeff=0
