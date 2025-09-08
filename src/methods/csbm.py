@@ -16,7 +16,6 @@ from src.utils.logging.console import RankedLogger
 
 HPARAMS = (
     'kl_loss_coeff', 'ce_loss_coeff', 'mse_loss_coeff', 
-    'gradient_accumulation_steps', 'gradient_clip_val', 
     'use_mini_batch', 'ignore_index', 'num_first_iterations',
     'optimizer', 'scheduler'
 )
@@ -36,8 +35,6 @@ class CSBM(LightningModule):
         kl_loss_coeff: float = 1.0,
         ce_loss_coeff: float = 0.001,
         mse_loss_coeff: float = 0.0,
-        gradient_accumulation_steps: int = 1,
-        gradient_clip_val: float = 1.0,
         use_mini_batch: bool = False,
         ignore_index: int = -100,
     ) -> None:
@@ -181,7 +178,7 @@ class CSBM(LightningModule):
             # do gradient accumulation and clipping
             if (batch_idx + 1) % self.trainer.accumulate_grad_batches == 0:
                 self.clip_gradients(
-                    optimizers[fb], gradient_clip_val=self.hparams.gradient_clip_val
+                    optimizers[fb], gradient_clip_val=self.trainer.gradient_clip_val
                 )
                 optimizers[fb].step()
                 if self.lr_schedulers() is not None:
@@ -288,11 +285,12 @@ class CSBM(LightningModule):
         """Sample from the model starting from `x` returning the final sample."""
         if fb is None:
             fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
-
+        was_training = self.models[fb].training
         self.models[fb].eval()
         for t in reversed(range(1, self.prior.num_timesteps + 2)):
             t = torch.tensor([t] * x.shape[0], device=self.device)
             x = self.markov_sample(x, t, fb)
+        if was_training: self.models[fb].train()
         return x
     
     @torch.no_grad()
@@ -302,7 +300,7 @@ class CSBM(LightningModule):
         """Sample from the model starting from `x` returning the full trajectory."""
         if fb is None:
             fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
-        
+        was_training = self.models[fb].training
         self.models[fb].eval()
         trajectory = [x]
         for t in reversed(range(1, self.prior.num_timesteps + 2)):
@@ -310,5 +308,6 @@ class CSBM(LightningModule):
             x = self.markov_sample(x, t, fb)
             trajectory.append(x)
         trajectory = torch.stack(trajectory, dim=0)
+        if was_training: self.models[fb].train()
         return trajectory
 

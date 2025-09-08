@@ -42,14 +42,14 @@ prior:
 
 method:
   use_mini_batch: false
-  num_first_iterations: 3
+  num_first_iterations: 10
   kl_loss_coeff: 1.0
   ce_loss_coeff: 0
   mse_loss_coeff: 0
   ignore_index: -100
 
 trainer:
-  max_epochs: 14
+  max_epochs: 21
   limit_train_batches: 20000 # controls number of IMF inner iterations
   val_check_interval: 1000
   accumulate_grad_batches: 1
