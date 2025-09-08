@@ -7,6 +7,7 @@ limit_train_batches: 20000
 limit_val_batches: 500 # 20000 / 8 npus / 5 val batchsize 
 check_val_every_n_epoch: 1 # for num_timestep==15
 #val_check_interval: 1000 # for num_timestep==15
+gradient_clip_val: null
 
 strategy: ddp_find_unused_parameters_true
 accelerator: gpu
