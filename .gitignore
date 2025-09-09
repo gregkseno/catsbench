@@ -10,7 +10,7 @@ data/MNIST/*
 data_nocommit/*
 ckpts/*
 src/methods/light_sb_d_torch.py
-data_nocommit/*
+data/*
 src/methods/light_sb_d_parallel.py
 src/methods/light_sb_d_conv.py
 src/benchmark/benchmark_old.py
