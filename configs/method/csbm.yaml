@@ -5,7 +5,7 @@ model: ${model}
 optimizer:
   _target_: torch.optim.AdamW
   _partial_: true
-  lr: 1e-4
+  lr: 1e-3
   betas: [0.95, 0.99]
 
 ema:
