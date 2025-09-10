@@ -18,3 +18,4 @@ gan_training_loss.png
 methods/light_sb_d.py
 checkpoints/*
 .venv
+*.out
