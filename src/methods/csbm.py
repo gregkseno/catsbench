@@ -16,7 +16,7 @@ from src.utils.logging.console import RankedLogger
 
 HPARAMS = (
     'kl_loss_coeff', 'ce_loss_coeff', 'mse_loss_coeff', 
-    'use_mini_batch', 'ignore_index', 'num_first_iterations', 'accumulate_grad_batches'
+    'use_mini_batch', 'ignore_index', 'num_first_iterations', 'accumulate_grad_batches',
     'optimizer', 'scheduler'
 )
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -94,8 +94,8 @@ class CSBM(LightningModule):
         pred_x_start_logits: torch.Tensor, 
     ) -> torch.Tensor:   
         '''Cross-Entropy calculation.'''         
-        pred_x_start_logits = pred_x_start_logits.flatten(start_dim=0, end_dim=-2)
-        true_x_start = true_x_start.flatten(start_dim=0, end_dim=-1)
+        pred_x_start_logits = pred_x_start_logits.flatten(start_dim=0, end_dim=-2).float()
+        true_x_start = true_x_start.flatten(start_dim=0, end_dim=-1).long()
         ce_loss = F.cross_entropy(pred_x_start_logits, true_x_start, ignore_index=self.hparams.ignore_index)
         return ce_loss
 

@@ -205,7 +205,7 @@ class Prior(nn.Module):
         r"""Calculates logits of $p(x_{t-1} | x_{t}, x_{0})$.
         If logits is True, the output is summed over x_0 and transition matrix returned.""" 
         if not logits:
-            x_start_logits = torch.log(torch.nn.functional.one_hot(x_start, self.num_categories) + self.eps)
+            x_start_logits = torch.log(torch.nn.functional.one_hot(x_start.long(), self.num_categories) + self.eps)
         else:
             x_start_logits = x_start.clone()
         assert x_start_logits.shape == x_t.shape + (self.num_categories,), \
