@@ -106,7 +106,8 @@ class DLightSB_M(LightningModule):
         true_q_posterior_logits: torch.Tensor, 
         pred_q_posterior_logits: torch.Tensor,
     ) -> torch.Tensor:        
-        '''KL-divergence calculation.'''    
+        '''KL-divergence calculation.'''
+        true_q_posterior_logits = torch.flatten(true_q_posterior_logits, start_dim=1, end_dim=3)
         kl_loss = torch.softmax(true_q_posterior_logits, dim=-1) * (
             torch.log_softmax(true_q_posterior_logits, dim=-1)
             - torch.log_softmax(pred_q_posterior_logits, dim=-1)
@@ -119,7 +120,8 @@ class DLightSB_M(LightningModule):
         true_q_posterior_logits: torch.Tensor, 
         pred_q_posterior_logits: torch.Tensor,
     ) -> torch.Tensor:        
-        '''MSE calculation.'''    
+        '''MSE calculation.'''
+        true_q_posterior_logits = torch.flatten(true_q_posterior_logits, start_dim=1, end_dim=3)
         mse_loss = F.mse_loss(
             torch.softmax(true_q_posterior_logits, dim=-1), 
             torch.softmax(pred_q_posterior_logits, dim=-1)
