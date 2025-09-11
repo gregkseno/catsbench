@@ -10,7 +10,6 @@ check_val_every_n_epoch: 1 # for num_timestep==15
 gradient_clip_val: null
 
 strategy: ddp_find_unused_parameters_true
-strategy: ddp_find_unused_parameters_true
 accelerator: gpu
 devices: 8
 num_nodes: 1
