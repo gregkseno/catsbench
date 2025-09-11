@@ -315,3 +315,125 @@ class BenchmarkImages(BenchmarkBase):
         input_samples = self._postporcess(self.generator(noise, None))
         target_samples = self.sample_target_given_input(input_samples)
         return input_samples, target_samples.reshape_as(input_samples)
+
+from transformers import GPT2Tokenizer, GPT2LMHeadModel
+
+class TextBenchmark:
+    def __init__(
+        self, 
+        dim: int,
+        input_shape: Tuple[int, int, int],
+        num_potentials: int,
+        alpha: float,
+        num_categories: int,
+        num_timesteps: int,
+        num_skip_steps: int,
+        prior_type: Literal[
+            'uniform', 
+            'gaussian',
+        ] = 'gaussian',
+        benchmark_type: Literal[
+            'gaussian_mixture', 
+            'log_gaussian', 
+            'uniform'
+        ]  = 'gaussian_mixture',
+        num_val_samples: Optional[int] = None,
+        generator_path: str = '../checkpoints/cmnist_stylegan2.pkl',
+        save_path: str = '../data/benchmark_images',
+        device: str = 'cpu'
+    ):
+        self.dim = dim
+        self.input_shape = input_shape
+        self.num_potentials = num_potentials
+        self.device = device
+
+        self.prior  = Prior(
+            alpha=alpha, 
+            num_categories=num_categories, 
+            num_timesteps=num_timesteps, 
+            num_skip_steps=num_skip_steps, 
+            prior_type=prior_type
+        ).to(device)
+
+        # Load tokenizer and model
+        model_path = '../data'
+        self.tokenizer = GPT2Tokenizer.from_pretrained(model_path)
+        self.model = GPT2LMHeadModel.from_pretrained(model_path)
+        self.model.eval()
+        
+        # Initialize prior and CP cores
+        self.prior = Prior(
+            alpha=alpha, 
+            num_categories=num_categories, 
+            num_timesteps=100,  # Adjust as needed
+            num_skip_steps=10,   # Adjust as needed
+            prior_type=prior_type
+        ).to(device)
+        
+        self.log_alpha = torch.log(torch.ones(self.num_potentials) / self.num_potentials).to(device)
+        self.log_cp_cores = self._get_log_cp_cores(benchmark_type).to(device)
+    
+    def sample_input(self, num_samples: int) -> torch.Tensor:
+        """Generate input text samples using the language model."""
+        # Generate text using the model
+        generated = self.model.generate(
+            torch.tensor([[self.tokenizer.bos_token_id]] * num_samples).to(self.device),
+            max_length=self.seq_length,
+            do_sample=True,
+            pad_token_id=self.tokenizer.eos_token_id
+        )
+        
+        # Ensure sequences are the right length
+        if generated.size(1) > self.seq_length:
+            generated = generated[:, :self.seq_length]
+        elif generated.size(1) < self.seq_length:
+            # Pad with EOS tokens
+            padding = torch.full((num_samples, self.seq_length - generated.size(1)), 
+                                self.tokenizer.eos_token_id, device=self.device)
+            generated = torch.cat([generated, padding], dim=1)
+            
+        return generated
+    
+    def generate_noised_text(self, num_samples: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Generate input text and its noised version."""
+        input_text = self.sample_input(num_samples)
+        noised_text = self.sample_target_given_input(input_text)
+        
+        return input_text, noised_text
+    
+    def tokens_to_text(self, tokens: torch.Tensor) -> list:
+        """Convert token tensors to text."""
+        texts = []
+        for i in range(tokens.size(0)):
+            token_list = tokens[i].tolist()
+            # Remove padding tokens
+            token_list = [t for t in token_list if t != self.tokenizer.eos_token_id]
+            text = self.tokenizer.decode(token_list, skip_special_tokens=True)
+            texts.append(text)
+        return texts
+
+# Example usage
+if __name__ == "__main__":
+    # Initialize the text benchmark
+    benchmark = TextBenchmark(
+        seq_length=32,  # Sequence length
+        vocab_size=50257,  # GPT-2 vocabulary size
+        num_potentials=5,
+        alpha=0.1,
+        num_categories=100,
+        benchmark_type='gaussian_mixture',
+        noise_level=0.3,
+        device='cuda' if torch.cuda.is_available() else 'cpu'
+    )
+    
+    input_tokens, noised_tokens = benchmark.generate_noised_text(5)
+    
+    input_texts = benchmark.tokens_to_text(input_tokens)
+    noised_texts = benchmark.tokens_to_text(noised_tokens)
+    
+    print("Input Texts vs Noised Texts:")
+    for i, (input_text, noised_text) in enumerate(zip(input_texts, noised_texts)):
+        print(f"Sample {i+1}:")
+        print(f"  Input:  {input_text}")
+        print(f"  Noised: {noised_text}")
+        print()

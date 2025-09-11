@@ -101,7 +101,11 @@ class BenchmarkImagesLogger(Callback):
 
         # initialize metrics
         pl_module.fid = FrechetInceptionDistance(normalize=True)
-        pl_module.c2st = ClassifierTwoSampleTest(2*self.dim)
+
+        paired_input_shape = [self.input_shape[0]*2, *self.input_shape[1:]]
+        pl_module.c2st = ClassifierTwoSampleTest(
+            dim=2*self.dim, input_shape=paired_input_shape, model='cnn'
+        )
 
     @clear_cache
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
@@ -145,8 +149,8 @@ class BenchmarkImagesLogger(Callback):
         pl_module.fid.update(x_end, real=True)
         pl_module.fid.update(pred_x_end, real=False)
         pl_module.c2st.update(
-            torch.cat([x_start.flatten(start_dim=1), x_end.flatten(start_dim=1)], dim=-1), 
-            torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1),
+            torch.cat([x_start, x_end], dim=1), 
+            torch.cat([x_start, pred_x_end], dim=1),
             train=batch_idx < int(len(trainer.val_dataloaders) * self.train_test_split)
         )
 
@@ -185,8 +189,8 @@ class BenchmarkImagesLogger(Callback):
         pl_module.fid.update(x_end, real=True)
         pl_module.fid.update(pred_x_end, real=False)
         pl_module.c2st.update(
-            torch.cat([x_start.flatten(start_dim=1), x_end.flatten(start_dim=1)], dim=-1), 
-            torch.cat([x_start.flatten(start_dim=1), pred_x_end.flatten(start_dim=1)], dim=-1),
+            torch.cat([x_start, x_end], dim=1),
+            torch.cat([x_start, pred_x_end], dim=1),
             train=batch_idx < int(len(trainer.test_dataloaders) * self.train_test_split)
         )
 

@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=bench_all
 #SBATCH --partition=ais-gpu
-#SBATCH --gpus=1
+#SBATCH --gpus=2
 #SBATCH --cpus-per-task=8
 #SBATCH --array=0-38%4
 #SBATCH --nodes=1
-#SBATCH --mem=80GB
+#SBATCH --mem=64GB
 #SBATCH --time=16-00:00:00
 
 source activate dot_bench
