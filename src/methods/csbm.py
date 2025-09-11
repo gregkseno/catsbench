@@ -264,9 +264,10 @@ class CSBM(LightningModule):
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         if 'ema_forward' in checkpoint:
             self.emas['forward'].load_state_dict(checkpoint['ema_forward'])
+            self.emas['forward'].to(self.device)
         if 'ema_backward' in checkpoint:
             self.emas['backward'].load_state_dict(checkpoint['ema_backward'])
-
+            self.emas['backward'].to(self.device)
     def markov_sample(
         self, x: torch.Tensor, t: torch.Tensor, fb: Literal['forward', 'backward']
     ) -> torch.Tensor:
