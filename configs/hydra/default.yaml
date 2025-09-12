@@ -3,7 +3,7 @@
 job:
   chdir: false
 run:
-  dir: ${paths.log_dir}/runs/${hydra:runtime.choices.data}/dim_${data.dim}/${prior.prior_type}_${prior.alpha}/${hydra:runtime.choices.method}/${now:%Y-%m-%d}_${now:%H-%M-%S}
+  dir: ${paths.log_dir}/runs/${hydra:runtime.choices.data}/dim_${data.dim}/argmax/${prior.prior_type}_${prior.alpha}_num_timesteps_${prior.num_timesteps}_num_skip_steps_${prior.num_skip_steps}/${hydra:runtime.choices.method}/${now:%Y-%m-%d}_${now:%H-%M-%S}
 sweep:
   dir: ${paths.log_dir}/sweeps/${now:%Y-%m-%d_%H-%M-%S}
   subdir: ${hydra:runtime.choices.experiment}

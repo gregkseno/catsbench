@@ -4,8 +4,8 @@ input_shape: [3, 32, 32]
 num_categories: 256
 num_potentials: 10
 batch_size: 32
-val_batch_size: 48
-num_workers: 0
+val_batch_size: 32
+num_workers: 4
 pin_memory: false
 dir: ${paths.data_dir}/benchmark_images
 generator_path: ${paths.ckpt_dir}/colored_mnist.pkl
