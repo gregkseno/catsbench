@@ -108,25 +108,22 @@ class DLightSB(LightningModule):
             self.init_weights(init_samples)
 
     def get_log_v(self, x_end: torch.Tensor) -> torch.Tensor:
-        x_end = x_end.flatten(start_dim=1)
-        log_terms = self.log_alpha[None, :].expand(x_end.shape[0], -1)  # (B, K)
-        for d in range(x_end.shape[1]):
-            y_d = x_end[:, d]  # (B,)
-            log_terms = log_terms + self.log_cp_cores[d][:, y_d].T
-        log_v = torch.logsumexp(log_terms, dim=1)  # (B,)
-        return log_v
+        x_end = x_end.flatten(start_dim=1)[:, :, None, None].expand(-1, -1, self.hparams.num_potentials, -1) # (B, D, K, 1)
+        log_cp_cores = torch.stack(list(self.log_cp_cores), dim=0) # (D, K, S)
+        log_cp_cores = log_cp_cores[None, :, :, :].expand(x_end.shape[0], -1, -1, -1) # (B, D, K, S)
+        log_r = torch.gather(log_cp_cores, dim=-1, index=x_end) # (B, D, K, 1)
+        log_r = log_r.squeeze(-1).sum(dim=1) # (B, K)
+        return torch.logsumexp(self.log_alpha[None, :] + log_r, dim=1) # (B)
 
     def get_log_c(self, x_start: torch.Tensor) -> torch.Tensor:
         x_start = x_start.flatten(start_dim=1)
         log_z = torch.zeros(x_start.shape[0], self.hparams.num_potentials, device=self.device)
         for d in range(self.hparams.dim):
-            x_d = x_start[:, d]
-            log_pi_ref = self.prior.extract_last_cum_matrix(x_d)
-            log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (B, S) -> (B, K, S)
-            log_inner = torch.logsumexp(log_joint, dim=2)  # (B, K)
-            log_z = log_z + log_inner
-        log_c = torch.logsumexp(self.log_alpha[None, :] + log_z, dim=1) #(K,) + (B, K) -> (B,)
-        return log_c
+            log_pi_ref = self.prior.extract_last_cum_matrix(x_start[:, d]) # (B, S)
+            log_z = log_z + torch.logsumexp(
+                self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :], dim=2
+            ) # (1, K, S) + (B, 1, S) -> (B, K)
+        return torch.logsumexp(self.log_alpha[None, :] + log_z, dim=1) #(1, K) + (B, K) -> (B)
 
     def training_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
@@ -203,35 +200,29 @@ class DLightSB(LightningModule):
     @torch.no_grad()
     def sample(self, x: torch.Tensor) -> torch.Tensor:
         input_shape = x.shape
-        x = x.flatten(start_dim=1)
+        x = x.flatten(start_dim=1) # (B, D)
 
         log_z = torch.zeros(x.shape[0], self.hparams.num_potentials, device=self.device)
-        log_pi_ref_list = []
         for d in range(self.hparams.dim):
-            x_d = x[:, d]
-            log_pi_ref = self.prior.extract_last_cum_matrix(x_d)
-            
-            log_pi_ref_list.append(log_pi_ref)
-                
-            log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (B, S) -> (B, K, S)
-            log_inner = torch.logsumexp(log_joint, dim=2)  # (B, K)
-            log_z = log_z + log_inner # (B, K)
-        
-        log_w_k = self.log_alpha[None, :] + log_z  # (K,) + (B, K) -> (B, K)
+            log_pi_ref = self.prior.extract_last_cum_matrix(x[:, d]) # (B, S)
+            log_z = log_z + torch.logsumexp(
+                self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :], dim=2
+            ) # (1, K, S) + (B, 1, S) -> (B, K)
+
+        log_w_k = self.log_alpha[None, :] + log_z # (B, K)
         noise = torch.rand_like(log_w_k)
         noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
         gumbel_noise = -torch.log(-torch.log(noise))
-        k_stars = torch.argmax(log_w_k + gumbel_noise, dim=-1) # (B,)
+        k_stars = torch.argmax(log_w_k + gumbel_noise, dim=-1) # (B)
 
         y_samples = torch.empty(x.shape[0], self.hparams.dim, dtype=torch.long, device=self.device)
-        batch_idx = torch.arange(x.shape[0], device=self.device)
-
         for d in range(self.hparams.dim):
-            log_pi_ref = log_pi_ref_list[d]
-                
-            log_p_d_all = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(batch_size, K, S)
-            log_p_d_selected = log_p_d_all[batch_idx, k_stars, :] #(batch_size, S)
-            
+            log_pi_ref = self.prior.extract_last_cum_matrix(x[:, d]) # (B, S)
+            log_cp_cores_d = self.log_cp_cores[d][None, :, :].expand(x.shape[0], -1, -1) # (B, K, S)
+            log_cp_cores_d_selected = torch.gather(
+                log_cp_cores_d, dim=1, index=k_stars[:, None, None].expand(-1, -1, self.prior.num_categories)
+            ).squeeze(1) # (B, 1, S) -> (B, S)
+            log_p_d_selected = log_cp_cores_d_selected + log_pi_ref[:, :] # (B, S)
             noise = torch.rand_like(log_p_d_selected)
             noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
             gumbel_noise = -torch.log(-torch.log(noise))
