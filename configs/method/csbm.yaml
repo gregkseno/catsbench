@@ -21,4 +21,5 @@ ce_loss_coeff: 0
 mse_loss_coeff: 0
 use_mini_batch: false
 ignore_index: -100
+accumulate_grad_batches: 1
 argmax_mode: true

@@ -16,7 +16,7 @@ from src.utils.logging.console import RankedLogger
 
 HPARAMS = (
     'kl_loss_coeff', 'ce_loss_coeff', 'mse_loss_coeff', 
-    'use_mini_batch', 'ignore_index', 'num_first_iterations',
+    'use_mini_batch', 'ignore_index', 'num_first_iterations', 'accumulate_grad_batches',
     'optimizer', 'scheduler', 'argmax_mode'
 )
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -37,6 +37,7 @@ class CSBM(LightningModule):
         mse_loss_coeff: float = 0.0,
         use_mini_batch: bool = False,
         ignore_index: int = -100,
+        accumulate_grad_batches: int =1,
         argmax_mode: bool = True
     ) -> None:
         super().__init__()
@@ -173,11 +174,11 @@ class CSBM(LightningModule):
             self.log_dict(info, prog_bar=True, sync_dist=True) 
             self.log('train/iteration', self.iteration, prog_bar=True)
 
-            loss = loss / self.trainer.accumulate_grad_batches
+            loss = loss / self.hparams.accumulate_grad_batches
             self.manual_backward(loss)
 
             # do gradient accumulation and clipping
-            if (batch_idx + 1) % self.trainer.accumulate_grad_batches == 0:
+            if (batch_idx + 1) % self.hparams.accumulate_grad_batches == 0:
                 self.clip_gradients(
                     optimizers[fb], gradient_clip_val=self.trainer.gradient_clip_val
                 )
