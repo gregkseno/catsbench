@@ -41,10 +41,13 @@ class DLightSB_M(LightningModule):
         self.prior = prior
         
         self.log_alpha = nn.Parameter(torch.zeros(num_potentials))
-        self.log_cp_cores = nn.Parameter(torch.empty(
-            dim, num_potentials, prior.num_categories,
-            device=self.log_alpha.device, dtype=self.log_alpha.dtype
-        ))
+        self.log_cp_cores = nn.ParameterList([
+            nn.Parameter(torch.empty(
+                num_potentials, prior.num_categories,
+                device=self.log_alpha.device, dtype=self.log_alpha.dtype
+            ))
+            for _ in range(dim)
+        ])
 
         self.bidirectional = False  
         self.iteration = 1
@@ -57,37 +60,47 @@ class DLightSB_M(LightningModule):
 
         if self.hparams.distr_init == 'gaussian':
             cur = (-1.0 + (0.5**2) * torch.randn(
-                self.hparams.dim, self.hparams.num_potentials, self.prior.num_categories,
-                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype
-            )) / (self.prior.num_categories * self.hparams.num_potentials)
-            self.log_cp_cores.copy_(torch.log((cur ** 2).clamp_min(1e-12)))
+                self.hparams.dim, self.hparams.num_potentials, self.prior.num_categories, 
+                device=self.log_alpha.device, dtype=self.log_alpha.dtype)
+            ) / (self.prior.num_categories * self.hparams.num_potentials)
+            cur = torch.log((cur ** 2).clamp_min(1e-12))  # (D, K, S)
+            for d in range(self.hparams.dim):
+                self.log_cp_cores[d].data.copy_(cur[d])
 
         elif self.hparams.distr_init == 'uniform':
             val = torch.log(torch.tensor(
-                1.0 / (self.prior.num_categories * self.hparams.num_potentials),
-                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype)
-            )
-            self.log_cp_cores.fill_(val)
+                1.0 / (self.prior.num_categories * self.hparams.num_potentials), 
+                device=self.log_alpha.device, dtype=self.log_alpha.dtype
+            ))
+            for d in range(self.hparams.dim):
+                self.log_cp_cores[d].data.fill_(val)
 
         elif self.hparams.distr_init == 'samples':
             assert init_samples is not None, "init_samples should not be None when using benchmark samples"
-            init_samples = torch.as_tensor(init_samples, device=self.log_cp_cores.device)
+            init_samples = torch.as_tensor(init_samples, device=self.log_alpha.device)
+            assert init_samples.dim() == 2 and init_samples.shape == (self.hparams.num_potentials, self.hparams.dim), \
+                f"init_samples must be (num_potentials, dim), got {tuple(init_samples.shape)}"
+
             base_val = torch.log(torch.tensor(
                 (1 - self.hparams.sample_prob) / (self.prior.num_categories - 1),
-                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype)
+                device=self.log_alpha.device, dtype=self.log_alpha.dtype
+            ))
+            hot_val = torch.tensor(math.log(
+                self.hparams.sample_prob), device=self.log_alpha.device, dtype=self.log_alpha.dtype
             )
-            self.log_cp_cores.fill_(base_val)
 
-            idx = init_samples.t().unsqueeze(-1).long()  # (dim, num_potentials, 1)
-            src = torch.full(
-                idx.shape, math.log(self.hparams.sample_prob),
-                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype
-            )
-            self.log_cp_cores.scatter_(2, idx, src)
+            for d in range(self.hparams.dim):
+                core = torch.full((
+                    self.hparams.num_potentials, self.prior.num_categories), base_val, 
+                    device=self.log_alpha.device, dtype=self.log_alpha.dtype
+                )
+                col_idx = init_samples[:, d].long().view(self.hparams.num_potentials, 1)                  # (K, 1)
+                core.scatter_(dim=1, index=col_idx, src=hot_val.expand(self.hparams.num_potentials, 1))   # (K, S)
+                self.log_cp_cores[d].data.copy_(core)
 
         else:
             raise ValueError(f"Invalid distr_init: {self.hparams.distr_init}")
-        
+
         self._did_weight_init = True
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
@@ -107,7 +120,6 @@ class DLightSB_M(LightningModule):
         pred_q_posterior_logits: torch.Tensor,
     ) -> torch.Tensor:        
         '''KL-divergence calculation.'''
-        true_q_posterior_logits = torch.flatten(true_q_posterior_logits, start_dim=1, end_dim=3)
         kl_loss = torch.softmax(true_q_posterior_logits, dim=-1) * (
             torch.log_softmax(true_q_posterior_logits, dim=-1)
             - torch.log_softmax(pred_q_posterior_logits, dim=-1)
@@ -121,7 +133,6 @@ class DLightSB_M(LightningModule):
         pred_q_posterior_logits: torch.Tensor,
     ) -> torch.Tensor:        
         '''MSE calculation.'''
-        true_q_posterior_logits = torch.flatten(true_q_posterior_logits, start_dim=1, end_dim=3)
         mse_loss = F.mse_loss(
             torch.softmax(true_q_posterior_logits, dim=-1), 
             torch.softmax(pred_q_posterior_logits, dim=-1)
@@ -257,7 +268,7 @@ class DLightSB_M(LightningModule):
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer = self.hparams.optimizer(
-            params=[self.log_alpha, self.log_cp_cores]
+            params=[self.log_alpha] + list(self.log_cp_cores)
         )
         if self.hparams.scheduler is not None:
             scheduler = self.hparams.scheduler(optimizer=optimizer)
