@@ -61,35 +61,39 @@ class BenchmarkBase:
         input_shape = x.shape
         x = x.flatten(start_dim=1)
 
-        log_z = torch.zeros(x.shape[0], self.num_potentials, device=x.device)
+        log_z = torch.zeros(x.shape[0], self.num_potentials, device=self.device)
         log_pi_ref_list = []
         for d in range(self.dim):
             x_d = x[:, d]
-            log_pi_ref = self.prior.extract_last_cum_matrix(x_d).to(x.device)
+            log_pi_ref = self.prior.extract_last_cum_matrix(x_d)
+            
             log_pi_ref_list.append(log_pi_ref)
                 
-            log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
-            log_inner = torch.logsumexp(log_joint, dim=2)  # (batch_size, K)
-            log_z = log_z + log_inner # (batch_size, K)
+            log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (B, S) -> (B, K, S)
+            log_inner = torch.logsumexp(log_joint, dim=2)  # (B, K)
+            log_z = log_z + log_inner # (B, K)
         
-        log_w_k = self.log_alpha[None, :] + log_z  # (K,) + (batch_size, K) -> (batch_size, K)
-        
-        log_p_k = log_w_k - torch.logsumexp(log_w_k, dim=1)[:, None] #(batch_size, K) - (batch_size, ) -> (batch_size, K)
-        p_k = torch.exp(log_p_k) # (batch_size, K)
-        k_stars = torch.multinomial(p_k, num_samples=1).squeeze(1)  # (batch_size,)
-    
-        y_samples = torch.zeros(x.shape[0], self.dim, dtype=torch.long, device=x.device)
+        log_w_k = self.log_alpha[None, :] + log_z  # (K,) + (B, K) -> (B, K)
+        noise = torch.rand_like(log_w_k)
+        noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
+        gumbel_noise = -torch.log(-torch.log(noise))
+        k_stars = torch.argmax(log_w_k + gumbel_noise, dim=-1) # (B,)
+
+        y_samples = torch.empty(x.shape[0], self.dim, dtype=torch.long, device=self.device)
+        batch_idx = torch.arange(x.shape[0], device=self.device)
+
         for d in range(self.dim):
             log_pi_ref = log_pi_ref_list[d]
                 
             log_p_d_all = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(batch_size, K, S)
-            batch_idx = torch.arange(x.shape[0], device=k_stars.device)
             log_p_d_selected = log_p_d_all[batch_idx, k_stars, :] #(batch_size, S)
             
-            p_d = torch.softmax(log_p_d_selected, dim=1)
-            y_d = torch.multinomial(p_d, num_samples=1).squeeze(1) #(batch_size,)
+            noise = torch.rand_like(log_p_d_selected)
+            noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
+            gumbel_noise = -torch.log(-torch.log(noise))
+            y_d = torch.argmax(log_p_d_selected + gumbel_noise, dim=-1)
             y_samples[:, d] = y_d
-        
+               
         if not return_trajectories:
             return y_samples.reshape(input_shape)
         else:
@@ -172,7 +176,7 @@ class Benchmark(BenchmarkBase):
             self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device) / self.num_potentials)
             self.log_cp_cores = self._get_log_cp_cores(
                 benchmark_type, spread=SPREADS[self.prior.num_categories][dim], device=device
-            ).permute(2, 0, 1) # (D, K, S)
+            ).permute(2, 0, 1).contiguous() # (D, K, S)
 
             log.info('Sampling validation dataset...')
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
@@ -267,7 +271,7 @@ class BenchmarkImages(BenchmarkBase):
         else:
             log.info('Loading parameters...')
             self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device) / self.num_potentials)
-            self.log_cp_cores = self._get_log_cp_cores(benchmark_type, spread=15, device=device).permute(2, 0, 1) # (D, K, S)
+            self.log_cp_cores = self._get_log_cp_cores(benchmark_type, spread=15, device=device).permute(2, 0, 1).contiguous() # (D, K, S)
 
             log.info('Sampling validation dataset...')
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
@@ -287,7 +291,7 @@ class BenchmarkImages(BenchmarkBase):
 
     @staticmethod
     def _postporcess(outputs: torch.Tensor) -> torch.Tensor:
-        return ((outputs * 0.5 + 0.5).clamp(0, 1) * 255).to(torch.long)
+        return ((outputs * 0.5 + 0.5).clamp(0, 1) * 255).long()
 
     def _load_generator(self, generator_path: str, device: str = 'cpu'):
         log.info('Loading StyleGAN2 generator checkpoint...')
@@ -373,7 +377,7 @@ class TextBenchmark:
         ).to(device)
         
         self.log_alpha = torch.log(torch.ones(self.num_potentials) / self.num_potentials).to(device)
-        self.log_cp_cores = self._get_log_cp_cores(benchmark_type).to(device)
+        self.log_cp_cores = self._get_log_cp_cores(benchmark_type).to(device).contiguous()
     
     def sample_input(self, num_samples: int) -> torch.Tensor:
         """Generate input text samples using the language model."""
