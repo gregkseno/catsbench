@@ -34,10 +34,13 @@ class DLightSB(LightningModule):
         self.prior = prior
         
         self.log_alpha = nn.Parameter(torch.zeros(num_potentials))
-        self.log_cp_cores = nn.Parameter(torch.empty(
-            dim, num_potentials, prior.num_categories,
-            device=self.log_alpha.device, dtype=self.log_alpha.dtype
-        ))
+        self.log_cp_cores = nn.ParameterList([
+            nn.Parameter(torch.empty(
+                num_potentials, prior.num_categories,
+                device=self.log_alpha.device, dtype=self.log_alpha.dtype
+            ))
+            for _ in range(dim)
+        ])
 
         self.bidirectional = False  
         self.iteration = 1
@@ -50,37 +53,47 @@ class DLightSB(LightningModule):
 
         if self.hparams.distr_init == 'gaussian':
             cur = (-1.0 + (0.5**2) * torch.randn(
-                self.hparams.dim, self.hparams.num_potentials, self.prior.num_categories,
-                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype
-            )) / (self.prior.num_categories * self.hparams.num_potentials)
-            self.log_cp_cores.copy_(torch.log((cur ** 2).clamp_min(1e-12)))
+                self.hparams.dim, self.hparams.num_potentials, self.prior.num_categories, 
+                device=self.log_alpha.device, dtype=self.log_alpha.dtype)
+            ) / (self.prior.num_categories * self.hparams.num_potentials)
+            cur = torch.log((cur ** 2).clamp_min(1e-12))  # (D, K, S)
+            for d in range(self.hparams.dim):
+                self.log_cp_cores[d].data.copy_(cur[d])
 
         elif self.hparams.distr_init == 'uniform':
             val = torch.log(torch.tensor(
-                1.0 / (self.prior.num_categories * self.hparams.num_potentials),
-                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype)
-            )
-            self.log_cp_cores.fill_(val)
+                1.0 / (self.prior.num_categories * self.hparams.num_potentials), 
+                device=self.log_alpha.device, dtype=self.log_alpha.dtype
+            ))
+            for d in range(self.hparams.dim):
+                self.log_cp_cores[d].data.fill_(val)
 
         elif self.hparams.distr_init == 'samples':
             assert init_samples is not None, "init_samples should not be None when using benchmark samples"
-            init_samples = torch.as_tensor(init_samples, device=self.log_cp_cores.device)
+            init_samples = torch.as_tensor(init_samples, device=self.log_alpha.device)
+            assert init_samples.dim() == 2 and init_samples.shape == (self.hparams.num_potentials, self.hparams.dim), \
+                f"init_samples must be (num_potentials, dim), got {tuple(init_samples.shape)}"
+
             base_val = torch.log(torch.tensor(
                 (1 - self.hparams.sample_prob) / (self.prior.num_categories - 1),
-                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype)
+                device=self.log_alpha.device, dtype=self.log_alpha.dtype
+            ))
+            hot_val = torch.tensor(math.log(
+                self.hparams.sample_prob), device=self.log_alpha.device, dtype=self.log_alpha.dtype
             )
-            self.log_cp_cores.fill_(base_val)
 
-            idx = init_samples.t().unsqueeze(-1).long()  # (dim, num_potentials, 1)
-            src = torch.full(
-                idx.shape, math.log(self.hparams.sample_prob),
-                device=self.log_cp_cores.device, dtype=self.log_cp_cores.dtype
-            )
-            self.log_cp_cores.scatter_(2, idx, src)
+            for d in range(self.hparams.dim):
+                core = torch.full((
+                    self.hparams.num_potentials, self.prior.num_categories), base_val, 
+                    device=self.log_alpha.device, dtype=self.log_alpha.dtype
+                )
+                col_idx = init_samples[:, d].long().view(self.hparams.num_potentials, 1)                  # (K, 1)
+                core.scatter_(dim=1, index=col_idx, src=hot_val.expand(self.hparams.num_potentials, 1))   # (K, S)
+                self.log_cp_cores[d].data.copy_(core)
 
         else:
             raise ValueError(f"Invalid distr_init: {self.hparams.distr_init}")
-        
+
         self._did_weight_init = True
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
@@ -96,28 +109,23 @@ class DLightSB(LightningModule):
 
     def get_log_v(self, x_end: torch.Tensor) -> torch.Tensor:
         x_end = x_end.flatten(start_dim=1)
-        log_terms = self.log_alpha[None, :]  # (1, K)
-        
+        log_terms = self.log_alpha[None, :].expand(x_end.shape[0], -1)  # (B, K)
         for d in range(x_end.shape[1]):
-            y_d = x_end[:, d]  # (batch_size,)
-            log_r_d = self.log_cp_cores[d][:, y_d].T  # (batch_size, K)
-            log_terms = log_terms + log_r_d
-            
-        log_v = torch.logsumexp(log_terms, dim=1)  # (batch_size,)
+            y_d = x_end[:, d]  # (B,)
+            log_terms = log_terms + self.log_cp_cores[d][:, y_d].T
+        log_v = torch.logsumexp(log_terms, dim=1)  # (B,)
         return log_v
 
     def get_log_c(self, x_start: torch.Tensor) -> torch.Tensor:
         x_start = x_start.flatten(start_dim=1)
         log_z = torch.zeros(x_start.shape[0], self.hparams.num_potentials, device=self.device)
-        
         for d in range(self.hparams.dim):
             x_d = x_start[:, d]
             log_pi_ref = self.prior.extract_last_cum_matrix(x_d)
-            log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
-            log_inner = torch.logsumexp(log_joint, dim=2)  # (batch_size, K)
+            log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (B, S) -> (B, K, S)
+            log_inner = torch.logsumexp(log_joint, dim=2)  # (B, K)
             log_z = log_z + log_inner
-            
-        log_c = torch.logsumexp(self.log_alpha[None, :] + log_z, dim=1) #(K,) + (batch_size, K) -> (batch_size,)
+        log_c = torch.logsumexp(self.log_alpha[None, :] + log_z, dim=1) #(K,) + (B, K) -> (B,)
         return log_c
 
     def training_step(
@@ -185,7 +193,7 @@ class DLightSB(LightningModule):
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer = self.hparams.optimizer(
-            params=[self.log_alpha, self.log_cp_cores]
+            params=[self.log_alpha] + list(self.log_cp_cores)
         )
         if self.hparams.scheduler is not None:
             scheduler = self.hparams.scheduler(optimizer=optimizer)
@@ -205,27 +213,29 @@ class DLightSB(LightningModule):
             
             log_pi_ref_list.append(log_pi_ref)
                 
-            log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
-            log_inner = torch.logsumexp(log_joint, dim=2)  # (batch_size, K)
-            log_z = log_z + log_inner # (batch_size, K)
+            log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (B, S) -> (B, K, S)
+            log_inner = torch.logsumexp(log_joint, dim=2)  # (B, K)
+            log_z = log_z + log_inner # (B, K)
         
-        log_w_k = self.log_alpha[None, :] + log_z  # (K,) + (batch_size, K) -> (batch_size, K)
-        
-        log_p_k = log_w_k - torch.logsumexp(log_w_k, dim=1)[:, None] #(batch_size, K) - (batch_size, ) -> (batch_size, K)
-        p_k = torch.exp(log_p_k) # (batch_size, K)
-        k_stars = torch.multinomial(p_k, num_samples=1).squeeze(1)  # (batch_size,)
-    
-        y_samples = torch.zeros(x.shape[0], self.hparams.dim, dtype=torch.long, device=self.device)
-    
+        log_w_k = self.log_alpha[None, :] + log_z  # (K,) + (B, K) -> (B, K)
+        noise = torch.rand_like(log_w_k)
+        noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
+        gumbel_noise = -torch.log(-torch.log(noise))
+        k_stars = torch.argmax(log_w_k + gumbel_noise, dim=-1) # (B,)
+
+        y_samples = torch.empty(x.shape[0], self.hparams.dim, dtype=torch.long, device=self.device)
+        batch_idx = torch.arange(x.shape[0], device=self.device)
+
         for d in range(self.hparams.dim):
             log_pi_ref = log_pi_ref_list[d]
                 
             log_p_d_all = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(batch_size, K, S)
-            batch_idx = torch.arange(x.shape[0], device=k_stars.device)
             log_p_d_selected = log_p_d_all[batch_idx, k_stars, :] #(batch_size, S)
             
-            p_d = torch.softmax(log_p_d_selected, dim=1)
-            y_d = torch.multinomial(p_d, num_samples=1).squeeze(1) #(batch_size,)
+            noise = torch.rand_like(log_p_d_selected)
+            noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
+            gumbel_noise = -torch.log(-torch.log(noise))
+            y_d = torch.argmax(log_p_d_selected + gumbel_noise, dim=-1)
             y_samples[:, d] = y_d
         
         return y_samples.reshape(input_shape)
