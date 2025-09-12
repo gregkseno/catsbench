@@ -93,7 +93,7 @@ class AlphaCSBM(LightningModule):
     ) -> torch.Tensor:   
         '''Cross-Entropy calculation.'''         
         pred_x_start_logits = pred_x_start_logits.flatten(start_dim=0, end_dim=-2)
-        true_x_start = true_x_start.flatten(start_dim=0, end_dim=-1)
+        true_x_start = true_x_start.flatten(start_dim=0, end_dim=-1).long()
         ce_loss = F.cross_entropy(pred_x_start_logits, true_x_start, ignore_index=self.hparams.ignore_index)
         return ce_loss
 
