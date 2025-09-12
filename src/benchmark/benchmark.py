@@ -279,7 +279,7 @@ class BenchmarkImages(BenchmarkBase):
                 start, end = samples_per_batch * i, samples_per_batch * (i + 1)
                 self.input_dataset[start:end] = self._postporcess(self.generator(noise, None)).cpu()
                 self.target_dataset[start:end] = self.sample_target_given_input(
-                    torch.flatten(self.input_dataset[start:end].to(device), start_dim=1)
+                    self.input_dataset[start:end].to(device)
                 ).reshape_as(self.input_dataset[start:end])
 
             self.save(solver_path, source_path, target_path, benchmark_dir)

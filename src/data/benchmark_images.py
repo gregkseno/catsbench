@@ -4,8 +4,12 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 
+from src.utils.logging.console import RankedLogger
 from src.utils import CoupleDataset, InfiniteCoupleDataset
 from benchmark import BenchmarkImages
+
+
+log = RankedLogger(__name__, rank_zero_only=True)
 
 class BenchmarkImagesDataModule(LightningDataModule):
     def __init__(
@@ -31,9 +35,6 @@ class BenchmarkImagesDataModule(LightningDataModule):
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
-        
-        # will be divided by the number of devices in `setup`
-        self.batch_size_per_device = batch_size 
 
     def prepare_data(self) -> None:
         pass
@@ -50,12 +51,15 @@ class BenchmarkImagesDataModule(LightningDataModule):
                 )
             self.batch_size_per_device = self.hparams.batch_size // self.trainer.world_size
             self.val_batch_size_per_device = self.hparams.val_batch_size // self.trainer.world_size
+            log.info(f"batch_size per device: {self.batch_size_per_device}")
+            log.info(f"val_batch_size per device: {self.val_batch_size_per_device}")
 
         # here is an `if` because the `setup` method is called multiple times 
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.benchmark and not self.data_train and not self.data_val and not self.data_test:
             device = self.trainer.strategy.root_device if self.trainer is not None else 'cpu'
             self.benchmark = BenchmarkImages(**self.hparams.benchmark_config, device=device)
+            log.info(f"Loading BenchmarkImages datasets to {device}...")
 
             # Permute the target dataset to ensure unpaired setup
             random_indices = torch.randperm(len(self.benchmark.target_dataset))

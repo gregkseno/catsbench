@@ -90,7 +90,7 @@ class DLightSB(LightningModule):
         if stage in (None, "fit") and not self._did_weight_init and not self._loaded_from_ckpt:
             assert hasattr(self.trainer, 'datamodule'), "Trainer has no datamodule attribute"
             assert hasattr(self.trainer.datamodule, 'benchmark'), "Datamodule has no benchmark attribute"
-            init_samples: torch.Tesnor = self.trainer.datamodule.benchmark.sample_input(self.hparams.num_potentials)
+            init_samples: torch.Tensor = self.trainer.datamodule.benchmark.sample_input(self.hparams.num_potentials)
             init_samples = init_samples.flatten(start_dim=1) # (num_potentials, dim)
             self.init_weights(init_samples)
 
