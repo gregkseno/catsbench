@@ -3,7 +3,7 @@
 defaults:
 - dlight_sb_m/benchmark_images/default
 data:
-  dim: 2
+  dim: 3072
 prior:
   alpha: 0.01
   num_timesteps: 63
