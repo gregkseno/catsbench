@@ -6,6 +6,7 @@ from torch import nn
 
 from benchmark.prior import Prior
 from benchmark.stylegan2 import legacy, dnnlib
+from benchmark.stylegan2.training.networks import Generator
 from benchmark.utils import  continuous_to_discrete, sample_separated_means, Logger
 
 
@@ -286,13 +287,14 @@ class BenchmarkImages(BenchmarkBase):
 
     @staticmethod
     def _postporcess(outputs: torch.Tensor) -> torch.Tensor:
-        return ((outputs * 0.5 + 0.5).clamp(0, 1) * 255).to(torch.int)
+        return ((outputs * 0.5 + 0.5).clamp(0, 1) * 255).to(torch.long)
 
     def _load_generator(self, generator_path: str, device: str = 'cpu'):
         log.info('Loading StyleGAN2 generator checkpoint...')
         with dnnlib.util.open_url(generator_path) as f:
-            self.generator: nn.Module = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
-    
+            self.generator: Generator = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
+        log.info(f'Generator loaded on {next(iter(self.generator.parameters())).device}!')
+
     # NOTE: Here we have reversed setup:
     #       - Input: CMNIST images;
     #       - Target: noised CMNIST images.
