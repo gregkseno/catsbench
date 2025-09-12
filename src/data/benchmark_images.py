@@ -85,7 +85,6 @@ class BenchmarkImagesDataModule(LightningDataModule):
         return DataLoader(
             dataset=self.data_train,
             batch_size=None,
-            num_workers=self.hparams.num_workers,
         )
 
     def val_dataloader(self) -> DataLoader[Any]:
