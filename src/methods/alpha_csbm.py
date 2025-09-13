@@ -17,7 +17,7 @@ from src.utils.logging.console import RankedLogger
 HPARAMS = (
     'kl_loss_coeff', 'ce_loss_coeff', 'mse_loss_coeff', 
     'use_mini_batch', 'ignore_index', 'num_first_iterations',
-    'optimizer', 'scheduler'
+    'optimizer', 'scheduler', 'argmax_mode'
 )
 log = RankedLogger(__name__, rank_zero_only=True)
 
@@ -37,6 +37,7 @@ class AlphaCSBM(LightningModule):
         mse_loss_coeff: float = 0.0,
         use_mini_batch: bool = False,
         ignore_index: int = -100,
+        argmax_mode: bool = True
     ) -> None:
         super().__init__()
         # somehow this function is able to load all 
@@ -92,7 +93,7 @@ class AlphaCSBM(LightningModule):
     ) -> torch.Tensor:   
         '''Cross-Entropy calculation.'''         
         pred_x_start_logits = pred_x_start_logits.flatten(start_dim=0, end_dim=-2)
-        true_x_start = true_x_start.flatten(start_dim=0, end_dim=-1)
+        true_x_start = true_x_start.flatten(start_dim=0, end_dim=-1).long()
         ce_loss = F.cross_entropy(pred_x_start_logits, true_x_start, ignore_index=self.hparams.ignore_index)
         return ce_loss
 
@@ -254,7 +255,14 @@ class AlphaCSBM(LightningModule):
         noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
         gumbel_noise = -torch.log(-torch.log(noise))
         random_samples = torch.argmax(pred_q_posterior_logits + gumbel_noise, dim=-1)
-        return random_samples
+
+        if self.hparams.argmax_mode:
+            first_step = (t == 1).long().view((x.shape[0], *[1] * (x.dim() - 1)))        
+            argmax_samples = pred_q_posterior_logits.argmax(dim=-1)
+            samples = first_step * argmax_samples + (1 - first_step) * random_samples
+            return samples
+        else:
+            return random_samples
         
     @torch.no_grad()
     def sample(

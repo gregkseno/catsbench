@@ -16,8 +16,8 @@ from src.utils.logging.console import RankedLogger
 
 HPARAMS = (
     'kl_loss_coeff', 'ce_loss_coeff', 'mse_loss_coeff', 
-    'use_mini_batch', 'ignore_index', 'num_first_iterations',
-    'optimizer', 'scheduler'
+    'use_mini_batch', 'ignore_index', 'num_first_iterations', 'accumulate_grad_batches',
+    'optimizer', 'scheduler', 'argmax_mode'
 )
 log = RankedLogger(__name__, rank_zero_only=True)
 
@@ -37,6 +37,8 @@ class CSBM(LightningModule):
         mse_loss_coeff: float = 0.0,
         use_mini_batch: bool = False,
         ignore_index: int = -100,
+        accumulate_grad_batches: int =1,
+        argmax_mode: bool = True
     ) -> None:
         super().__init__()
         # somehow this function is able to load all 
@@ -172,11 +174,11 @@ class CSBM(LightningModule):
             self.log_dict(info, prog_bar=True, sync_dist=True) 
             self.log('train/iteration', self.iteration, prog_bar=True)
 
-            loss = loss / self.trainer.accumulate_grad_batches
+            loss = loss / self.hparams.accumulate_grad_batches
             self.manual_backward(loss)
 
             # do gradient accumulation and clipping
-            if (batch_idx + 1) % self.trainer.accumulate_grad_batches == 0:
+            if (batch_idx + 1) % self.hparams.accumulate_grad_batches == 0:
                 self.clip_gradients(
                     optimizers[fb], gradient_clip_val=self.trainer.gradient_clip_val
                 )
@@ -277,7 +279,14 @@ class CSBM(LightningModule):
         noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
         gumbel_noise = -torch.log(-torch.log(noise))
         random_samples = torch.argmax(pred_q_posterior_logits + gumbel_noise, dim=-1)
-        return random_samples
+
+        if self.hparams.argmax_mode:
+            first_step = (t == 1).long().view((x.shape[0], *[1] * (x.dim() - 1)))        
+            argmax_samples = pred_q_posterior_logits.argmax(dim=-1)
+            samples = first_step * argmax_samples + (1 - first_step) * random_samples
+            return samples
+        else:
+            return random_samples
         
     @torch.no_grad()
     def sample(
