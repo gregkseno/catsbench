@@ -116,8 +116,8 @@ class BenchmarkBase:
         self.log_alpha = log_params['log_alpha']
         self.log_cp_cores = log_params['log_cp_cores']
 
-        self.input_dataset  = torch.load(source_path, map_location=torch.device('cpu'))
-        self.target_dataset = torch.load(target_path, map_location=torch.device('cpu')) 
+        self.input_dataset  = torch.load(source_path, map_location=torch.device('cpu')).long()
+        self.target_dataset = torch.load(target_path, map_location=torch.device('cpu')).long()
     
     def to(self, device: torch.device):
         self.prior.to(device)
