@@ -38,6 +38,7 @@ method:
   ce_loss_coeff: ???
   mse_loss_coeff: 0
   ignore_index: -100
+  argmax_mode: false
 
 trainer:
   max_epochs: 7

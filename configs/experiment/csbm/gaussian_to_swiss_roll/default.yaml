@@ -47,6 +47,8 @@ method:
   ce_loss_coeff: 0
   mse_loss_coeff: 0
   ignore_index: -100
+  accumulate_grad_batches: 1
+  argmax_mode: false
 
 trainer:
   max_epochs: 21
