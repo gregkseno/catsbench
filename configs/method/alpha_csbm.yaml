@@ -19,6 +19,6 @@ num_first_iterations: 10
 kl_loss_coeff: 1.0
 ce_loss_coeff: 0.001
 mse_loss_coeff: 0
-use_mini_batch: false
+use_mini_batch: true
 ignore_index: -100
 argmax_mode: true
