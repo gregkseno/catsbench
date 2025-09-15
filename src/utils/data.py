@@ -18,8 +18,8 @@ def log_space_product(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> t
 
 def logits_prod(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
     log_matrix1 = log_matrix1.unsqueeze(-1) # [batchsize, ..., num_categories, 1]
-    insert_nones = [None] * (log_matrix1.ndim - 3)
-    log_matrix2 = log_matrix2[:, *insert_nones, :, :] # [batchsize, ..., num_categories, num_categories]
+    #insert_nones = [None] * (log_matrix1.ndim - 3)
+    log_matrix2 = log_matrix2[:, None, None, None, :, :] # [batchsize, ..., num_categories, num_categories]
     return torch.logsumexp(log_matrix1 + log_matrix2, dim=-2)
 
 def convert_to_numpy(x: torch.Tensor | np.ndarray) -> np.ndarray:
