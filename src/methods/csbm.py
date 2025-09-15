@@ -128,8 +128,8 @@ class CSBM(LightningModule):
         pred_q_posterior_logits = self.prior.posterior_logits(pred_x_start_logits, x_t, t, logits=True)
 
         kl = self.kl_loss(true_q_posterior_logits, pred_q_posterior_logits)
-        ce = self.ce_loss(true_x_start, pred_x_start_logits)
-        mse = self.mse_loss(true_q_posterior_logits, pred_q_posterior_logits)
+        ce = 0.0 if self.hparams.ce_loss_coeff == 0 else self.ce_loss(true_x_start, pred_x_start_logits)
+        mse = 0.0 if self.hparams.mse_loss_coeff == 0 else self.mse_loss(true_q_posterior_logits, pred_q_posterior_logits)
 
         loss = self.hparams.kl_loss_coeff * kl + \
                self.hparams.ce_loss_coeff * ce + \
