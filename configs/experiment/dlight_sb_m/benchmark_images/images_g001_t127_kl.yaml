@@ -5,8 +5,8 @@ defaults:
 data:
   dim: 3072
 prior:
-  alpha: 0.02
-  num_timesteps: 63
+  alpha: 0.01
+  num_timesteps: 127
   num_skip_steps: 2
 method:
   kl_loss_coeff: 1.0

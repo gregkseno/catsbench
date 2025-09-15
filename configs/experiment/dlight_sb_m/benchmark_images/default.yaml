@@ -8,7 +8,7 @@ defaults:
     - model_checkpoint
     - model_summary
     - benchmark_images_metrics
-  - override /trainer: multi_gpu
+  - override /trainer: gpu
   - _self_
 
 data:
@@ -30,7 +30,7 @@ prior:
   num_skip_steps: ???
 
 method:
-  num_potentials: 1000
+  num_potentials: 100
   kl_loss_coeff: ???
   mse_loss_coeff: ???
   use_mini_batch: false
