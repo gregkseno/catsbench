@@ -213,14 +213,14 @@ class DLightSB(LightningModule):
         noise = torch.rand_like(log_w_k)
         noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
         gumbel_noise = -torch.log(-torch.log(noise))
-        k_stars = torch.argmax(log_w_k + gumbel_noise, dim=-1) # (B)
+        k_star = torch.argmax(log_w_k + gumbel_noise, dim=-1) # (B)
 
         y_samples = torch.empty(x.shape[0], self.hparams.dim, dtype=torch.long, device=self.device)
         for d in range(self.hparams.dim):
             log_pi_ref = self.prior.extract_last_cum_matrix(x[:, d]) # (B, S)
             log_cp_cores_d = self.log_cp_cores[d][None, :, :].expand(x.shape[0], -1, -1) # (B, K, S)
             log_cp_cores_d_selected = torch.gather(
-                log_cp_cores_d, dim=1, index=k_stars[:, None, None].expand(-1, -1, self.prior.num_categories)
+                log_cp_cores_d, dim=1, index=k_star[:, None, None].expand(-1, -1, self.prior.num_categories)
             ).squeeze(1) # (B, 1, S) -> (B, S)
             log_p_d_selected = log_cp_cores_d_selected + log_pi_ref[:, :] # (B, S)
             noise = torch.rand_like(log_p_d_selected)

@@ -140,6 +140,7 @@ class DLightSB_M(LightningModule):
         return mse_loss 
 
     def get_sb_transition_logits(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        input_shape = x_t.shape
         x_t = x_t.flatten(start_dim=1)
         t_orig = t  # keep original for onestep
         t = self.prior.num_timesteps + 1 - t_orig
@@ -172,7 +173,7 @@ class DLightSB_M(LightningModule):
                 self.log_alpha[None, :, None] + log_u_tp1_d + (sum_log_u_t - log_u_t[:, :, d])[:, :, None], dim=1 # [B, K, S]
             ) # [B, S]
             transition_logits[:, d, :] = log_phi_tp1_d + self.prior.extract('onestep', t_orig+1, row_id=x_t[:, d]) # [B, S]
-        return transition_logits # [B, D, S]
+        return transition_logits.reshape(*input_shape, self.prior.num_categories) # [B, ..., S]
 
     def optimal_projection(
         self,
@@ -312,7 +313,6 @@ class DLightSB_M(LightningModule):
         for t in range(0, self.prior.num_timesteps + 1):
             t = torch.tensor([t] * x.shape[0], device=self.device)
             x = self.markov_sample(x, t)
-            log.info(f"Shape {x.shape}")
         return x
     
     @torch.no_grad()
