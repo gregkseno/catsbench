@@ -171,7 +171,8 @@ class Prior(nn.Module):
     def extract_last_cum_matrix(self, x: torch.Tensor) -> torch.Tensor:
         last_timestep = torch.full(
             size=(x.shape[0],), 
-            fill_value=self.num_timesteps, 
+            fill_value=self.num_timesteps,
+            device=x.device 
         )
         return self.extract('cumulative', last_timestep, row_id=x)
 
@@ -236,7 +237,7 @@ class Prior(nn.Module):
         r"""Calculates logits of $p(x_{t+1} | x_{t}, x_{1})$.
         If logits is True, the output is summed over x_1 and transition matrix returned.""" 
         if not logits:
-            x_end_logits = torch.log(torch.nn.functional.one_hot(x_end.long(), self.num_categories) + self.eps)
+            x_end_logits = torch.log(torch.nn.functional.one_hot(x_end, self.num_categories) + self.eps)
         else:
             x_end_logits = x_end.clone()
         assert x_end_logits.shape == x_t.shape + (self.num_categories,), \

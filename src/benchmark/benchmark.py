@@ -6,8 +6,11 @@ from torch import nn
 
 from benchmark.prior import Prior
 from benchmark.stylegan2 import legacy, dnnlib
+from benchmark.stylegan2.training.networks import Generator
 from benchmark.utils import  continuous_to_discrete, sample_separated_means, Logger
-
+import torch
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
+from torch.nn.utils.rnn import pad_sequence
 
 log = Logger(__name__, rank_zero_only=True)
 SPREADS = {50:{2:1.5, 16:1.5, 64:2.5}, 200:{2:4, 16:8, 64:16}}
@@ -60,35 +63,39 @@ class BenchmarkBase:
         input_shape = x.shape
         x = x.flatten(start_dim=1)
 
-        log_z = torch.zeros(x.shape[0], self.num_potentials, device=x.device)
+        log_z = torch.zeros(x.shape[0], self.num_potentials, device=self.device)
         log_pi_ref_list = []
         for d in range(self.dim):
             x_d = x[:, d]
-            log_pi_ref = self.prior.extract_last_cum_matrix(x_d).to(x.device)
+            log_pi_ref = self.prior.extract_last_cum_matrix(x_d)
+            
             log_pi_ref_list.append(log_pi_ref)
                 
-            log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (batch_size, S) -> (batch_size, K, S)
-            log_inner = torch.logsumexp(log_joint, dim=2)  # (batch_size, K)
-            log_z = log_z + log_inner # (batch_size, K)
+            log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (B, S) -> (B, K, S)
+            log_inner = torch.logsumexp(log_joint, dim=2)  # (B, K)
+            log_z = log_z + log_inner # (B, K)
         
-        log_w_k = self.log_alpha[None, :] + log_z  # (K,) + (batch_size, K) -> (batch_size, K)
-        
-        log_p_k = log_w_k - torch.logsumexp(log_w_k, dim=1)[:, None] #(batch_size, K) - (batch_size, ) -> (batch_size, K)
-        p_k = torch.exp(log_p_k) # (batch_size, K)
-        k_stars = torch.multinomial(p_k, num_samples=1).squeeze(1)  # (batch_size,)
-    
-        y_samples = torch.zeros(x.shape[0], self.dim, dtype=torch.long, device=x.device)
+        log_w_k = self.log_alpha[None, :] + log_z  # (K,) + (B, K) -> (B, K)
+        noise = torch.rand_like(log_w_k)
+        noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
+        gumbel_noise = -torch.log(-torch.log(noise))
+        k_stars = torch.argmax(log_w_k + gumbel_noise, dim=-1) # (B,)
+
+        y_samples = torch.empty(x.shape[0], self.dim, dtype=torch.long, device=self.device)
+        batch_idx = torch.arange(x.shape[0], device=self.device)
+
         for d in range(self.dim):
             log_pi_ref = log_pi_ref_list[d]
                 
             log_p_d_all = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(batch_size, K, S)
-            batch_idx = torch.arange(x.shape[0], device=k_stars.device)
             log_p_d_selected = log_p_d_all[batch_idx, k_stars, :] #(batch_size, S)
             
-            p_d = torch.softmax(log_p_d_selected, dim=1)
-            y_d = torch.multinomial(p_d, num_samples=1).squeeze(1) #(batch_size,)
+            noise = torch.rand_like(log_p_d_selected)
+            noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
+            gumbel_noise = -torch.log(-torch.log(noise))
+            y_d = torch.argmax(log_p_d_selected + gumbel_noise, dim=-1)
             y_samples[:, d] = y_d
-        
+               
         if not return_trajectories:
             return y_samples.reshape(input_shape)
         else:
@@ -111,8 +118,8 @@ class BenchmarkBase:
         self.log_alpha = log_params['log_alpha']
         self.log_cp_cores = log_params['log_cp_cores']
 
-        self.input_dataset  = torch.load(source_path, map_location=torch.device('cpu'))
-        self.target_dataset = torch.load(target_path, map_location=torch.device('cpu')) 
+        self.input_dataset  = torch.load(source_path, map_location=torch.device('cpu')).long()
+        self.target_dataset = torch.load(target_path, map_location=torch.device('cpu')).long()
     
     def to(self, device: torch.device):
         self.prior.to(device)
@@ -171,7 +178,7 @@ class Benchmark(BenchmarkBase):
             self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device) / self.num_potentials)
             self.log_cp_cores = self._get_log_cp_cores(
                 benchmark_type, spread=SPREADS[self.prior.num_categories][dim], device=device
-            ).permute(2, 0, 1) # (D, K, S)
+            ).permute(2, 0, 1).contiguous() # (D, K, S)
 
             log.info('Sampling validation dataset...')
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
@@ -266,7 +273,7 @@ class BenchmarkImages(BenchmarkBase):
         else:
             log.info('Loading parameters...')
             self.log_alpha = torch.log(torch.ones(self.num_potentials, device=device) / self.num_potentials)
-            self.log_cp_cores = self._get_log_cp_cores(benchmark_type, spread=15, device=device).permute(2, 0, 1) # (D, K, S)
+            self.log_cp_cores = self._get_log_cp_cores(benchmark_type, spread=15, device=device).permute(2, 0, 1).contiguous() # (D, K, S)
 
             log.info('Sampling validation dataset...')
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
@@ -279,20 +286,21 @@ class BenchmarkImages(BenchmarkBase):
                 start, end = samples_per_batch * i, samples_per_batch * (i + 1)
                 self.input_dataset[start:end] = self._postporcess(self.generator(noise, None)).cpu()
                 self.target_dataset[start:end] = self.sample_target_given_input(
-                    torch.flatten(self.input_dataset[start:end].to(device), start_dim=1)
+                    self.input_dataset[start:end].to(device)
                 ).reshape_as(self.input_dataset[start:end])
 
             self.save(solver_path, source_path, target_path, benchmark_dir)
 
     @staticmethod
     def _postporcess(outputs: torch.Tensor) -> torch.Tensor:
-        return ((outputs * 0.5 + 0.5).clamp(0, 1) * 255).to(torch.int)
+        return ((outputs * 0.5 + 0.5).clamp(0, 1) * 255).long()
 
     def _load_generator(self, generator_path: str, device: str = 'cpu'):
         log.info('Loading StyleGAN2 generator checkpoint...')
         with dnnlib.util.open_url(generator_path) as f:
-            self.generator: nn.Module = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
-    
+            self.generator: Generator = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
+        log.info(f'Generator loaded on {next(iter(self.generator.parameters())).device}!')
+
     # NOTE: Here we have reversed setup:
     #       - Input: CMNIST images;
     #       - Target: noised CMNIST images.
@@ -316,13 +324,87 @@ class BenchmarkImages(BenchmarkBase):
         target_samples = self.sample_target_given_input(input_samples)
         return input_samples, target_samples.reshape_as(input_samples)
 
-from transformers import GPT2Tokenizer, GPT2LMHeadModel
+class SentenceGenerator:
+    def __init__(self, model_path):
+        self.model = GPT2LMHeadModel.from_pretrained(model_path)
+        self.tokenizer = GPT2Tokenizer.from_pretrained(model_path)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.padding_side = 'left'
+        self.valid_prompts = [' ']
+        self.model.eval()
+        
+        self.tokenized_prompts = self._preprocess_prompts()
+        
+    def _preprocess_prompts(self):
+        tokenized_prompts = []
+        for prompt in self.valid_prompts:
+            tokens = self.tokenizer.encode(prompt, return_tensors="pt")[0]
+            tokenized_prompts.append(tokens)
+        
+        padded_prompts = pad_sequence(tokenized_prompts, batch_first=True, padding_value=self.tokenizer.pad_token_id)
+        return padded_prompts
+    
+    def generate_tokens(self, n_sentences=10, d_tokens=64, temperature=0.8, batch_size=8):
 
-class TextBenchmark:
+        all_tokens = []
+        
+        for i in range(0, n_sentences, batch_size):
+            current_batch_size = min(batch_size, n_sentences - i)
+            batch_sentences = self._generate_batch(current_batch_size, d_tokens, temperature)
+            all_tokens.extend(batch_sentences)
+        
+        all_tokens = torch.cat(all_tokens, dim=0).reshape(n_sentences, d_tokens)
+        print(all_tokens.shape)
+        return all_tokens
+    
+    def _generate_batch(self, batch_size, d_tokens, temperature):
+        prompt_indices = torch.randint(0, len(self.tokenized_prompts), (batch_size,))
+        input_ids = self.tokenized_prompts[prompt_indices]
+        
+        prompt_length = input_ids.shape[1]
+        max_new_tokens = d_tokens - prompt_length
+        
+        attention_mask = (input_ids != self.tokenizer.pad_token_id).long()
+        
+        with torch.no_grad():
+            output = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                do_sample=True,
+                pad_token_id=self.tokenizer.eos_token_id,
+                eos_token_id=None,
+                no_repeat_ngram_size=2,
+                repetition_penalty=1.1,
+                top_p=0.9,
+            )
+        
+        batch_tokens = []
+        for i in range(batch_size):
+            original_prompt = input_ids[i]
+            non_padding_mask = original_prompt != self.tokenizer.pad_token_id
+            original_length = non_padding_mask.sum().item()
+            
+            generated_tokens = output[i][original_length:]
+            
+            current_length =  len(generated_tokens)
+            if current_length < d_tokens:
+                padding_needed = d_tokens - current_length
+                padding_tokens = torch.full((padding_needed,), self.tokenizer.pad_token_id, dtype=torch.long)
+                generated_tokens = torch.cat([generated_tokens, padding_tokens])
+
+            assert len(generated_tokens) == d_tokens, f'{len(generated_tokens)}'
+            batch_tokens.append(generated_tokens)
+            #sentence = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+            #batch_sentences.append(sentence)
+        
+        return batch_tokens
+
+class BenchmarkText(BenchmarkBase):
     def __init__(
         self, 
         dim: int,
-        input_shape: Tuple[int, int, int],
         num_potentials: int,
         alpha: float,
         num_categories: int,
@@ -338,12 +420,13 @@ class TextBenchmark:
             'uniform'
         ]  = 'gaussian_mixture',
         num_val_samples: Optional[int] = None,
-        generator_path: str = '../checkpoints/cmnist_stylegan2.pkl',
-        save_path: str = '../data/benchmark_images',
+        tokenizer_path: str = '../data/gutenberg_fine_tuned',
+        save_path: str = '../data/benchmark_text',
         device: str = 'cpu'
     ):
+        super().__init__()
+        
         self.dim = dim
-        self.input_shape = input_shape
         self.num_potentials = num_potentials
         self.device = device
 
@@ -356,84 +439,26 @@ class TextBenchmark:
         ).to(device)
 
         # Load tokenizer and model
-        model_path = '../data'
-        self.tokenizer = GPT2Tokenizer.from_pretrained(model_path)
-        self.model = GPT2LMHeadModel.from_pretrained(model_path)
-        self.model.eval()
-        
-        # Initialize prior and CP cores
-        self.prior = Prior(
-            alpha=alpha, 
-            num_categories=num_categories, 
-            num_timesteps=100,  # Adjust as needed
-            num_skip_steps=10,   # Adjust as needed
-            prior_type=prior_type
-        ).to(device)
+        print('Initializing token generator...')
+        self.generator = SentenceGenerator(tokenizer_path)
         
         self.log_alpha = torch.log(torch.ones(self.num_potentials) / self.num_potentials).to(device)
-        self.log_cp_cores = self._get_log_cp_cores(benchmark_type).to(device)
-    
-    def sample_input(self, num_samples: int) -> torch.Tensor:
-        """Generate input text samples using the language model."""
-        # Generate text using the model
-        generated = self.model.generate(
-            torch.tensor([[self.tokenizer.bos_token_id]] * num_samples).to(self.device),
-            max_length=self.seq_length,
-            do_sample=True,
-            pad_token_id=self.tokenizer.eos_token_id
-        )
-        
-        # Ensure sequences are the right length
-        if generated.size(1) > self.seq_length:
-            generated = generated[:, :self.seq_length]
-        elif generated.size(1) < self.seq_length:
-            # Pad with EOS tokens
-            padding = torch.full((num_samples, self.seq_length - generated.size(1)), 
-                                self.tokenizer.eos_token_id, device=self.device)
-            generated = torch.cat([generated, padding], dim=1)
-            
-        return generated
-    
-    def generate_noised_text(self, num_samples: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Generate input text and its noised version."""
-        input_text = self.sample_input(num_samples)
-        noised_text = self.sample_target_given_input(input_text)
-        
-        return input_text, noised_text
-    
-    def tokens_to_text(self, tokens: torch.Tensor) -> list:
-        """Convert token tensors to text."""
-        texts = []
-        for i in range(tokens.size(0)):
-            token_list = tokens[i].tolist()
-            # Remove padding tokens
-            token_list = [t for t in token_list if t != self.tokenizer.eos_token_id]
-            text = self.tokenizer.decode(token_list, skip_special_tokens=True)
-            texts.append(text)
-        return texts
 
-# Example usage
-if __name__ == "__main__":
-    # Initialize the text benchmark
-    benchmark = TextBenchmark(
-        seq_length=32,  # Sequence length
-        vocab_size=50257,  # GPT-2 vocabulary size
-        num_potentials=5,
-        alpha=0.1,
-        num_categories=100,
-        benchmark_type='gaussian_mixture',
-        noise_level=0.3,
-        device='cuda' if torch.cuda.is_available() else 'cpu'
-    )
+        self.log_cp_cores = self._get_log_cp_cores(benchmark_type, device=device).contiguous().permute(2, 0, 1)
     
-    input_tokens, noised_tokens = benchmark.generate_noised_text(5)
+    @torch.no_grad()
+    def sample_input(self, num_samples: int) -> torch.Tensor:
+        tokens = self.generator.generate_tokens(n_sentences=num_samples, d_tokens=self.dim)#.to('cuda')
+        return tokens
     
-    input_texts = benchmark.tokens_to_text(input_tokens)
-    noised_texts = benchmark.tokens_to_text(noised_tokens)
+    @torch.no_grad()
+    def sample_target(self, num_samples: int) -> torch.Tensor:
+        tokens = self.generator.generate_tokens(n_sentences=num_samples, d_tokens=self.dim)#.to('cuda')
+        noised_tokens = self.sample_target_given_input(tokens)
+        return noised_tokens.reshape_as(tokens)
     
-    print("Input Texts vs Noised Texts:")
-    for i, (input_text, noised_text) in enumerate(zip(input_texts, noised_texts)):
-        print(f"Sample {i+1}:")
-        print(f"  Input:  {input_text}")
-        print(f"  Noised: {noised_text}")
-        print()
+    @torch.no_grad()
+    def sample_input_target(self, num_samples: int)-> Tuple[torch.Tensor, torch.Tensor]:
+        input_tokens = self.generator.generate_tokens(n_sentences=num_samples, d_tokens=self.dim)#.to('cuda')
+        target_tokens = self.sample_target_given_input(input_tokens)
+        return input_tokens, target_tokens.reshape_as(input_tokens)
