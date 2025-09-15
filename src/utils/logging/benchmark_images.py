@@ -107,26 +107,26 @@ class BenchmarkImagesLogger(Callback):
             dim=2*self.dim, input_shape=paired_input_shape, model='cnn'
         )
 
-    @clear_cache
-    def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        self._reset_buf('train')
+    # @clear_cache
+    # def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
+    #     self._reset_buf('train')
 
-    @clear_cache
-    def on_train_batch_end(
-        self,
-        trainer: Trainer,
-        pl_module: LightningModule,
-        outputs: Dict[str, Any],
-        batch: Tuple[torch.Tensor, torch.Tensor],
-        batch_idx: int,
-    ) -> None:
-        pl_module.eval()
-        x_start, x_end = outputs['x_start'], outputs['x_end']
-        self._accumulate_buf('train', x_start, x_end)
+    # @clear_cache
+    # def on_train_batch_end(
+    #     self,
+    #     trainer: Trainer,
+    #     pl_module: LightningModule,
+    #     outputs: Dict[str, Any],
+    #     batch: Tuple[torch.Tensor, torch.Tensor],
+    #     batch_idx: int,
+    # ) -> None:
+    #     pl_module.eval()
+    #     x_start, x_end = outputs['x_start'], outputs['x_end']
+    #     self._accumulate_buf('train', x_start, x_end)
 
-    @clear_cache
-    def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        self._log_buf('train', pl_module)
+    # @clear_cache
+    # def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
+    #     self._log_buf('train', pl_module)
 
     @clear_cache
     def on_validation_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
