@@ -13,13 +13,13 @@ SEED=1
 export HYDRA_FULL_ERROR=1
 case "${SLURM_ARRAY_TASK_ID}" in
   0)
-    python -m src.run -m \
-      seed=${SEED} data.num_workers=1 data.pin_memory=true \
+    python -m src.run \
+      seed=${SEED} data.num_workers=7 data.pin_memory=true \
       experiment=dlight_sb/benchmark_images/images_g001
     ;;
   1)
-    python -m src.run -m \
-      seed=${SEED} data.num_workers=1 data.pin_memory=true \
+    python -m src.run \
+      seed=${SEED} data.num_workers=7 data.pin_memory=true \
       experiment=dlight_sb/benchmark_images/images_g002
     ;;
   *)
