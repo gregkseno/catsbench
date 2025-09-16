@@ -134,14 +134,14 @@ class ClassifierTwoSampleTest(Metric):
 
         if train:
             with torch.enable_grad():
-                loss = self.criterion(self.model(x), y)
+                loss = self.criterion(self.model(x).squeeze(-1), y)
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 self._ddp_average_grads_before_step()
                 self.optimizer.step()
         else:
             with torch.no_grad():
-                probs = torch.sigmoid(self.model(x)).detach()
+                probs = torch.sigmoid(self.model(x).squeeze(-1)).detach()
             self.probs.append(probs)
             self.targets.append(y.detach().long())
 
