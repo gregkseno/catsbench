@@ -5,6 +5,7 @@ from src.utils.data import (
     logits_prod,
     convert_to_numpy, 
     convert_to_torch, 
+    continuous_to_discrete,
     make_infinite_dataloader,
     CoupleDataset,
     InfiniteCoupleDataset,
