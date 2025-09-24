@@ -169,22 +169,24 @@ class BenchmarkImagesLogger(Callback):
         pred_x_end = pl_module.sample(x_start)
         pl_module.fid.update(x_end, real=True)
         pl_module.fid.update(pred_x_end, real=False)
-        pl_module.c2st.update(
-            torch.cat([x_start, x_end], dim=1),
-            torch.cat([x_start, pred_x_end], dim=1),
-            train=batch_idx < int(len(trainer.test_dataloaders) * self.train_test_split)
-        )
+        train_mode = batch_idx < int(len(trainer.test_dataloaders) * self.train_test_split)
+        with torch.inference_mode(not train_mode):
+            pl_module.c2st.update(
+                torch.cat([x_start, x_end], dim=1),
+                torch.cat([x_start, pred_x_end], dim=1),
+                train=train_mode
+            )
 
     def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
-        
-        fid = pl_module.fid.compute()
-        pl_module.log(f'val/fid_{fb}', fid)
-        pl_module.fid.reset()
-
+        # fast metric first
         c2st = pl_module.c2st.compute()
         pl_module.log(f'test/c2st_{fb}', c2st)
         pl_module.c2st.reset()
+
+        fid = pl_module.fid.compute()
+        pl_module.log(f'val/fid_{fb}', fid)
+        pl_module.fid.reset()
 
         self._log_buf('test', pl_module)
 
