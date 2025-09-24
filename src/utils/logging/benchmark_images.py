@@ -188,7 +188,7 @@ class BenchmarkImagesLogger(Callback):
         pred_x_end = pl_module.sample(x_start)
         pl_module.fid.update(x_end, real=True)
         pl_module.fid.update(pred_x_end, real=False)
-        train_mode = int(len(trainer.test_dataloaders) * self.train_test_split)
+        train_mode = batch_idx < int(len(trainer.test_dataloaders) * self.train_test_split)
         with torch.inference_mode(not train_mode):
             pl_module.c2st.update(
                 torch.cat([x_start, x_end], dim=1),
