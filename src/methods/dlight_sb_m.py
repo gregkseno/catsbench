@@ -103,6 +103,20 @@ class DLightSB_M(LightningModule):
 
         self._did_weight_init = True
 
+    def load_state_dict(self, state_dict, strict: bool = True):
+        ignored = {"c2st.weight", "c2st.bias", "cond_c2st.weight", "cond_c2st.bias"}
+        filtered = {k: v for k, v in state_dict.items() if k not in ignored}
+        missing, unexpected = LightningModule.load_state_dict(self, filtered, strict=False)
+
+        filtered_out = [k for k in state_dict if k in ignored]
+        if filtered_out:
+            log.info(f"Ignored keys during load_state_dict: {filtered_out}")
+        if missing:
+            log.info(f"Missing keys after load (expected): {missing}")
+        if unexpected:
+            log.info(f"Unexpected keys (ignored by strict=False): {unexpected}")
+        return missing, unexpected
+
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         self._loaded_from_ckpt = True
 

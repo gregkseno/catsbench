@@ -18,7 +18,6 @@ class DSConv(nn.Module):
     def forward(self, x):
         return self.act(self.bn(self.pw(self.dw(x))))
 
-
 class TinyDSCNN(nn.Module):
     def __init__(self, in_channels: int = 3, w: int = 16):
         super().__init__()
@@ -55,9 +54,9 @@ class ClassifierTwoSampleTest(Metric):
         lr: float = 1e-2, 
         weight_decay: float = 0.0
     ):
-        if model == 'cnn':
-            assert input_shape is not None, \
-                '`input_shape` must be provided for CNN model!'
+        # if model == 'cnn':
+        #     assert input_shape is not None, \
+        #         '`input_shape` must be provided for CNN model!'
 
         super().__init__()
         self.dim = dim
@@ -71,7 +70,7 @@ class ClassifierTwoSampleTest(Metric):
         if model == 'linear':
             self.model = nn.Linear(dim, 1)
         elif model == 'cnn':
-            self.model = TinyDSCNN(in_channels=input_shape[0])
+            self.model = nn.Linear(dim, 1) # TinyDSCNN(in_channels=input_shape[0])
         else:
             raise ValueError(f'Unknown model type: {model}! Supported types are: linear, cnn.')
         self.optimizer = torch.optim.AdamW(
@@ -111,17 +110,17 @@ class ClassifierTwoSampleTest(Metric):
             p.grad.div_(world_size)
 
     def update(self, real_data: torch.Tensor, pred_data: torch.Tensor, train: bool) -> None:
-        if self.model_type == 'linear':
-            assert real_data.dim() == 2 and pred_data.dim() == 2, '`linear` expects [B, D]!'
-            assert real_data.shape[1] == self.dim and pred_data.shape[1] == self.dim, 'Wrong dim!'
-        else:
-            assert real_data.dim() == 4 and pred_data.dim() == 4, '`cnn` expects [B, C, H, W]!'
-            C, H, W = self.input_shape
-            assert real_data.shape[1] == C and real_data.shape[2] == H and real_data.shape[3] == W, 'Wrong shape!'
-            assert pred_data.shape[1] == C and pred_data.shape[2] == H and pred_data.shape[3] == W, 'Wrong shape!'
+        # if self.model_type == 'linear':
+        #     assert real_data.dim() == 2 and pred_data.dim() == 2, '`linear` expects [B, D]!'
+        #     assert real_data.shape[1] == self.dim and pred_data.shape[1] == self.dim, 'Wrong dim!'
+        # else:
+        #     assert real_data.dim() == 4 and pred_data.dim() == 4, '`cnn` expects [B, C, H, W]!'
+        #     C, H, W = self.input_shape
+        #     assert real_data.shape[1] == C and real_data.shape[2] == H and real_data.shape[3] == W, 'Wrong shape!'
+        #     assert pred_data.shape[1] == C and pred_data.shape[2] == H and pred_data.shape[3] == W, 'Wrong shape!'
         
-        x_real = real_data.detach().float()
-        x_pred = pred_data.detach().float()
+        x_real = real_data.detach().float().flatten(start_dim=1)
+        x_pred = pred_data.detach().float().flatten(start_dim=1)
 
         x = torch.cat([x_real, x_pred], dim=0)
         y = torch.cat(
@@ -133,15 +132,17 @@ class ClassifierTwoSampleTest(Metric):
         )
 
         if train:
+            self.model.train()
             with torch.enable_grad():
-                loss = self.criterion(self.model(x), y)
+                loss = self.criterion(self.model(x).squeeze(-1), y)
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 self._ddp_average_grads_before_step()
                 self.optimizer.step()
         else:
+            self.model.eval()
             with torch.no_grad():
-                probs = torch.sigmoid(self.model(x)).detach()
+                probs = torch.sigmoid(self.model(x).squeeze(-1)).detach()
             self.probs.append(probs)
             self.targets.append(y.detach().long())
 

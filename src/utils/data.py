@@ -1,4 +1,4 @@
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, Optional, Tuple, Union
 import numpy as np
 import ot
 import torch
@@ -31,6 +31,23 @@ def convert_to_torch(x: torch.Tensor | np.ndarray) -> torch.Tensor:
     if isinstance(x, np.ndarray):
         x = torch.tensor(x)
     return x
+
+def continuous_to_discrete(
+    batch: Union[torch.Tensor, np.ndarray], 
+    num_categories: int,
+    quantize_range: Optional[Tuple[Union[int, float], Union[int, float]]] = None
+):
+    if isinstance(batch, np.ndarray):
+        batch = torch.tensor(batch).contiguous()
+    if quantize_range is None:
+        quantize_range = (-3, 3)
+    bin_edges = torch.linspace(
+        quantize_range[0], 
+        quantize_range[1], 
+        num_categories - 1
+    )
+    discrete_batch = torch.bucketize(batch, bin_edges)
+    return discrete_batch
 
 def make_infinite_dataloader(dataloader: DataLoader[Any]) -> Any:
     while True:
