@@ -171,3 +171,23 @@ class Prior(nn.Module):
             device=x.device 
         )
         return self.extract('cumulative', last_timestep, row_id=x)
+    
+    def sample_bridge(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        r"""Samples from bridge $p(x_{t} | x_{0}, x_{1})$."""
+        log_p_start_t = self.extract('cumulative', t, row_id=x_start)
+        log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
+        log_probs = log_p_start_t + log_p_t_end
+        log_probs = log_probs - log_probs.logsumexp(dim=-1, keepdim=True)
+        
+        noise = torch.rand_like(log_probs)
+        noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
+        gumbel_noise = -torch.log(-torch.log(noise))
+        x_t = torch.argmax(log_probs + gumbel_noise, dim=-1)
+
+        is_final_step = broadcast(t, x_start.dim() - 1) == self.num_timesteps + 1
+        x_t = torch.where(is_final_step, x_end, x_t)
+
+        is_first_step = broadcast(t, x_start.dim() - 1) == 1
+        x_t = torch.where(is_first_step, x_start, x_t)
+
+        return x_t

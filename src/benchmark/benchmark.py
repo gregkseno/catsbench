@@ -99,7 +99,13 @@ class BenchmarkBase:
         if not return_trajectories:
             return y_samples.reshape(input_shape)
         else:
-            return torch.stack([x.reshape(input_shape), y_samples.reshape(input_shape)], dim=0)
+            trajectory = [x]
+            for t in range(1, self.prior.num_timesteps + 1):
+                t = torch.full((x.shape[0],), t, device=x.device)
+                x_t = self.prior.sample_bridge(x, y_samples, t)
+                trajectory.append(x_t)
+            trajectory.append(y_samples)
+            return torch.stack(trajectory, dim=0)
     
     def save(
         self, solver_path: str, source_path: str, target_path: str, dir: str
