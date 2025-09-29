@@ -7,6 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --mem=80GB
 #SBATCH --time=16-00:00:00
+#SBATCH --output=logs/bench_all_%A_%a.out
 
 source activate dot_bench
 SEED=2

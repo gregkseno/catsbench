@@ -7,6 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --mem=80GB
 #SBATCH --time=16-00:00:00
+#SBATCH --output=logs/bench_dlight_sb_m_d64_%A_%a.out
 
 sleep $((SLURM_ARRAY_TASK_ID * 5))
 source activate dot_bench
