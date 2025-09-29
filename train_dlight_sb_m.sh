@@ -3,13 +3,13 @@
 #SBATCH --partition=ais-gpu
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
-#SBATCH --array=0-31%6
+#SBATCH --array=0-31%4
 #SBATCH --nodes=1
-#SBATCH --mem=64GB
+#SBATCH --mem=80GB
 #SBATCH --time=16-00:00:00
 
 source activate dot_bench
-SEED=1
+SEED=2
 
 case "${SLURM_ARRAY_TASK_ID}" in
   0)
