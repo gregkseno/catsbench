@@ -9,6 +9,7 @@
 #SBATCH --time=16-00:00:00
 #SBATCH --output=logs/bench_dlight_sb_m_%A_%a.out
 
+sleep $((SLURM_ARRAY_TASK_ID * 5))
 source activate dot_bench
 SEED=2
 
