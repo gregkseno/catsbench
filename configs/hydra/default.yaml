@@ -5,7 +5,8 @@ job:
 run:
   dir: ${paths.log_dir}/runs/${hydra:runtime.choices.data}/${hydra:runtime.choices.method}/${hydra:runtime.choices.experiment}/${seed}/${now:%Y-%m-%d}_${now:%H-%M-%S}
 sweep:
-  dir: ${paths.log_dir}/runs/${hydra:runtime.choices.data}/${hydra:runtime.choices.method}/${hydra:runtime.choices.experiment}/${seed}/${now:%Y-%m-%d}_${now:%H-%M-%S}
+  dir: ${paths.log_dir}/runs
+  subdir: ${hydra:runtime.choices.data}/${hydra:runtime.choices.method}/${hydra:runtime.choices.experiment}/${seed}/${now:%Y-%m-%d}_${now:%H-%M-%S}
 job_logging:
   handlers:
     file:
