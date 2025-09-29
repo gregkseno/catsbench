@@ -19,3 +19,4 @@ methods/light_sb_d.py
 checkpoints/*
 .venv
 *.out
+images
