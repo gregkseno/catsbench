@@ -11,7 +11,7 @@
 
 sleep $((SLURM_ARRAY_TASK_ID * 5))
 source activate dot_bench
-SEED=2
+SEED=5
 
 case "${SLURM_ARRAY_TASK_ID}" in
   0)
