@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - dlight_sb/benchmark_texts/default
+
+prior:
+  prior_type: uniform_closed_form
+  alpha: 0.005

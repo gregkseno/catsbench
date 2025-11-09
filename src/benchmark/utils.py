@@ -12,10 +12,14 @@ def broadcast(tensor: torch.Tensor, num_add_dims: int, dim: int = -1) -> torch.T
     shape = [*tensor.shape[:dim], *([1] * num_add_dims), *tensor.shape[dim:]]
     return tensor.reshape(*shape)
 
-def log_space_product(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
+def log_space_product_temp(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
     log_matrix1 = log_matrix1[..., :, None]
     log_matrix2 = log_matrix2[..., None, :, :]
-    return torch.logsumexp(log_matrix1 + log_matrix2, dim=-2)    
+    return torch.logsumexp(log_matrix1 + log_matrix2, dim=-2)   
+
+def log_space_product(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
+    out = torch.log(torch.matmul(torch.exp(log_matrix1), torch.exp(log_matrix2)))
+    return out  
 
 def continuous_to_discrete(
     batch: Union[torch.Tensor, np.ndarray], 

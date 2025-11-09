@@ -4,7 +4,7 @@ from math import log
 import torch.nn.functional as F
 import torch
 from torch import nn
-
+from tqdm import tqdm
 from benchmark.utils import broadcast, log_space_product
 
 
@@ -18,7 +18,7 @@ def get_cum_matrices(num_timesteps: int, log_onestep_matrix: torch.Tensor) -> to
     log_identity[rows, rows] = 0.0
     log_cum_matrices[0] = log_identity[:]
 
-    for timestep in range(1, num_timesteps):
+    for timestep in tqdm(range(1, num_timesteps)):
         log_cum_matrices[timestep] = log_space_product(log_cum_matrices[timestep-1], log_onestep_matrix)
     assert log_onestep_matrix.shape == log_cum_matrices[0].shape, f'Wrong shape!'
     return log_cum_matrices
@@ -39,6 +39,46 @@ def uniform_prior(
 
     log_p_onestep_mat = get_cum_matrices(num_skip_steps + 1, log_p_onestep_mat)[-1]
     log_p_cum_mats = get_cum_matrices(num_timesteps + 2, log_p_onestep_mat)
+
+    return log_p_onestep_mat.transpose(0, 1), log_p_cum_mats
+
+def uniform_power(num_timesteps, S, gamma, dtype=torch.float32):
+    
+    alpha = 1 - (gamma * S) / (S - 1)
+    alpha_N = alpha ** num_timesteps
+    
+    diag_value = torch.tensor(alpha_N + (1 - alpha_N) / S, dtype=dtype)
+    off_diag_value = torch.tensor((1 - alpha_N) / S, dtype=dtype)
+    
+    log_matrix = torch.full((S, S), torch.log(off_diag_value), dtype=dtype)
+
+    indices = torch.arange(S)
+    log_matrix[indices, indices] = torch.log(diag_value)
+    
+    return log_matrix
+
+def get_cum_matrices_uniform(num_timesteps: int, num_categories, gamma, num_skip_steps=1) -> torch.Tensor:
+    
+    log_cum_matrices = torch.empty(size=(num_timesteps, num_categories, num_categories), dtype=torch.float32)
+    
+    log_identity = torch.full((num_categories, num_categories), float('-inf'), dtype=torch.float64)  # log(0) = -inf
+    rows = torch.arange(num_categories)
+    log_identity[rows, rows] = 0.0
+    log_cum_matrices[0] = log_identity[:]
+
+    for timestep in range(1, num_timesteps):
+        log_cum_matrices[timestep] = uniform_power(timestep*num_skip_steps, num_categories, gamma)
+    return log_cum_matrices
+    
+def uniform_closed_form_prior(
+    alpha: float, 
+    num_categories: int, 
+    num_timesteps: int,
+    num_skip_steps: int
+):
+
+    log_p_onestep_mat = get_cum_matrices_uniform(num_skip_steps + 1, num_categories, alpha)[-1]
+    log_p_cum_mats = get_cum_matrices_uniform(num_timesteps+2, num_categories, alpha, num_skip_steps)
 
     return log_p_onestep_mat.transpose(0, 1), log_p_cum_mats
 
@@ -100,6 +140,7 @@ class Prior(nn.Module):
         prior_type: Literal[
             'uniform', 
             'gaussian',
+            'uniform_closed_form'
         ] = 'uniform',
         eps: float = 1e-20,
         dtype: Union[str, torch.dtype] = torch.float32
@@ -121,6 +162,8 @@ class Prior(nn.Module):
             log_p_onestep, log_p_cum = gaussian_prior(alpha, num_categories, num_timesteps, num_skip_steps)
         elif prior_type == 'uniform':
             log_p_onestep, log_p_cum = uniform_prior(alpha, num_categories, num_timesteps, num_skip_steps)
+        elif prior_type == 'uniform_closed_form':
+            log_p_onestep, log_p_cum = uniform_closed_form_prior(alpha, num_categories, num_timesteps, num_skip_steps)
         else:
             raise NotImplementedError(f'Got unknown prior: {prior_type} or centroids is None!')
         
