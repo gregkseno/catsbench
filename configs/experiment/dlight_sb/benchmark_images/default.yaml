@@ -17,7 +17,7 @@ data:
   num_categories: 256
   num_potentials: 10
   batch_size: 32
-  val_batch_size: 120
+  val_batch_size: 100
   num_workers: 0
   pin_memory: false
   dir: ${paths.data_dir}/benchmark_images
@@ -38,8 +38,8 @@ method:
 trainer:
   max_epochs: 5
   limit_train_batches: 20000 # controls number of IMF inner iterations
-  limit_val_batches: null
-  limit_test_batches: null
+  limit_val_batches: 200
+  limit_test_batches: 200
   val_check_interval: null
   accumulate_grad_batches: 1
   gradient_clip_val: null
