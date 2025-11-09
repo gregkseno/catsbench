@@ -3,10 +3,9 @@ desc: Train CSBM on benchmark images
 cmd: >
   python -m src.run \
     paths.data_dir="${DS_PROJECT_HOME}/data" \
-      seed=${SEED} data.num_workers=7 data.pin_memory=true \
+      seed=1 data.num_workers=7 data.pin_memory=true \
       experiment=csbm/benchmark_images/images_g001 \
-      trainer=multi_gpu trainer.max_epochs=5 trainer.limit_train_batches=20000 \
-      trainer.val_check_interval=null +trainer.check_val_every_n_epoch=5
+      +trainer.check_val_every_n_epoch=5
 env:
   python:
     type: manual
