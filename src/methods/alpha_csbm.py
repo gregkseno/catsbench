@@ -120,16 +120,6 @@ class AlphaCSBM(LightningModule):
     def on_train_epoch_start(self) -> None:
         self.first_iteration = self.current_epoch + 1 < self.hparams.num_first_iterations
     
-    def get_transition_logits(
-        self, 
-        x_t: torch.Tensor, 
-        t: torch.Tensor, 
-        fb: Literal['forward', 'backward']
-    ) -> torch.Tensor:
-        pred_x_start_logits = self.models[fb](x_t, t)
-        pred_transition_logits = self.prior.posterior_logits(pred_x_start_logits, x_t, t, logits=True)
-        return pred_transition_logits
-    
     def markovian_projection(
         self,
         fb: Literal['forward', 'backward'],
@@ -269,20 +259,31 @@ class AlphaCSBM(LightningModule):
         if 'ema_backward' in checkpoint:
             self.emas['backward'].load_state_dict(checkpoint['ema_backward'])
 
+    def get_transition_logits(
+        self, 
+        x_t: torch.Tensor, 
+        t: torch.Tensor, 
+        fb: Optional[Literal['forward', 'backward']] = None
+    ) -> torch.Tensor:
+        if fb is None:
+            fb = 'forward' if self.current_epoch % 2 == 0 else 'backward'
+        with self.emas[fb].average_parameters():
+            pred_x_start_logits = self.models[fb](x_t, t)
+        pred_transition_logits = self.prior.posterior_logits(pred_x_start_logits, x_t, t, logits=True)
+        return pred_transition_logits
+
     def markov_sample(
         self, x: torch.Tensor, t: torch.Tensor, fb: Literal['forward', 'backward']
     ) -> torch.Tensor:
-        with self.emas[fb].average_parameters():
-            pred_x_start_logits = self.models[fb](x, t)
-        pred_q_posterior_logits = self.prior.posterior_logits(pred_x_start_logits, x, t, logits=True)
-        noise = torch.rand_like(pred_q_posterior_logits)
+        pred_transition_logits = self.get_transition_logits(x, t, fb)
+        noise = torch.rand_like(pred_transition_logits)
         noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
         gumbel_noise = -torch.log(-torch.log(noise))
-        random_samples = torch.argmax(pred_q_posterior_logits + gumbel_noise, dim=-1)
+        random_samples = torch.argmax(pred_transition_logits + gumbel_noise, dim=-1)
 
         if self.hparams.argmax_mode:
             first_step = (t == 1).long().view((x.shape[0], *[1] * (x.dim() - 1)))        
-            argmax_samples = pred_q_posterior_logits.argmax(dim=-1)
+            argmax_samples = pred_transition_logits.argmax(dim=-1)
             samples = first_step * argmax_samples + (1 - first_step) * random_samples
             return samples
         else:

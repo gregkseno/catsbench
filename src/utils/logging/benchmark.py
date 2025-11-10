@@ -5,6 +5,7 @@ import torch
 from sklearn.decomposition import PCA
 
 from torchmetrics import MetricCollection
+from torchmetrics.regression import KLDivergence
 from lightning.pytorch import Callback, Trainer, LightningModule
 from lightning.pytorch.loggers import WandbLogger, CometLogger
 from lightning.pytorch.utilities import rank_zero_only
@@ -150,6 +151,7 @@ class BenchmarkLogger(Callback):
         pl_module.cond_metrics = pl_module.metrics.clone(prefix='cond_')
         pl_module.c2st = ClassifierTwoSampleTest(2*self.dim, model='linear')
         pl_module.cond_c2st = ClassifierTwoSampleTest(2*self.dim, model='linear')
+        pl_module.kl_div = KLDivergence(log_prob=True)
 
     def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         self._reset_buf('train')
@@ -202,6 +204,18 @@ class BenchmarkLogger(Callback):
             train=batch_idx < int(len(trainer.val_dataloaders) * self.train_test_split)
         )
 
+        x = x_start
+        for t in reversed(range(1, pl_module.prior.num_timesteps + 2)):
+            t = torch.tensor([t] * x.shape[0], device=pl_module.device)
+            pred_transition_logits = pl_module.get_transition_logits(x, t, 'forward')
+            true_transition_logits = self.benchmark.get_transition_logits(x, t)
+            pl_module.kl_div.update(true_transition_logits, pred_transition_logits)
+
+            noise = torch.rand_like(pred_transition_logits)
+            noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
+            gumbel_noise = -torch.log(-torch.log(noise))
+            x = torch.argmax(pred_transition_logits + gumbel_noise, dim=-1)
+
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         
@@ -222,6 +236,10 @@ class BenchmarkLogger(Callback):
         cond_metrics = {f'val/{k}_{fb}': v for k, v in cond_metrics.items()}
         pl_module.log_dict(cond_metrics)
         pl_module.cond_metrics.reset()
+
+        kl_div = pl_module.kl_div.compute()
+        pl_module.log(f'val/kl_div_{fb}', kl_div)
+        pl_module.kl_div.reset()
 
         self._log_buf('val', pl_module)
 
@@ -258,6 +276,18 @@ class BenchmarkLogger(Callback):
             train=batch_idx < int(len(trainer.test_dataloaders) * self.train_test_split)
         )
 
+        x = x_start
+        for t in reversed(range(1, pl_module.prior.num_timesteps + 2)):
+            t = torch.tensor([t] * x.shape[0], device=pl_module.device)
+            pred_transition_logits = pl_module.get_transition_logits(x, t)
+            true_transition_logits = self.benchmark.get_transition_logits(x, t)
+            pl_module.kl_div.update(true_transition_logits, pred_transition_logits)
+
+            noise = torch.rand_like(pred_transition_logits)
+            noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
+            gumbel_noise = -torch.log(-torch.log(noise))
+            x = torch.argmax(pred_transition_logits + gumbel_noise, dim=-1)
+
     def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         
@@ -278,6 +308,10 @@ class BenchmarkLogger(Callback):
         cond_metrics = {f'test/{k}_{fb}': v for k, v in cond_metrics.items()}
         pl_module.log_dict(cond_metrics)
         pl_module.cond_metrics.reset()
+
+        kl_div = pl_module.kl_div.compute()
+        pl_module.log(f'test/kl_div_{fb}', kl_div)
+        pl_module.kl_div.reset()
 
         self._log_buf('test', pl_module)
 
