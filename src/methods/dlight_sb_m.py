@@ -153,7 +153,7 @@ class DLightSB_M(LightningModule):
         )
         return mse_loss 
 
-    def get_sb_transition_logits(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def get_transition_logits(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         input_shape = x_t.shape
         x_t = x_t.flatten(start_dim=1)
         t_orig = t  # keep original for onestep
@@ -202,7 +202,7 @@ class DLightSB_M(LightningModule):
         x_t = self.prior.sample_bridge(true_x_start, true_x_end, t)
 
         true_q_posterior_logits = self.prior.posterior_logits_reverse(true_x_end, x_t, t, logits=False)
-        pred_q_transition_logits = self.get_sb_transition_logits(x_t, t=t)
+        pred_q_transition_logits = self.get_transition_logits(x_t, t=t)
         pred_q_transition_logits = pred_q_transition_logits.log_softmax(dim=-1)
 
         kl = self.kl_loss(true_q_posterior_logits, pred_q_transition_logits)

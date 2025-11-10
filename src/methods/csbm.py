@@ -124,6 +124,16 @@ class CSBM(LightningModule):
         # twice, for each direction
         self.first_iteration = self.current_epoch + 1 < (2 * self.hparams.num_first_iterations)
 
+    def get_transition_logits(
+        self, 
+        x_t: torch.Tensor, 
+        t: torch.Tensor, 
+        fb: Literal['forward', 'backward']
+    ) -> torch.Tensor:
+        pred_x_start_logits = self.models[fb](x_t, t)
+        pred_transition_logits = self.prior.posterior_logits(pred_x_start_logits, x_t, t, logits=True)
+        return pred_transition_logits
+    
     def markovian_projection(
         self,
         fb: Literal['forward', 'backward'],
