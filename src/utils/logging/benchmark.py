@@ -195,7 +195,7 @@ class BenchmarkLogger(Callback):
         x = x_start
         for t in range(0, pl_module.prior.num_timesteps + 1):
             t = torch.tensor([t] * x.shape[0], device=pl_module.device)
-            # there is must be a better naming for identifying sampling direction
+            # there must be a better naming for identifying sampling direction
             # but for now all bidirectional methods use reversed time steps during sampling
             if pl_module.bidirectional:
                 pred_transition_logits = pl_module.get_transition_logits(
@@ -205,8 +205,8 @@ class BenchmarkLogger(Callback):
                 pred_transition_logits = pl_module.get_transition_logits(x, t)
             true_transition_logits = self.benchmark.get_transition_logits(x, t)
             pl_module.kl_div.update(
-                true_transition_logits.reshape(-1, self.num_categories),
-                pred_transition_logits.reshape(-1, self.num_categories)
+                true_transition_logits.reshape(-1, self.num_categories).log_softmax(dim=-1),
+                pred_transition_logits.reshape(-1, self.num_categories).log_softmax(dim=-1)
             )
 
             noise = torch.rand_like(pred_transition_logits)
@@ -269,8 +269,8 @@ class BenchmarkLogger(Callback):
                 pred_transition_logits = pl_module.get_transition_logits(x, t)
             true_transition_logits = self.benchmark.get_transition_logits(x, t)
             pl_module.kl_div.update(
-                true_transition_logits.reshape(-1, self.num_categories),
-                pred_transition_logits.reshape(-1, self.num_categories)
+                true_transition_logits.reshape(-1, self.num_categories).log_softmax(dim=-1),
+                pred_transition_logits.reshape(-1, self.num_categories).log_softmax(dim=-1)
             )
 
             noise = torch.rand_like(pred_transition_logits)
