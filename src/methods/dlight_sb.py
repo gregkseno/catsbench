@@ -211,6 +211,42 @@ class DLightSB(LightningModule):
             return {'optimizer': optimizer, 'lr_scheduler': scheduler}
         return {'optimizer': optimizer}
 
+    def get_transition_logits(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        input_shape = x_t.shape
+        x_t = x_t.flatten(start_dim=1)
+        t_orig = t  # keep original for onestep
+        t = self.prior.num_timesteps + 1 - t_orig
+        tp1 = self.prior.num_timesteps - t_orig
+
+        log_u_t = torch.empty(
+            x_t.shape[0], self.num_potentials, self.dim, device=self.device
+        ) # [B, K, D]
+        for d in range(self.dim):
+            log_pi_ref_t = self.prior.extract('cumulative', t, row_id=x_t[:, d]) # [B, S]
+            log_u_t[:, :, d] = torch.logsumexp(
+                self.log_cp_cores[d][None, :, :] + log_pi_ref_t[:, None, :], dim=-1 # [B, K, S] 
+            ) # [B, K]
+        sum_log_u_t = log_u_t.sum(dim=-1)  # [B, K]
+
+        transition_logits = torch.empty(
+            x_t.shape[0], self.dim, self.prior.num_categories, device=self.device
+        ) # [B, D, S]
+        x_tp1_d = torch.arange(self.prior.num_categories, device=self.device) # [S]
+        x_tp1_d = x_tp1_d.unsqueeze(0).repeat(x_t.shape[0], 1).reshape(-1) # [B*S]
+        tp1_repeated = tp1.repeat_interleave(self.prior.num_categories) # [B*S]
+        for d in range(self.dim):
+            log_pi_ref_tp1 = self.prior.extract('cumulative', tp1_repeated, row_id=x_tp1_d) # [B*S, S]
+            log_u_tp1_d = torch.logsumexp(
+                self.log_cp_cores[d][None, :, :] + log_pi_ref_tp1[:, None, :], dim=-1 # [B*S, K, S]
+            )  # [B*S, K]
+            log_u_tp1_d = log_u_tp1_d.reshape(x_t.shape[0], self.prior.num_categories, self.num_potentials) # [B, S, K]
+            log_u_tp1_d = log_u_tp1_d.permute(0, 2, 1) # [B, K, S]      
+            log_phi_tp1_d = torch.logsumexp(
+                self.log_alpha[None, :, None] + log_u_tp1_d + (sum_log_u_t - log_u_t[:, :, d])[:, :, None], dim=1 # [B, K, S]
+            ) # [B, S]
+            transition_logits[:, d, :] = log_phi_tp1_d + self.prior.extract('onestep', t_orig+1, row_id=x_t[:, d]) # [B, S]
+        return transition_logits.reshape(*input_shape, self.prior.num_categories) # [B, ..., S]
+
     @torch.no_grad()
     def sample(self, x: torch.Tensor) -> torch.Tensor:
         input_shape = x.shape
@@ -444,6 +480,42 @@ class DLightSB_old(LightningModule):
             scheduler = self.hparams.scheduler(optimizer=optimizer)
             return {'optimizer': optimizer, 'lr_scheduler': scheduler}
         return {'optimizer': optimizer}
+
+    def get_transition_logits(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        input_shape = x_t.shape
+        x_t = x_t.flatten(start_dim=1)
+        t_orig = t  # keep original for onestep
+        t = self.prior.num_timesteps + 1 - t_orig
+        tp1 = self.prior.num_timesteps - t_orig
+
+        log_u_t = torch.empty(
+            x_t.shape[0], self.num_potentials, self.dim, device=self.device
+        ) # [B, K, D]
+        for d in range(self.dim):
+            log_pi_ref_t = self.prior.extract('cumulative', t, row_id=x_t[:, d]) # [B, S]
+            log_u_t[:, :, d] = torch.logsumexp(
+                self.log_cp_cores[d][None, :, :] + log_pi_ref_t[:, None, :], dim=-1 # [B, K, S] 
+            ) # [B, K]
+        sum_log_u_t = log_u_t.sum(dim=-1)  # [B, K]
+
+        transition_logits = torch.empty(
+            x_t.shape[0], self.dim, self.prior.num_categories, device=self.device
+        ) # [B, D, S]
+        x_tp1_d = torch.arange(self.prior.num_categories, device=self.device) # [S]
+        x_tp1_d = x_tp1_d.unsqueeze(0).repeat(x_t.shape[0], 1).reshape(-1) # [B*S]
+        tp1_repeated = tp1.repeat_interleave(self.prior.num_categories) # [B*S]
+        for d in range(self.dim):
+            log_pi_ref_tp1 = self.prior.extract('cumulative', tp1_repeated, row_id=x_tp1_d) # [B*S, S]
+            log_u_tp1_d = torch.logsumexp(
+                self.log_cp_cores[d][None, :, :] + log_pi_ref_tp1[:, None, :], dim=-1 # [B*S, K, S]
+            )  # [B*S, K]
+            log_u_tp1_d = log_u_tp1_d.reshape(x_t.shape[0], self.prior.num_categories, self.num_potentials) # [B, S, K]
+            log_u_tp1_d = log_u_tp1_d.permute(0, 2, 1) # [B, K, S]      
+            log_phi_tp1_d = torch.logsumexp(
+                self.log_alpha[None, :, None] + log_u_tp1_d + (sum_log_u_t - log_u_t[:, :, d])[:, :, None], dim=1 # [B, K, S]
+            ) # [B, S]
+            transition_logits[:, d, :] = log_phi_tp1_d + self.prior.extract('onestep', t_orig+1, row_id=x_t[:, d]) # [B, S]
+        return transition_logits.reshape(*input_shape, self.prior.num_categories) # [B, ..., S]
 
     @torch.no_grad()
     def sample(self, x: torch.Tensor) -> torch.Tensor:
