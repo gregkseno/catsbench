@@ -263,7 +263,6 @@ class Prior(nn.Module):
         log_fact2 = logits_prod(x_start_logits, self.log_p_cum[t-1]) 
 
         p_posterior_logits = log_fact1 + log_fact2
-        p_posterior_logits = p_posterior_logits - p_posterior_logits.logsumexp(dim=-1, keepdim=True) # Normalize
 
         # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already
         is_first_step = broadcast(t, x_t.dim()) == 1
@@ -294,7 +293,6 @@ class Prior(nn.Module):
         )
 
         p_posterior_logits = log_fact1 + log_fact2
-        p_posterior_logits = p_posterior_logits - p_posterior_logits.logsumexp(dim=-1, keepdim=True)
 
         # is_last_step = broadcast(t, x_t.dim()) == self.num_timesteps
         # p_posterior_logits = torch.where(is_last_step, x_end_logits, p_posterior_logits)
