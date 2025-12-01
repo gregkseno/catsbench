@@ -11,6 +11,8 @@ class ClassifierTwoSampleTest(Metric):
     is_differentiable = True
     higher_is_better = True
     full_state_update = False
+    probs: torch.Tensor
+    targets: torch.Tensor
 
     def __init__(
         self, 
