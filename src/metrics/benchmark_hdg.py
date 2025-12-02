@@ -4,12 +4,13 @@ import torch
 from torchmetrics import MetricCollection
 from lightning.pytorch import Callback, Trainer, LightningModule
 
-from src.metrics.c2st import ClassifierTwoSampleTest
-from src.metrics.contingency_similarity import ContingencySimilarity
-from src.metrics.tv_complement import TVComplement
-from src.metrics.trajectory_kl_divergence import TrajectoryKLDivergence
 from benchmark import Benchmark
-
+from benchmark.metrics import (
+    ClassifierTwoSampleTest,
+    ShapeScore,
+    TrendScore,
+    TrajectoryKLDivergence
+)
 
 class BenchmarkHDGMetricsCallback(Callback):
     benchmark: Benchmark
@@ -47,8 +48,8 @@ class BenchmarkHDGMetricsCallback(Callback):
         # initialize unconditional metrics
         pl_module.metrics = MetricCollection(
             {
-                'tv_complement': TVComplement(self.dim, self.num_categories),
-                'contingency_similarity': ContingencySimilarity(self.dim, self.num_categories),
+                'shape_score': ShapeScore(self.dim, self.num_categories),
+                'trend_score': TrendScore(self.dim, self.num_categories),
             },
         )
         # initialize conditional metrics
