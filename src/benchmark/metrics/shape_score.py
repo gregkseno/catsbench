@@ -1,12 +1,15 @@
-from typing import Literal
+from typing import List, Literal
 import torch
+
 from torchmetrics import Metric
+from torchmetrics.utilities import dim_zero_cat
 
 
 class ShapeScore(Metric):
     is_differentiable = False
     higher_is_better = True
     full_state_update = False
+    scores: List[torch.Tensor]
     real_counts: torch.Tensor
     pred_counts: torch.Tensor
     
@@ -14,23 +17,38 @@ class ShapeScore(Metric):
         self,
         dim: int,
         num_categories: int,
+        conditional: bool = False,
         reduction: Literal['mean', 'none'] = 'mean',
     ) -> None:
         super().__init__()
         self.dim = dim
         self.num_categories = num_categories
+        self.conditional = conditional
         self.reduction = reduction
 
-        self.add_state(
-            "real_counts",
-            default=torch.zeros(dim, num_categories, dtype=torch.int),
-            dist_reduce_fx="sum",
-        )
-        self.add_state(
-            "pred_counts",
-            default=torch.zeros(dim, num_categories, dtype=torch.int),
-            dist_reduce_fx="sum",
-        )
+        if conditional:
+            self.add_state("scores", default=[], dist_reduce_fx='cat')
+        else:
+            self.add_state(
+                "real_counts",
+                default=torch.zeros(dim, num_categories, dtype=torch.int),
+                dist_reduce_fx="sum",
+            )
+            self.add_state(
+                "pred_counts",
+                default=torch.zeros(dim, num_categories, dtype=torch.int),
+                dist_reduce_fx="sum",
+            )
+
+    def _compute_score(self, real_counts: torch.Tensor, pred_counts: torch.Tensor) -> torch.Tensor:
+        real_totals = real_counts.sum(dim=1, keepdim=True).float()
+        pred_totals = pred_counts.sum(dim=1, keepdim=True).float()
+
+        reals = real_counts.float() / (real_totals + torch.finfo(real_totals.dtype).eps)
+        preds = pred_counts.float() / (pred_totals + torch.finfo(pred_totals.dtype).eps)
+        
+        tvd = 0.5 * torch.abs(reals - preds).sum(dim=1) 
+        return 1.0 - tvd
         
     @torch.no_grad()
     def update(
@@ -40,57 +58,44 @@ class ShapeScore(Metric):
     ) -> None:
         if real_data.shape != pred_data.shape or real_data.ndim != 2:
             raise ValueError("Expect two equal-shaped 2-D tensors (batch_size, dim).")
+        if real_data.max() >= self.num_categories or pred_data.max() >= self.num_categories:
+            raise ValueError(f"Data contains values >= num_categories ({self.num_categories})")
 
         batch_size = real_data.shape[0]
-        # лениво кэшируем оффсеты d * num_categories
-        if not hasattr(self, "_dim_offsets") or self._dim_offsets.device != real_data.device \
-           or self._dim_offsets.numel() != self.dim or getattr(self, "_cached_S", None) != self.num_categories:
-            self._dim_offsets = torch.arange(self.dim, device=real_data.device, dtype=torch.long) * self.num_categories
+        if not hasattr(self, "_dim_offsets") or self._dim_offsets.device != real_data.device:
+            self._dim_offsets = torch.arange(
+                self.dim, device=real_data.device, dtype=torch.long
+            ) * self.num_categories
 
         offsets = self._dim_offsets.repeat(batch_size) # (B*dim,)
         r_code = offsets + real_data.reshape(-1)
         p_code = offsets + pred_data.reshape(-1)
 
-        r_cnt = torch.bincount(r_code, minlength=self.dim * self.num_categories).int()
-        p_cnt = torch.bincount(p_code, minlength=self.dim * self.num_categories).int()
+        r_cnt = torch.bincount(
+            r_code, minlength=self.dim * self.num_categories
+        ).reshape(self.dim, self.num_categories).int()
+        p_cnt = torch.bincount(
+            p_code, minlength=self.dim * self.num_categories
+        ).reshape(self.dim, self.num_categories).int()
 
-        self.real_counts += r_cnt.reshape(self.dim, self.num_categories)
-        self.pred_counts += p_cnt.reshape(self.dim, self.num_categories)
+        # for conditional, compute and store score immediately 
+        if self.conditional:
+            score = self._compute_score(r_cnt, p_cnt)
+            self.scores.append(score.unsqueeze(0)) # to enable stacking using cat
+            
+        # for unconditional, accumulate counts
+        else:
+            self.real_counts += r_cnt
+            self.pred_counts += p_cnt
 
     def compute(self) -> torch.Tensor:
-        real_totals = self.real_counts.sum(dim=1, keepdim=True) # (D, 1)
-        pred_totals = self.pred_counts.sum(dim=1, keepdim=True) # (D, 1)
-
-        reals = torch.where(
-            real_totals > 0,
-            self.real_counts.float() / real_totals.float(),
-            torch.zeros_like(self.real_counts, dtype=torch.float),
-        )
-        preds = torch.where(
-            pred_totals > 0,
-            self.pred_counts / pred_totals.float(),
-            torch.zeros_like(self.pred_counts, dtype=torch.float),
-        )
-        tvd = 0.5 * torch.abs(reals - preds).sum(dim=1) # (D)
-        scores = 1.0 - tvd
+        if self.conditional:
+            all_scores = dim_zero_cat(self.scores) # (N, D)
+            if self.reduction == "mean":
+                return all_scores.mean()
+            return all_scores
         
+        scores = self._compute_score(self.real_counts, self.pred_counts)
         if self.reduction == "mean":
             return scores.mean()
         return scores
-
-
-if __name__ == "__main__":
-    metric = ShapeScore(dim=2, num_categories=3)
-    real  = torch.tensor([[0, 0], [1, 1], [2, 2]])
-    pred = real.clone()
-    metric.update(real, pred)
-    score = metric.compute()
-    assert torch.allclose(score, torch.ones(1)), f"got {score}"
-
-    metric = ShapeScore(dim=2, num_categories=3, reduction='none')
-    real  = torch.tensor([[0, 0], [1, 1], [2, 2]])
-    pred = torch.tensor([[0, 0], [0, 0], [0, 0]])
-    metric.update(real, pred)
-    score = metric.compute()
-    expected = torch.tensor([1.0 - 2.0 / 3.0, 1.0 - 2.0 / 3.0])
-    assert torch.allclose(score, expected, atol=1e-6), f"got {score}"

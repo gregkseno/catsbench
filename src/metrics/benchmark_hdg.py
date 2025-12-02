@@ -1,8 +1,8 @@
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Dict, Literal, Optional, Tuple, Union
 import torch
 
 from torchmetrics import MetricCollection
-from lightning.pytorch import Callback, Trainer, LightningModule
+from lightning.pytorch import Callback, Trainer
 
 from benchmark import Benchmark
 from benchmark.metrics import (
@@ -11,6 +11,9 @@ from benchmark.metrics import (
     TrendScore,
     TrajectoryKLDivergence
 )
+
+from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
+
 
 class BenchmarkHDGMetricsCallback(Callback):
     benchmark: Benchmark
@@ -34,7 +37,7 @@ class BenchmarkHDGMetricsCallback(Callback):
     def setup(
         self,
         trainer: Trainer, 
-        pl_module: LightningModule, 
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM], 
         stage: Literal['fit', 'validate', 'test']
     ) -> None:
         if hasattr(pl_module, 'metrics'):
@@ -47,10 +50,8 @@ class BenchmarkHDGMetricsCallback(Callback):
         
         # initialize unconditional metrics
         pl_module.metrics = MetricCollection(
-            {
-                'shape_score': ShapeScore(self.dim, self.num_categories),
-                'trend_score': TrendScore(self.dim, self.num_categories),
-            },
+            {'shape_score': ShapeScore(self.dim, self.num_categories, conditional=False),
+             'trend_score': TrendScore(self.dim, self.num_categories, conditional=False)},
         )
         # initialize conditional metrics
         if self.benchmark.reversed: 
@@ -58,23 +59,26 @@ class BenchmarkHDGMetricsCallback(Callback):
                 dim=2*self.dim, num_categories=self.num_categories, lr=self.classifier_lr
             )
         else:
-            pl_module.cond_metrics = pl_module.metrics.clone(prefix='cond_')
-            pl_module.forward_kl_div = TrajectoryKLDivergence(log_prob=True)
-            pl_module.reverse_kl_div = TrajectoryKLDivergence(log_prob=True)
+            pl_module.cond_metrics = MetricCollection(
+                {'cond_shape_score': ShapeScore(self.dim, self.num_categories, conditional=True),
+                 'cond_trend_score': TrendScore(self.dim, self.num_categories, conditional=True)},
+            )
+            pl_module.forward_kl_div = TrajectoryKLDivergence(logits=True)
+            pl_module.reverse_kl_div = TrajectoryKLDivergence(logits=True)
 
-    def _compute_metrics(
+    def _update_metrics(
         self,
         trainer: Trainer,
-        pl_module: LightningModule,
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
         outputs: Dict[str, Any],
         batch_idx: int,
         stage: Literal['train', 'val', 'test'] = 'train',
     ) -> None:
         pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
-        pred_x_end = pl_module.sample(x_start)
 
         # update unconditional metrics
+        pred_x_end = pl_module.sample(x_start)
         pl_module.metrics.update(x_end, pred_x_end)
 
         # update conditional metrics
@@ -95,111 +99,103 @@ class BenchmarkHDGMetricsCallback(Callback):
             cond_x_end = self.benchmark.sample(repeated_x_start)
             cond_pred_x_end = pl_module.sample(repeated_x_start)
             pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
+
+            true_trajectory, true_transition_logits = self.benchmark.sample_trajectory(x_start, return_transitions=True)
+            pred_trajectory, pred_transition_logits = pl_module.sample_trajectory(x_start, return_transitions=True)
+            
+            true_trajectory = true_trajectory.flatten(end_dim=1)
+            pred_trajectory = pred_trajectory.flatten(end_dim=1)
+            true_transition_logits = true_transition_logits.flatten(end_dim=1)
+            pred_transition_logits = pred_transition_logits.flatten(end_dim=1)
+
+            # the KL div must be computed in cross fashion:
+            # forward KL is KL with respect to true trajectory
+            # reverse KL is KL with respect to predicted trajectory
+            timesteps = torch.arange(true_trajectory.shape[0], device=pl_module.device)
+            timesteps = timesteps.repeat_interleave(true_trajectory.shape[1])
+            pl_module.reverse_kl_div.update(
+                p=pred_transition_logits, 
+                q=self.benchmark.get_transition_logits(pred_trajectory, timesteps)
+            )
+            if isinstance(pl_module, (CSBM, AlphaCSBM)):
+                timesteps = (timesteps + 1).flip(dims=[0])
+            pl_module.forward_kl_div.update(
+                p=true_transition_logits, 
+                q=pl_module.get_transition_logits(true_trajectory, timesteps)
+            )
             
 
+    def _compute_and_log_metrics(
+        self,
+        trainer: Trainer,
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
+        stage: Literal['train', 'val', 'test'] = 'train',
+    ) -> None:
+        fb = getattr(pl_module, 'fb', None) or 'forward' 
+        
+        # compute and log unconditional metrics
+        metrics = pl_module.metrics.compute()
+        metrics = {f'{stage}/{k}_{fb}': v for k, v in metrics.items()}
+        pl_module.log_dict(metrics)
+        pl_module.metrics.reset()
+
+        # compute and log conditional metrics
+        if self.benchmark.reversed:
+            c2st = pl_module.c2st.compute()
+            pl_module.log(f'{stage}/c2st_{fb}', c2st)
+            pl_module.c2st.reset()
+        else:
+            cond_metrics = pl_module.cond_metrics.compute()
+            cond_metrics = {f'{stage}/{k}_{fb}': v for k, v in cond_metrics.items()}
+            pl_module.log_dict(cond_metrics)
+            pl_module.cond_metrics.reset()
+
+            forward_kl_div = pl_module.forward_kl_div.compute()
+            pl_module.log(f'{stage}/forward_kl_div_{fb}', forward_kl_div)
+            pl_module.forward_kl_div.reset()
+
+            reverse_kl_div = pl_module.reverse_kl_div.compute()
+            pl_module.log(f'{stage}/reverse_kl_div_{fb}', reverse_kl_div)
+            pl_module.reverse_kl_div.reset()
+            
     def on_validation_batch_end(
         self,
         trainer: Trainer,
-        pl_module: LightningModule,
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
         outputs: Dict[str, Any],
         batch: Tuple[torch.Tensor, torch.Tensor],
         batch_idx: int,
     ) -> None:
-        self._compute_metrics(
+        self._update_metrics(
             trainer, pl_module, outputs, batch_idx, stage='val'
         )
        
-
-    def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
-        fb = getattr(pl_module, 'fb', None) or 'forward' 
-        
-        if not trainer.datamodule.hparams.reversed:
-            metrics = pl_module.metrics.compute()
-            metrics = {f'val/{k}_{fb}': v for k, v in metrics.items()}
-            pl_module.log_dict(metrics)
-            pl_module.metrics.reset()
-            
-            cond_metrics = pl_module.cond_metrics.compute()
-            cond_metrics = {f'val/{k}_{fb}': v for k, v in cond_metrics.items()}
-            pl_module.log_dict(cond_metrics)
-            pl_module.cond_metrics.reset()
-
-            kl_div = pl_module.kl_div.compute()
-            pl_module.log(f'val/kl_div_{fb}', kl_div)
-            pl_module.kl_div.reset()
-        else:
-            c2st = pl_module.c2st.compute()
-            pl_module.log(f'val/c2st_{fb}', c2st)
-            pl_module.c2st.reset()
+    def on_validation_epoch_end(
+        self, 
+        trainer: Trainer, 
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM]
+    ):
+        self._compute_and_log_metrics(
+            trainer, pl_module, stage='val'
+        )
 
     def on_test_batch_end(
         self,
         trainer: Trainer,
-        pl_module: LightningModule,
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
         outputs: Dict[str, Any],
         batch: Tuple[torch.Tensor, torch.Tensor],
         batch_idx: int,
     ) -> None:
-        pl_module.eval()
-        x_start, x_end = outputs['x_start'], outputs['x_end']
+        self._update_metrics(
+            trainer, pl_module, outputs, batch_idx, stage='test'
+        )
 
-        pred_x_end = pl_module.sample(x_start)
-        if not trainer.datamodule.hparams.reversed:
-            pl_module.metrics.update(x_end, pred_x_end)
-            
-            repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
-            cond_x_end = self.benchmark.sample(repeated_x_start)
-            cond_pred_x_end = pl_module.sample(repeated_x_start)
-            pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
-
-            x = x_start
-            for t in range(0, pl_module.prior.num_timesteps + 1):
-                t = torch.tensor([t] * x.shape[0], device=pl_module.device)
-                # there is must be a better naming for identifying sampling direction
-                # but for now all bidirectional methods use reversed time steps during sampling
-                if pl_module.bidirectional:
-                    pred_transition_logits = pl_module.get_transition_logits(
-                        x, pl_module.prior.num_timesteps + 1 - t
-                    )
-                else:
-                    pred_transition_logits = pl_module.get_transition_logits(x, t)
-                true_transition_logits = self.benchmark.get_transition_logits(x, t).clamp(min=1e-20)
-                pl_module.kl_div.update(
-                    true_transition_logits.reshape(-1, self.num_categories).log_softmax(dim=-1),
-                    pred_transition_logits.reshape(-1, self.num_categories).log_softmax(dim=-1)
-                )
-
-                noise = torch.rand_like(pred_transition_logits)
-                noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
-                gumbel_noise = -torch.log(-torch.log(noise))
-                x = torch.argmax(pred_transition_logits + gumbel_noise, dim=-1)
-        else:
-            len_data = len(trainer.test_dataloaders) if trainer.limit_test_batches is None else trainer.limit_test_batches
-            train_mode = batch_idx < int(len_data * self.train_test_split)
-            pl_module.c2st.update(
-                real_data=torch.cat([x_start, x_end], dim=-1),
-                pred_data=torch.cat([x_start, pred_x_end], dim=-1),
-                train=train_mode
-            )
-
-    def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
-        fb = getattr(pl_module, 'fb', None) or 'forward' 
-        
-        if not trainer.datamodule.hparams.reversed:
-            metrics = pl_module.metrics.compute()
-            metrics = {f'test/{k}_{fb}': v for k, v in metrics.items()}
-            pl_module.log_dict(metrics)
-            pl_module.metrics.reset()
-
-            cond_metrics = pl_module.cond_metrics.compute()
-            cond_metrics = {f'test/{k}_{fb}': v for k, v in cond_metrics.items()}
-            pl_module.log_dict(cond_metrics)
-            pl_module.cond_metrics.reset()
-
-            kl_div = pl_module.kl_div.compute()
-            pl_module.log(f'test/kl_div_{fb}', kl_div)
-            pl_module.kl_div.reset()
-        else:
-            c2st = pl_module.c2st.compute()
-            pl_module.log(f'test/c2st_{fb}', c2st)
-            pl_module.c2st.reset()
+    def on_test_epoch_end(
+        self, 
+        trainer: Trainer, 
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM]
+    ):
+        self._compute_and_log_metrics(
+            trainer, pl_module, stage='test'
+        )

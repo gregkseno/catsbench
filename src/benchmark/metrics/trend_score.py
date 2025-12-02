@@ -1,12 +1,15 @@
-from typing import Literal
+from typing import List, Literal
 import torch
+
 from torchmetrics import Metric
+from torchmetrics.utilities import dim_zero_cat
 
 
 class TrendScore(Metric):
     is_differentiable = False
     higher_is_better = True
     full_state_update = False
+    scores: List[torch.Tensor]
     real_counts: torch.Tensor
     pred_counts: torch.Tensor
 
@@ -14,23 +17,64 @@ class TrendScore(Metric):
         self,
         dim: int,
         num_categories: int,
+        conditional: bool = False,
         reduction: Literal['mean', 'none'] = 'mean',
     ) -> None:
         super().__init__()
         self.dim = dim
         self.num_categories = num_categories
+        self.conditional = conditional
         self.reduction = reduction
         
-        self.add_state(
-            "real_counts",
-            default=torch.zeros(dim, dim, num_categories, num_categories, dtype=torch.int),
-            dist_reduce_fx="sum",
-        )
-        self.add_state(
-            "pred_counts",
-            default=torch.zeros(dim, dim, num_categories, num_categories, dtype=torch.int),
-            dist_reduce_fx="sum",
-        )
+        if conditional:
+            self.add_state("scores", default=[], dist_reduce_fx='cat')
+        else:
+            self.add_state(
+                "real_counts",
+                default=torch.zeros(dim, dim, num_categories, num_categories, dtype=torch.int),
+                dist_reduce_fx="sum",
+            )
+            self.add_state(
+                "pred_counts",
+                default=torch.zeros(dim, dim, num_categories, num_categories, dtype=torch.int),
+                dist_reduce_fx="sum",
+            )
+
+    def _compute_score(self, real_counts: torch.Tensor, pred_counts: torch.Tensor) -> torch.Tensor:
+        real_totals = real_counts.sum(dim=[2, 3], keepdim=True).float() # (D, D, 1, 1)
+        pred_totals = pred_counts.sum(dim=[2, 3], keepdim=True).float() # (D, D, 1, 1)
+
+        reals = real_counts.float() / (real_totals + torch.finfo(real_totals.dtype).eps)
+        preds = pred_counts.float() / (pred_totals + torch.finfo(pred_totals.dtype).eps)
+
+        tvd = 0.5 * torch.abs(reals - preds).sum(dim=[2, 3]) # (D, D)
+        return 1.0 - tvd
+
+    def _fill_symmetric_counts(
+        self, 
+        target_tensor: torch.Tensor, 
+        flat_tri_counts: torch.Tensor, 
+        ii: torch.Tensor, 
+        jj: torch.Tensor
+    ) -> None:
+        '''
+        Populates a (D, D, C, C) tensor using flattened triangular counts (K, C, C).
+        Handles symmetrization: (i,j) gets Count, (j,i) gets Count.T
+        '''
+        diag_mask = (ii == jj)
+        if diag_mask.any():
+            i_d = ii[diag_mask]
+            j_d = jj[diag_mask]
+            target_tensor.index_put_((i_d, j_d), flat_tri_counts[diag_mask], accumulate=True)
+
+        off_mask = ~diag_mask
+        if off_mask.any():
+            i_o = ii[off_mask]
+            j_o = jj[off_mask]
+            counts_o = flat_tri_counts[off_mask] # (N_off, C, C)
+
+            target_tensor.index_put_((i_o, j_o), counts_o, accumulate=True)
+            target_tensor.index_put_((j_o, i_o), counts_o.transpose(-2, -1), accumulate=True)
 
     def update(
         self,
@@ -41,17 +85,24 @@ class TrendScore(Metric):
             raise ValueError("Expect real_data/pred_data of shape (batch_size, dim).")
         if real_data.shape[1] != self.dim:
             raise ValueError(f"Expected second dim = {self.dim}, got {real_data.shape[1]}")
+        if real_data.max() >= self.num_categories or pred_data.max() >= self.num_categories:
+            raise ValueError(f"Data contains values >= num_categories ({self.num_categories})")
 
-        if not hasattr(self, "_tri_i") or self._tri_i.numel() != (self.dim * (self.dim + 1)) // 2:
+        if not hasattr(self, "_tri_i") or \
+            self._tri_i.device != real_data.device or \
+                self._tri_i.numel() != (self.dim * (self.dim + 1)) // 2:
             ii, jj = torch.triu_indices(self.dim, self.dim, offset=0, device=real_data.device)
             self._tri_i = ii # (K,)
             self._tri_j = jj # (K,)
             K = ii.numel()
-            self._tri_block_offsets = torch.arange(K, device=real_data.device, dtype=torch.long) \
-                * (self.num_categories * self.num_categories)
+            self._tri_block_offsets = torch.arange(
+                K, device=real_data.device, dtype=torch.long
+            ) * (self.num_categories * self.num_categories)
 
-        r_pair_tri = (real_data.index_select(1, self._tri_i) * self.num_categories + real_data.index_select(1, self._tri_j))  # (B, K)
-        p_pair_tri = (pred_data.index_select(1, self._tri_i) * self.num_categories + pred_data.index_select(1, self._tri_j))  # (B, K)
+        r_pair_tri = (real_data.index_select(1, self._tri_i) \
+                      * self.num_categories + real_data.index_select(1, self._tri_j))  # (B, K)
+        p_pair_tri = (pred_data.index_select(1, self._tri_i) \
+                      * self.num_categories + pred_data.index_select(1, self._tri_j))  # (B, K)
 
         r_code = (self._tri_block_offsets.view(1, -1) + r_pair_tri).reshape(-1)  # (B*K,)
         p_code = (self._tri_block_offsets.view(1, -1) + p_pair_tri).reshape(-1)  # (B*K,)
@@ -61,51 +112,35 @@ class TrendScore(Metric):
         r_cnt_tri = torch.bincount(r_code, minlength=bins).reshape(K, self.num_categories, self.num_categories).int()
         p_cnt_tri = torch.bincount(p_code, minlength=bins).reshape(K, self.num_categories, self.num_categories).int()
 
-        diag_mask = (self._tri_i == self._tri_j)
-        if diag_mask.any():
-            i_d = self._tri_i[diag_mask]
-            j_d = self._tri_j[diag_mask]
-            self.real_counts.index_put_((i_d, j_d), r_cnt_tri[diag_mask], accumulate=True)
-            self.pred_counts.index_put_((i_d, j_d), p_cnt_tri[diag_mask], accumulate=True)
-
-        off_mask = ~diag_mask
-        if off_mask.any():
-            i_o = self._tri_i[off_mask]
-            j_o = self._tri_j[off_mask]
-            r_o = r_cnt_tri[off_mask]
-            p_o = p_cnt_tri[off_mask]
-
-            self.real_counts.index_put_((i_o, j_o), r_o, accumulate=True)
-            self.pred_counts.index_put_((i_o, j_o), p_o, accumulate=True)
-
-            self.real_counts.index_put_((j_o, i_o), r_o.transpose(-2, -1), accumulate=True)
-            self.pred_counts.index_put_((j_o, i_o), p_o.transpose(-2, -1), accumulate=True)
+        # for conditional, compute and store score immediately 
+        if self.conditional:
+            batch_r = torch.zeros(
+                self.dim, self.dim, self.num_categories, self.num_categories, 
+                device=real_data.device, dtype=torch.int
+            )
+            batch_p = torch.zeros_like(batch_r)
+            
+            self._fill_symmetric_counts(batch_r, r_cnt_tri, self._tri_i, self._tri_j)
+            self._fill_symmetric_counts(batch_p, p_cnt_tri, self._tri_i, self._tri_j)
+            
+            score = self._compute_score(batch_r, batch_p) # to enable stacking using cat
+            self.scores.append(score.unsqueeze(0))
+        
+        # for unconditional, accumulate counts
+        else:
+            self._fill_symmetric_counts(self.real_counts, r_cnt_tri, self._tri_i, self._tri_j)
+            self._fill_symmetric_counts(self.pred_counts, p_cnt_tri, self._tri_i, self._tri_j)
 
     def compute(self) -> torch.Tensor:
-        real_total = self.real_counts.sum(dim=[2, 3], keepdim=True) # (D, D, 1, 1)
-        pred_total = self.pred_counts.sum(dim=[2, 3], keepdim=True) # (D, D, 1, 1)
-
-        reals = torch.where(
-            real_total > 0, self.real_counts.float() / real_total.float(), 
-            torch.zeros_like(self.real_counts, dtype=torch.float)
-        )
-        preds = torch.where(
-            pred_total > 0, self.pred_counts.float() / pred_total.float(), 
-            torch.zeros_like(self.pred_counts, dtype=torch.float)
-        )
-
-        tvd = 0.5 * torch.abs(reals - preds).sum(dim=[2, 3]) # (D, D)
-        scores = 1.0 - tvd
+        if self.conditional:
+            all_scores = dim_zero_cat(self.scores)
+            if self.reduction == "mean":
+                return all_scores.mean()
+            return all_scores # (N, D, D)
+        
+        scores = self._compute_score(self.real_counts, self.pred_counts) # (D, D)
 
         if self.reduction == "mean":
             return scores.mean()
         return scores
     
-
-if __name__ == "__main__":
-    metric = TrendScore(dim=2, num_categories=3)
-    real  = torch.tensor([[0, 0], [1, 1], [2, 2], [2, 2]])
-    pred = real.clone()
-    metric.update(real, pred)
-    score = metric.compute()
-    assert torch.allclose(score, torch.ones(1)), f"got {score}"

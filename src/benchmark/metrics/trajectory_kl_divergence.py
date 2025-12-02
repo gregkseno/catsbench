@@ -18,16 +18,18 @@ class TrajectoryKLDivergence(KLDivergence):
         super().__init__(log_prob=logits, reduction=reduction)
         self.logits = logits
 
-    def update(self, real: torch.Tensor, pred: torch.Tensor) -> None:
-        assert len(real.shape) > 3, \
-            "Inputs must be trajectories with shape [num_trajectories, batch_size, ..., num_categories]!"
+    def update(self, p: torch.Tensor, q: torch.Tensor) -> None:
+        assert len(p.shape) >= 3, \
+            "Inputs must be trajectories with shape [batch_size, ..., num_categories]!"
         if self.logits:
-            real = real.log_softmax(dim=-1)
-            pred = pred.log_softmax(dim=-1)
+            p = p.log_softmax(dim=-1)
+            q = q.log_softmax(dim=-1)
+
         mode = 'logs' if self.logits else 'probs'
-        real = stable_clamp(real, mode=mode)
-        pred = stable_clamp(pred, mode=mode)
+        p = stable_clamp(p, mode=mode)
+        q = stable_clamp(q, mode=mode)
+        
         super().update(
-            p=real.flatten(end_dim=-2), 
-            q=pred.flatten(end_dim=-2)
+            p=p.flatten(end_dim=-2), 
+            q=q.flatten(end_dim=-2)
         )
