@@ -7,7 +7,7 @@ val_batch_size: 32
 input_dist: gaussian
 num_workers: 0
 pin_memory: false
-dir: ${paths.data_dir}/benchmark
+dir: ${paths.data_dir}/benchmark_hdg
 
 benchmark:
   _target_: benchmark.Benchmark

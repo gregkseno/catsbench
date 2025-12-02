@@ -1,0 +1,50 @@
+# @package _global_
+
+defaults:
+  - override /data: benchmark_hdg_image
+  - override /model: unet
+  - override /method: alpha_csbm
+  - override /callbacks:
+    - model_checkpoint
+    - model_summary
+    - benchmark_image_metrics
+  - override /trainer: multi_gpu
+  - _self_
+
+data:
+  dim: 3072
+  input_shape: [3, 32, 32]
+  num_categories: 256
+  num_potentials: 10
+  batch_size: 256
+  val_batch_size: 100
+  num_workers: 0
+  pin_memory: false
+  dir: ${paths.data_dir}/benchmark_hdg_image
+  generator_path: ${paths.ckpt_dir}/cmnist_stylegan2.pkl
+
+prior:
+  alpha: ???
+  prior_type: gaussian
+  num_timesteps: 127
+  num_skip_steps: 1
+  eps: 1e-6
+
+method:
+  use_mini_batch: true
+  num_first_iterations: 10
+  kl_loss_coeff: 1
+  ce_loss_coeff: 0.001
+  mse_loss_coeff: 0
+  ignore_index: -100
+  accumulate_grad_batches: 1
+  argmax_mode: true
+
+trainer:
+  max_epochs: 20
+  limit_train_batches: 20000
+  limit_val_batches: 200
+  limit_test_batches: 200
+  val_check_interval: null
+  accumulate_grad_batches: 1
+  gradient_clip_val: null

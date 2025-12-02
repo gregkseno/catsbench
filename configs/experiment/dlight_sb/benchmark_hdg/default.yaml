@@ -1,0 +1,41 @@
+# @package _global_
+
+defaults:
+  - override /data: benchmark_hdg
+  - override /model: null
+  - override /method: dlight_sb
+  - override /callbacks:
+    - model_checkpoint
+    - model_summary
+    - benchmark_hdg_metrics
+  - override /trainer: gpu
+  - _self_
+
+data:
+  dim: ???
+  num_categories: 50
+  num_potentials: 4
+  batch_size: 128 
+  val_batch_size: 128
+  num_workers: 0
+  pin_memory: false
+  dir: ${paths.data_dir}/benchmark_hdg
+
+prior:
+  alpha: ???
+  prior_type: ???
+  num_timesteps: 15
+  num_skip_steps: 8
+
+method:
+  optimizer:
+    lr: 1e-2
+  num_potentials: 1000
+  distr_init: samples
+
+trainer:
+  max_epochs: 5
+  limit_train_batches: 20000
+  val_check_interval: null
+  accumulate_grad_batches: 1
+  gradient_clip_val: null

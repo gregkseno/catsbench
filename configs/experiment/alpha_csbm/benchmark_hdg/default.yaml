@@ -1,0 +1,48 @@
+# @package _global_
+
+defaults:
+  - override /data: benchmark_hdg
+  - override /model: simple_mlp
+  - override /method: alpha_csbm
+  - override /callbacks:
+    - model_checkpoint
+    - model_summary
+    - benchmark_hdg_metrics
+  - override /trainer: gpu
+  - _self_
+
+data:
+  dim: ???
+  num_categories: 50
+  num_potentials: 4
+  batch_size: 128 
+  val_batch_size: 128
+  num_workers: 0
+  pin_memory: false
+  dir: ${paths.data_dir}/benchmark_hdg
+
+model:
+ timestep_dim: ${data.dim}
+ layers: [128, 128, 128]
+
+prior:
+  alpha: ???
+  prior_type: ???
+  num_timesteps: ???
+  num_skip_steps: ???
+
+method:
+  use_mini_batch: false
+  num_first_iterations: 3
+  kl_loss_coeff: ???
+  ce_loss_coeff: ???
+  mse_loss_coeff: 0
+  ignore_index: -100
+  argmax_mode: false
+
+trainer:
+  max_epochs: 7
+  limit_train_batches: 20000
+  val_check_interval: null
+  accumulate_grad_batches: 1
+  gradient_clip_val: null

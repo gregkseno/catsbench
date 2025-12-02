@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - dlight_sb/benchmark_hdg/default
+
+data:
+  dim: 64
+
+prior:
+  prior_type: uniform
+  alpha: 0.005

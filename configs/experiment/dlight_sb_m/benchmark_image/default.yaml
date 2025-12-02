@@ -1,0 +1,45 @@
+# @package _global_
+
+defaults:
+  - override /data: benchmark_hdg_image
+  - override /model: null
+  - override /method: dlight_sb_m
+  - override /callbacks:
+    - model_checkpoint
+    - model_summary
+    - benchmark_image_metrics
+  - override /trainer: gpu
+  - _self_
+
+data:
+  dim: 3072
+  input_shape: [3, 32, 32]
+  num_categories: 256
+  num_potentials: 10
+  batch_size: 32
+  val_batch_size: 32
+  num_workers: 0
+  pin_memory: false
+  dir: ${paths.data_dir}/benchmark_hdg_image
+  generator_path: ${paths.ckpt_dir}/cmnist_stylegan2.pkl
+
+prior:
+  alpha: ???
+  prior_type: gaussian
+  num_timesteps: ???
+  num_skip_steps: ???
+
+method:
+  num_potentials: 100
+  kl_loss_coeff: ???
+  mse_loss_coeff: ???
+  use_mini_batch: false
+  distr_init: samples
+
+trainer:
+  max_epochs: 5
+  limit_train_batches: 20000 # controls number of IMF inner iterations
+  limit_val_batches: 156
+  val_check_interval: null
+  accumulate_grad_batches: 1
+  gradient_clip_val: null

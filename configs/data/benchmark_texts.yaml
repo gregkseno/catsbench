@@ -6,7 +6,7 @@ batch_size: 32
 val_batch_size: 32
 num_workers: 0
 pin_memory: false
-dir: ${paths.data_dir}/benchmark_texts
+dir: ${paths.data_dir}/benchmark_hdg_texts
 generator_path: ${paths.ckpt_dir}/gpt2-tinystories-final
 
 benchmark:

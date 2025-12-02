@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+- dlight_sb_m/benchmark_hdg/default
+data:
+  dim: 64
+prior:
+  prior_type: uniform
+  alpha: 0.005
+  num_timesteps: 63
+  num_skip_steps: 2
+method:
+  kl_loss_coeff: 0.0
+  mse_loss_coeff: 1.0

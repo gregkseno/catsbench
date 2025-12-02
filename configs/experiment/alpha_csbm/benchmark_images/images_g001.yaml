@@ -1,7 +1,0 @@
-# @package _global_
-
-defaults:
-  - alpha_csbm/benchmark_images/default
-
-prior:
-  alpha: 0.01
