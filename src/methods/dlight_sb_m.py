@@ -289,7 +289,6 @@ class DLightSB_M(LightningModule):
         t: torch.Tensor,
         return_transitions: bool = False
     ) -> torch.Tensor:
-        # TODO: Fix retruned logits to mixture over num_potentials
         input_shape = x_t.shape
         x_t = x_t.flatten(start_dim=1)
 
