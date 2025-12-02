@@ -13,7 +13,10 @@ from benchmark.metrics import (
 )
 
 from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
+from ..utils.ranked_logger import RankedLogger
 
+
+log = RankedLogger(__name__, rank_zero_only=True)
 
 class BenchmarkHDGMetricsCallback(Callback):
     benchmark: BenchmarkHDG
@@ -103,6 +106,9 @@ class BenchmarkHDGMetricsCallback(Callback):
             true_trajectory, true_transition_logits = self.benchmark.sample_trajectory(x_start, return_transitions=True)
             pred_trajectory, pred_transition_logits = pl_module.sample_trajectory(x_start, return_transitions=True)
             
+            timesteps = torch.arange(true_trajectory.shape[0], device=pl_module.device)
+            timesteps = timesteps.repeat_interleave(true_trajectory.shape[1])
+            
             true_trajectory = true_trajectory.flatten(end_dim=1)
             pred_trajectory = pred_trajectory.flatten(end_dim=1)
             true_transition_logits = true_transition_logits.flatten(end_dim=1)
@@ -111,8 +117,6 @@ class BenchmarkHDGMetricsCallback(Callback):
             # the KL div must be computed in cross fashion:
             # forward KL is KL with respect to true trajectory
             # reverse KL is KL with respect to predicted trajectory
-            timesteps = torch.arange(true_trajectory.shape[0], device=pl_module.device)
-            timesteps = timesteps.repeat_interleave(true_trajectory.shape[1])
             pl_module.reverse_kl_div.update(
                 p=pred_transition_logits, 
                 q=self.benchmark.get_transition_logits(pred_trajectory, timesteps)
