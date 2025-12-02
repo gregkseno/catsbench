@@ -9,5 +9,8 @@ optimizer:
 prior: ${prior}
 
 dim: ${data.dim}
+num_categories: ${data.num_categories}
 num_potentials: 10
+num_timesteps: ${prior.num_timesteps}
 distr_init: uniform
+tau: 1.0

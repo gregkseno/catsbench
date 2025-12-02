@@ -15,6 +15,7 @@ ema:
 
 prior: ${prior}
 
+num_timesteps: ${prior.num_timesteps}
 num_first_iterations: 10
 kl_loss_coeff: 1.0
 ce_loss_coeff: 0
@@ -23,3 +24,4 @@ use_mini_batch: false
 ignore_index: -100
 accumulate_grad_batches: 1
 argmax_mode: true
+tau: 1.0
