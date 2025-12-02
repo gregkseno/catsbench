@@ -4,7 +4,7 @@ import torch
 from torchmetrics import MetricCollection
 from lightning.pytorch import Callback, Trainer
 
-from benchmark import Benchmark
+from benchmark import BenchmarkHDG
 from benchmark.metrics import (
     ClassifierTwoSampleTest,
     ShapeScore,
@@ -16,7 +16,7 @@ from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
 
 
 class BenchmarkHDGMetricsCallback(Callback):
-    benchmark: Benchmark
+    benchmark: BenchmarkHDG
 
     def __init__(
         self,

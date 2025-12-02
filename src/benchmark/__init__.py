@@ -1,1 +1,1 @@
-from .benchmark import Benchmark, BenchmarkImage, BenchmarkText
+from .benchmark import BenchmarkHDG, BenchmarkImage, BenchmarkText

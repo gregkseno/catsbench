@@ -270,7 +270,7 @@ class BenchmarkBase:
             self.generator = self.generator.to(device)
         self.device = device
 
-class Benchmark(BenchmarkBase):
+class BenchmarkHDG(BenchmarkBase):
     def __init__(
         self, 
         dim: int,

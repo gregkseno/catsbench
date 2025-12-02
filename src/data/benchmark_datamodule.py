@@ -5,7 +5,7 @@ from lightning import LightningDataModule
 
 from src.utils.ranked_logger import RankedLogger
 from src.utils import CoupleDataset, InfiniteCoupleDataset
-from benchmark import Benchmark, BenchmarkImage, BenchmarkText
+from benchmark import BenchmarkHDG, BenchmarkImage, BenchmarkText
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -19,7 +19,7 @@ class BenchmarkDataModule(LightningDataModule):
         batch_size: int,
         val_batch_size: int,
         input_dist: Literal['gaussian', 'uniform'],
-        benchmark: Union[Benchmark, BenchmarkImage, BenchmarkText],
+        benchmark: Union[BenchmarkHDG, BenchmarkImage, BenchmarkText],
         num_workers: int = 0,
         pin_memory: bool = False,
         dir: str = './data/benchmark',
@@ -29,7 +29,7 @@ class BenchmarkDataModule(LightningDataModule):
         # the method arguments and put to `self.hparams`
         self.save_hyperparameters(logger=False)
 
-        self.benchmark: Optional[Union[Benchmark, BenchmarkImage, BenchmarkText]] = None
+        self.benchmark: Optional[Union[BenchmarkHDG, BenchmarkImage, BenchmarkText]] = None
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
