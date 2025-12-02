@@ -1,15 +1,15 @@
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from sklearn.decomposition import PCA
 
-from lightning.pytorch import LightningModule
 from lightning.pytorch.loggers import WandbLogger, CometLogger
 from lightning.pytorch.utilities import rank_zero_only
 
-from src.plotter.base import BasePlotterCallback
-from src.utils import convert_to_numpy, fig2img
+from .base import BasePlotterCallback
+from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
+from ..utils import convert_to_numpy, fig2img
 from benchmark import Benchmark
 
 
@@ -80,7 +80,7 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         self,
         x_start: torch.Tensor | np.ndarray, 
         x_end: torch.Tensor | np.ndarray, 
-        pl_module: LightningModule,
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
         fb = getattr(pl_module, 'fb', None) or 'forward' 
@@ -130,7 +130,7 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         self,
         x_start: torch.Tensor | np.ndarray, 
         x_end: torch.Tensor | np.ndarray,
-        pl_module: LightningModule,
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
         fb = getattr(pl_module, 'fb', None) or 'forward' 
