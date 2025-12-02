@@ -20,7 +20,7 @@ case "${SLURM_ARRAY_TASK_ID}" in
       hydra.launcher.tasks_per_node=1 hydra.launcher.cpus_per_task=2 hydra.launcher.mem_gb=70 \
       seed=${SEED} data.num_workers=1 data.pin_memory=true 'hydra.launcher.submitit_folder=${paths.log_dir}/.submitit' \
       +data.reversed=true \
-      experiment=dlight_sb/benchmark/d2_g002,dlight_sb/benchmark/d2_g005,dlight_sb/benchmark/d2_u0005,dlight_sb/benchmark/d2_u001
+      experiment=dlight_sb/benchmark_hdg/d2_g002,dlight_sb/benchmark_hdg/d2_g005,dlight_sb/benchmark_hdg/d2_u0005,dlight_sb/benchmark_hdg/d2_u001
     ;;
   1)
     python -m src.run -m \
@@ -28,7 +28,7 @@ case "${SLURM_ARRAY_TASK_ID}" in
       hydra.launcher.tasks_per_node=1 hydra.launcher.cpus_per_task=2 hydra.launcher.mem_gb=70 \
       seed=${SEED} data.num_workers=1 data.pin_memory=true 'hydra.launcher.submitit_folder=${paths.log_dir}/.submitit' \
       +data.reversed=true \
-      experiment=dlight_sb/benchmark/d16_g002,dlight_sb/benchmark/d16_g005,dlight_sb/benchmark/d16_u0005,dlight_sb/benchmark/d16_u001
+      experiment=dlight_sb/benchmark_hdg/d16_g002,dlight_sb/benchmark_hdg/d16_g005,dlight_sb/benchmark_hdg/d16_u0005,dlight_sb/benchmark_hdg/d16_u001
     ;;
   2)
     python -m src.run -m \
@@ -36,7 +36,7 @@ case "${SLURM_ARRAY_TASK_ID}" in
       hydra.launcher.tasks_per_node=1 hydra.launcher.cpus_per_task=2 hydra.launcher.mem_gb=70 \
       seed=${SEED} data.num_workers=1 data.pin_memory=true 'hydra.launcher.submitit_folder=${paths.log_dir}/.submitit' \
       +data.reversed=true \
-      experiment=dlight_sb/benchmark/d64_g002,dlight_sb/benchmark/d64_g005,dlight_sb/benchmark/d64_u0005,dlight_sb/benchmark/d64_u001
+      experiment=dlight_sb/benchmark_hdg/d64_g002,dlight_sb/benchmark_hdg/d64_g005,dlight_sb/benchmark_hdg/d64_u0005,dlight_sb/benchmark_hdg/d64_u001
     ;;
   *)
     echo "Unknown SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID}" >&2
