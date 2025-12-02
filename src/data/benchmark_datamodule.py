@@ -1,16 +1,16 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Literal, Optional, Union
 
-import torch
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 
 from src.utils.ranked_logger import RankedLogger
 from src.utils import CoupleDataset, InfiniteCoupleDataset
-from benchmark import BenchmarkText
+from benchmark import Benchmark, BenchmarkImage, BenchmarkText
+
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-class BenchmarkTextDataModule(LightningDataModule):
+class BenchmarkDataModule(LightningDataModule):
     def __init__(
         self,
         dim: int,
@@ -18,25 +18,25 @@ class BenchmarkTextDataModule(LightningDataModule):
         num_potentials: int,
         batch_size: int,
         val_batch_size: int,
-        benchmark_config: Dict[str, Any],
+        input_dist: Literal['gaussian', 'uniform'],
+        benchmark: Union[Benchmark, BenchmarkImage, BenchmarkText],
         num_workers: int = 0,
         pin_memory: bool = False,
-        dir: str = './data/benchmark_images',
-        generator_path: str = './checkpoints/gpt2-tinystories-final'
+        dir: str = './data/benchmark',
     ) -> None:
         super().__init__()
         # somehow this function is able to load all 
         # the method arguments and put to `self.hparams`
         self.save_hyperparameters(logger=False)
 
-        self.benchmark: Optional[BenchmarkTexts] = None
+        self.benchmark: Optional[Union[Benchmark, BenchmarkImage, BenchmarkText]] = None
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None
 
     def prepare_data(self) -> None:
         pass
-        # BenchmarkImages.download(...)
+        # Benchmark.download(...)
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data by seting variables: `self.data_train`, `self.data_val`, `self.data_test`."""
@@ -56,26 +56,20 @@ class BenchmarkTextDataModule(LightningDataModule):
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.benchmark and not self.data_train and not self.data_val and not self.data_test:
             device = self.trainer.strategy.root_device if self.trainer is not None else 'cpu'
-            self.benchmark = BenchmarkTexts(**self.hparams.benchmark_config, device=device)
-            log.info(f"Loading BenchmarkTexts datasets to {device}...")
-
-            # Permute the target dataset to ensure unpaired setup
-            random_indices = torch.randperm(len(self.benchmark.target_dataset))
-            self.benchmark.target_dataset = self.benchmark.target_dataset[random_indices]
+            self.benchmark = self.hparams.benchmark(device=device)
+            log.info(f"Loading Benchmark datasets to {device}...")
 
             ###################### TRAINING DATASET ######################
-            # NOTE: The desired generation direction is:
-            # target (noiced digit) -> input (clean digit) 
             self.data_train = InfiniteCoupleDataset(
                 self.batch_size_per_device,
-                sample_input=self.benchmark.sample_target,
-                sample_target=self.benchmark.sample_input,
+                sample_input=self.benchmark.sample_input,
+                sample_target=self.benchmark.sample_target
             )
 
-            ####################### VALIDATION DATASET ######################
+            ####################### VALIDATION/TEST DATASET ######################
             self.data_val = CoupleDataset(
-                input_dataset=self.benchmark.target_dataset,
-                target_dataset=self.benchmark.input_dataset,
+                input_dataset=self.benchmark.input_dataset,
+                target_dataset=self.benchmark.target_dataset,
             )
 
     def train_dataloader(self) -> DataLoader[Any]:
