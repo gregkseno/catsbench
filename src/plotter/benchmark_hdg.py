@@ -21,6 +21,7 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         self,
         dim: int,
         num_categories: int,
+        num_samples: int,
         num_trajectories: int, 
         num_translations: int,
         axlim: Optional[Tuple[float, float]] = None,
@@ -32,6 +33,7 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         self.dim = dim
         self.num_categories = num_categories
 
+        self.num_samples = num_samples
         self.num_trajectories = num_trajectories
         self.num_translations = num_translations
         if dim > 2:

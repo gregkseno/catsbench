@@ -12,6 +12,7 @@ class BasePlotterCallback(Callback):
     benchmark: BenchmarkBase
     dim: int
     num_categories: int
+    num_samples: int
     num_trajectories: int
     num_translations: int
 
