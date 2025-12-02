@@ -19,8 +19,10 @@ class TrajectoryKLDivergence(KLDivergence):
         self.logits = logits
 
     def update(self, p: torch.Tensor, q: torch.Tensor) -> None:
-        assert len(p.shape) >= 3, \
-            "Inputs must be trajectories with shape [batch_size, ..., num_categories]!"
+        if len(p.shape) < 3 or p.shape != q.shape:
+            raise ValueError(
+                "Inputs must be trajectories with shape [batch_size, ..., num_categories]!"
+            )
         if self.logits:
             p = p.log_softmax(dim=-1)
             q = q.log_softmax(dim=-1)
