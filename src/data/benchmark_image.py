@@ -4,14 +4,14 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 
-from src.utils.logging.console import RankedLogger
+from src.utils.ranked_logger import RankedLogger
 from src.utils import CoupleDataset, InfiniteCoupleDataset
-from benchmark import BenchmarkImages
+from benchmark import BenchmarkImage
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-class BenchmarkImagesDataModule(LightningDataModule):
+class BenchmarkImageDataModule(LightningDataModule):
     def __init__(
         self,
         dim: int,
@@ -62,8 +62,8 @@ class BenchmarkImagesDataModule(LightningDataModule):
             log.info(f"Loading BenchmarkImages datasets to {device}...")
 
             # Permute the target dataset to ensure unpaired setup
-            random_indices = torch.randperm(len(self.benchmark.target_dataset))
-            self.benchmark.target_dataset = self.benchmark.target_dataset[random_indices]
+            # random_indices = torch.randperm(len(self.benchmark.target_dataset))
+            # self.benchmark.target_dataset = self.benchmark.target_dataset[random_indices]
 
             ###################### TRAINING DATASET ######################
             # NOTE: The desired generation direction is:

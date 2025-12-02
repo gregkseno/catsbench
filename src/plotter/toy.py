@@ -10,7 +10,7 @@ from lightning.pytorch.utilities import rank_zero_only
 from src.utils import convert_to_numpy, fig2img
 
 
-class ToyLogger(Callback):
+class ToyPlotterCallback(Callback):
     def __init__(
         self,
         num_samples: int,
@@ -156,13 +156,15 @@ class ToyLogger(Callback):
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
-        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
+        fb = getattr(pl_module, 'fb', None) or 'forward' 
         pred_x_end = convert_to_numpy(pl_module.sample(x_start))
         x_start = convert_to_numpy(x_start)
         x_end = convert_to_numpy(x_end)
 
         fig, axes = plt.subplots(1, 3, **self.samples_fig_config)
-        fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.iteration}')
+        iteration = getattr(pl_module, "iteration", None)
+        if iteration is not None:
+            suptitle += f", Iteration {iteration}"
 
         axes[0].scatter(x_start[:, 0], x_start[:, 1], **self.samples_start_config) 
         axes[1].scatter(x_end[:, 0], x_end[:, 1], **self.samples_end_config)
@@ -205,11 +207,13 @@ class ToyLogger(Callback):
         pl_module: LightningModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ):
-        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
+        fb = getattr(pl_module, 'fb', None) or 'forward' 
         fig, ax = plt.subplots(1, 1, **self.trajectories_fig_config)
         ax.get_xaxis().set_ticklabels([])
         ax.get_yaxis().set_ticklabels([])
-        fig.suptitle(f'Epoch {pl_module.current_epoch}, Iteration {pl_module.iteration}')
+        iteration = getattr(pl_module, "iteration", None)
+        if iteration is not None:
+            suptitle += f", Iteration {iteration}"
         
         pred_x_end = convert_to_numpy(pl_module.sample(x_start))
         traj_start = x_start[:self.num_trajectories]

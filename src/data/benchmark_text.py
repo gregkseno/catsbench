@@ -4,13 +4,13 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 
-from src.utils.logging.console import RankedLogger
+from src.utils.ranked_logger import RankedLogger
 from src.utils import CoupleDataset, InfiniteCoupleDataset
-from benchmark import BenchmarkTexts
+from benchmark import BenchmarkText
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-class BenchmarkTextsDataModule(LightningDataModule):
+class BenchmarkTextDataModule(LightningDataModule):
     def __init__(
         self,
         dim: int,

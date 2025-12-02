@@ -9,7 +9,7 @@ import lightning as L
 from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 
-from src.utils.logging.console import RankedLogger
+from src.utils.ranked_logger import RankedLogger
 from src.utils import instantiate_callbacks, instantiate_loggers
 
 try:
@@ -75,8 +75,29 @@ def main(config: DictConfig):
         trainer.fit(model=method, datamodule=datamodule, ckpt_path=config.get('ckpt_path'))
     elif config.task_name == 'test':
         assert config.get('ckpt_path') is not None, 'The `ckpt_path` must be provided for testing!'
-        log.info('Starting testing!')
-        trainer.test(model=method, datamodule=datamodule, ckpt_path=config.get('ckpt_path'))
+        ckpt_path = config.get('ckpt_path')
+        if ckpt_path == 'auto':
+            log.info('Auto-detecting the latest checkpoint path...')
+            log_dir = config.paths.log_dir
+            hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
+            data_choice = hydra_cfg.runtime.choices.data
+            method_choice = hydra_cfg.runtime.choices.method
+            experiment_choice = hydra_cfg.runtime.choices.experiment
+            exp_dir = os.path.join(
+                log_dir, 'runs', data_choice, method_choice, experiment_choice, str(config.seed)
+            )
+            log.info(f'data_choice: {data_choice}')
+            log.info(f'method_choice: {method_choice}')
+            log.info(f'experiment_choice: {experiment_choice}')
+            log.info(f'config.seed: {config.seed}')
+            subdirs = [
+                os.path.join(exp_dir, sub_dir) for sub_dir in os.listdir(exp_dir)
+            ]
+            latest_subdir = min(subdirs, key=os.path.getmtime)
+            ckpt_path = os.path.join(latest_subdir, 'checkpoints', 'last.ckpt')           
+        
+        log.info(f'Starting testing with ckpt_path: {ckpt_path}.')
+        trainer.test(model=method, datamodule=datamodule, ckpt_path=ckpt_path)
     else:
         raise ValueError(f'Unknown task name: {config.task_name}!')
 

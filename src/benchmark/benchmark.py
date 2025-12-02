@@ -268,7 +268,7 @@ class Benchmark(BenchmarkBase):
         target_samples = self.sample_target_given_input(input_samples)
         return input_samples, target_samples
 
-class BenchmarkImages(BenchmarkBase):
+class BenchmarkImage(BenchmarkBase):
     generator: nn.Module
 
     def __init__(
@@ -412,7 +412,7 @@ class SentenceGenerator:
 
         return full_text_list
 
-class BenchmarkTexts(BenchmarkBase):
+class BenchmarkText(BenchmarkBase):
     def __init__(
         self, 
         dim: int,

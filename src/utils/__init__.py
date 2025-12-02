@@ -3,6 +3,8 @@ from src.utils.data import (
     broadcast, 
     log_space_product,
     logits_prod,
+    stable_clamp,
+    gumbel_sample,
     convert_to_numpy, 
     convert_to_torch, 
     continuous_to_discrete,
@@ -12,8 +14,3 @@ from src.utils.data import (
     optimize_coupling
 )
 from src.utils.visualization import fig2img
-from src.utils.logging.toy import ToyLogger
-from src.utils.logging.benchmark import BenchmarkLogger
-from src.utils.logging.benchmark_images import BenchmarkImagesLogger
-from src.utils.logging.benchmark_texts import BenchmarkTextsLogger
-

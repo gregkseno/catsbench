@@ -28,6 +28,7 @@ prior:
   prior_type: gaussian
   num_timesteps: 127
   num_skip_steps: 1
+  eps: 1e-6
 
 method:
   use_mini_batch: true

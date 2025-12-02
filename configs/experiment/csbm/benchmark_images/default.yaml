@@ -28,6 +28,7 @@ prior:
   prior_type: gaussian
   num_timesteps: 127
   num_skip_steps: 1
+  eps: 1e-6
 
 method:
   use_mini_batch: true
@@ -41,7 +42,7 @@ method:
 
 trainer:
   max_epochs: 20
-  limit_train_batches: 20000
+  limit_train_batches: 10000
   limit_val_batches: 200
   limit_test_batches: 200
   val_check_interval: null

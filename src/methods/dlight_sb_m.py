@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import math
 import torch
@@ -9,13 +9,13 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from lightning import LightningModule
 
 from src.data.prior import Prior
-from src.utils import optimize_coupling
-from src.utils.logging.console import RankedLogger
+from src.utils import optimize_coupling, gumbel_sample
+from src.utils.ranked_logger import RankedLogger
 
 
 HPARAMS = (
-    'dim', 'num_potentials', 'sample_prob',
-    'use_mini_batch', 'distr_init',
+    'dim', 'num_categories', 'num_potentials', 'num_timesteps',
+    'sample_prob', 'use_mini_batch', 'distr_init', 'tau',
     'kl_loss_coeff', 'mse_loss_coeff', 
     'optimizer', 'scheduler'
 )
@@ -27,14 +27,17 @@ class DLightSB_M(LightningModule):
         self, 
         prior: Prior,
         dim: int,
-        num_potentials: int, 
+        num_categories: int,
+        num_potentials: int,
+        num_timesteps: int, 
         optimizer: Optimizer, # partially initialized 
         scheduler: Optional[LRScheduler] = None, # partially initialized 
         kl_loss_coeff: float = 1.0,
         mse_loss_coeff: float = 0.0,
         use_mini_batch: bool = False,
         distr_init: Literal['uniform', 'gaussian', 'samples'] = 'gaussian', 
-        sample_prob: float = 0.9
+        sample_prob: float = 0.9,
+        tau: float = 1.0,
     ) -> None:
         super().__init__()
         self.save_hyperparameters(*HPARAMS, logger=False)        
@@ -43,7 +46,7 @@ class DLightSB_M(LightningModule):
         self.log_alpha = nn.Parameter(torch.zeros(num_potentials))
         self.log_cp_cores = nn.ParameterList([
             nn.Parameter(torch.empty(
-                num_potentials, prior.num_categories,
+                num_potentials, num_categories,
                 device=self.log_alpha.device, dtype=self.log_alpha.dtype
             ))
             for _ in range(dim)
@@ -60,16 +63,16 @@ class DLightSB_M(LightningModule):
 
         if self.hparams.distr_init == 'gaussian':
             cur = (-1.0 + (0.5**2) * torch.randn(
-                self.hparams.dim, self.hparams.num_potentials, self.prior.num_categories, 
+                self.hparams.dim, self.hparams.num_potentials, self.hparams.num_categories, 
                 device=self.log_alpha.device, dtype=self.log_alpha.dtype)
-            ) / (self.prior.num_categories * self.hparams.num_potentials)
+            ) / (self.hparams.num_categories * self.hparams.num_potentials)
             cur = torch.log((cur ** 2).clamp_min(1e-12))  # (D, K, S)
             for d in range(self.hparams.dim):
                 self.log_cp_cores[d].data.copy_(cur[d])
 
         elif self.hparams.distr_init == 'uniform':
             val = torch.log(torch.tensor(
-                1.0 / (self.prior.num_categories * self.hparams.num_potentials), 
+                1.0 / (self.hparams.num_categories * self.hparams.num_potentials), 
                 device=self.log_alpha.device, dtype=self.log_alpha.dtype
             ))
             for d in range(self.hparams.dim):
@@ -82,7 +85,7 @@ class DLightSB_M(LightningModule):
                 f"init_samples must be (num_potentials, dim), got {tuple(init_samples.shape)}"
 
             base_val = torch.log(torch.tensor(
-                (1 - self.hparams.sample_prob) / (self.prior.num_categories - 1),
+                (1 - self.hparams.sample_prob) / (self.hparams.num_categories - 1),
                 device=self.log_alpha.device, dtype=self.log_alpha.dtype
             ))
             hot_val = torch.tensor(math.log(
@@ -91,7 +94,7 @@ class DLightSB_M(LightningModule):
 
             for d in range(self.hparams.dim):
                 core = torch.full((
-                    self.hparams.num_potentials, self.prior.num_categories), base_val, 
+                    self.hparams.num_potentials, self.hparams.num_categories), base_val, 
                     device=self.log_alpha.device, dtype=self.log_alpha.dtype
                 )
                 col_idx = init_samples[:, d].long().view(self.hparams.num_potentials, 1)                  # (K, 1)
@@ -116,49 +119,51 @@ class DLightSB_M(LightningModule):
         if unexpected:
             log.info(f"Unexpected keys (ignored by strict=False): {unexpected}")
         return missing, unexpected
+    
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        checkpoint['iteration'] = self.iteration
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         self._loaded_from_ckpt = True
+        if 'iteration' in checkpoint:
+            self.iteration = checkpoint['iteration']
 
     def setup(self, stage: Literal['fit', 'validate', 'test']):
         if stage in (None, "fit") and not self._did_weight_init and not self._loaded_from_ckpt:
-            assert hasattr(self.trainer, 'datamodule'), "Trainer has no datamodule attribute"
-            assert hasattr(self.trainer.datamodule, 'benchmark'), "Datamodule has no benchmark attribute"
-            init_samples: torch.Tesnor = self.trainer.datamodule.benchmark.sample_input(self.hparams.num_potentials)
-            init_samples = init_samples.flatten(start_dim=1) # (num_potentials, dim)
+            init_samples = None
+            if hasattr(self.trainer, 'datamodule') and hasattr(self.trainer.datamodule, 'benchmark'):
+                benchmark = self.trainer.datamodule.benchmark
+                init_samples: torch.Tensor = benchmark.sample_input(self.hparams.num_potentials)
+                init_samples = init_samples.flatten(start_dim=1) # (num_potentials, dim)
             self.init_weights(init_samples)
 
     def kl_loss(
         self,
-        true_q_posterior_logits: torch.Tensor, 
-        pred_q_posterior_logits: torch.Tensor,
-    ) -> torch.Tensor:        
+        true_logits: torch.Tensor, 
+        pred_logits: torch.Tensor,
+    ) -> torch.Tensor:
         '''KL-divergence calculation.'''
-        kl_loss = torch.softmax(true_q_posterior_logits, dim=-1) * (
-            torch.log_softmax(true_q_posterior_logits, dim=-1)
-            - torch.log_softmax(pred_q_posterior_logits, dim=-1)
-        )
-        kl_loss = kl_loss.sum(dim=-1).mean()
-        return kl_loss
+        pred_log_probs = torch.log_softmax(pred_logits, dim=-1)
+        true_log_probs = torch.log_softmax(true_logits, dim=-1)
+        return F.kl_div(pred_log_probs, true_log_probs, log_target=True, reduction='batchmean')
         
     def mse_loss(
         self,
-        true_q_posterior_logits: torch.Tensor, 
-        pred_q_posterior_logits: torch.Tensor,
+        true_logits: torch.Tensor, 
+        pred_logits: torch.Tensor,
     ) -> torch.Tensor:        
         '''MSE calculation.'''
-        mse_loss = F.mse_loss(
-            torch.softmax(true_q_posterior_logits, dim=-1), 
-            torch.softmax(pred_q_posterior_logits, dim=-1)
-        )
-        return mse_loss 
+        pred_probs = torch.softmax(pred_logits, dim=-1)
+        true_probs = torch.softmax(true_logits, dim=-1)
+        mse_loss = F.mse_loss(pred_probs, true_probs, reduction='sum')
+        return mse_loss / true_probs.shape[0]
 
     def get_transition_logits(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         input_shape = x_t.shape
         x_t = x_t.flatten(start_dim=1)
         t_orig = t  # keep original for onestep
-        t = self.prior.num_timesteps + 1 - t_orig
-        tp1 = self.prior.num_timesteps - t_orig
+        t = self.hparams.num_timesteps + 1 - t_orig
+        tp1 = self.hparams.num_timesteps - t_orig
 
         log_u_t = torch.empty(
             x_t.shape[0], self.hparams.num_potentials, self.hparams.dim, device=self.device
@@ -171,23 +176,23 @@ class DLightSB_M(LightningModule):
         sum_log_u_t = log_u_t.sum(dim=-1)  # [B, K]
 
         transition_logits = torch.empty(
-            x_t.shape[0], self.hparams.dim, self.prior.num_categories, device=self.device
+            x_t.shape[0], self.hparams.dim, self.hparams.num_categories, device=self.device
         ) # [B, D, S]
-        x_tp1_d = torch.arange(self.prior.num_categories, device=self.device) # [S]
+        x_tp1_d = torch.arange(self.hparams.num_categories, device=self.device) # [S]
         x_tp1_d = x_tp1_d.unsqueeze(0).repeat(x_t.shape[0], 1).reshape(-1) # [B*S]
-        tp1_repeated = tp1.repeat_interleave(self.prior.num_categories) # [B*S]
+        tp1_repeated = tp1.repeat_interleave(self.hparams.num_categories) # [B*S]
         for d in range(self.hparams.dim):
             log_pi_ref_tp1 = self.prior.extract('cumulative', tp1_repeated, row_id=x_tp1_d) # [B*S, S]
             log_u_tp1_d = torch.logsumexp(
                 self.log_cp_cores[d][None, :, :] + log_pi_ref_tp1[:, None, :], dim=-1 # [B*S, K, S]
             )  # [B*S, K]
-            log_u_tp1_d = log_u_tp1_d.reshape(x_t.shape[0], self.prior.num_categories, self.hparams.num_potentials) # [B, S, K]
+            log_u_tp1_d = log_u_tp1_d.reshape(x_t.shape[0], self.hparams.num_categories, self.hparams.num_potentials) # [B, S, K]
             log_u_tp1_d = log_u_tp1_d.permute(0, 2, 1) # [B, K, S]      
             log_phi_tp1_d = torch.logsumexp(
                 self.log_alpha[None, :, None] + log_u_tp1_d + (sum_log_u_t - log_u_t[:, :, d])[:, :, None], dim=1 # [B, K, S]
             ) # [B, S]
             transition_logits[:, d, :] = log_phi_tp1_d + self.prior.extract('onestep', t_orig+1, row_id=x_t[:, d]) # [B, S]
-        return transition_logits.reshape(*input_shape, self.prior.num_categories) # [B, ..., S]
+        return transition_logits.reshape(*input_shape, self.hparams.num_categories) # [B, ..., S]
 
     def optimal_projection(
         self,
@@ -196,20 +201,21 @@ class DLightSB_M(LightningModule):
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:  
         batch_size = true_x_start.shape[0]
         t = torch.randint(
-            low=0, high=self.prior.num_timesteps + 1,
+            low=0, high=self.hparams.num_timesteps + 1,
             size=(batch_size,), device=self.device
         )
         x_t = self.prior.sample_bridge(true_x_start, true_x_end, t)
 
         true_q_posterior_logits = self.prior.posterior_logits_reverse(true_x_end, x_t, t, logits=False)
-        pred_q_transition_logits = self.get_transition_logits(x_t, t=t)
-        pred_q_transition_logits = pred_q_transition_logits.log_softmax(dim=-1)
+        pred_p_transition_logits = self.get_transition_logits(x_t, t=t)
 
-        kl = self.kl_loss(true_q_posterior_logits, pred_q_transition_logits)
-        mse = self.mse_loss(true_q_posterior_logits, pred_q_transition_logits)
-
-        loss = self.hparams.kl_loss_coeff * kl + \
-               self.hparams.mse_loss_coeff * mse
+        loss, kl, mse = 0, 0, 0
+        if self.hparams.kl_loss_coeff > 0:
+            kl = self.kl_loss(true_q_posterior_logits, pred_p_transition_logits)
+            loss += self.hparams.kl_loss_coeff * kl
+        if self.hparams.mse_loss_coeff > 0:
+            mse = self.mse_loss(true_q_posterior_logits, pred_p_transition_logits)
+            loss += self.hparams.mse_loss_coeff * mse
         
         info = {f'kl_loss': kl, f'mse_loss': mse}
         return loss, info
@@ -277,13 +283,18 @@ class DLightSB_M(LightningModule):
         return {'optimizer': optimizer}
 
     @torch.no_grad()
-    def markov_sample(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def markov_sample(
+        self, 
+        x_t: torch.Tensor, 
+        t: torch.Tensor,
+        return_transitions: bool = False
+    ) -> torch.Tensor:
         input_shape = x_t.shape
         x_t = x_t.flatten(start_dim=1)
 
         t_orig = t  # keep original for onestep
-        t   = self.prior.num_timesteps + 1 - t_orig
-        tp1 = self.prior.num_timesteps - t_orig
+        t   = self.hparams.num_timesteps + 1 - t_orig
+        tp1 = self.hparams.num_timesteps - t_orig
 
         log_u_t = torch.empty(x_t.shape[0], self.hparams.num_potentials, self.hparams.dim, device=self.device)
         for d in range(self.hparams.dim):
@@ -294,48 +305,110 @@ class DLightSB_M(LightningModule):
             ) # [B, K]
 
         log_w_k = self.log_alpha[None, :] + log_u_t.sum(dim=-1) # [B, K]
-        log_p_k = log_w_k - torch.logsumexp(log_w_k, dim=1, keepdim=True) # [B, K]
-        k_star = torch.multinomial(log_p_k.exp(), num_samples=1).squeeze(-1) # [B]
+        k_star = gumbel_sample(log_w_k, tau=self.hparams.tau, dim=-1)  # [B]
 
-        x_tp1 = torch.empty(x_t.shape[0], self.hparams.dim, dtype=torch.long, device=self.device)
+        logits = torch.empty(x_t.shape[0], self.hparams.dim, self.hparams.num_categories, device=self.device)
         for d in range(self.hparams.dim):
-            x_tp1_d = torch.arange(self.prior.num_categories, device=self.device) # [S]
+            x_tp1_d = torch.arange(self.hparams.num_categories, device=self.device) # [S]
             x_tp1_d = x_tp1_d.unsqueeze(0).repeat(x_t.shape[0], 1).reshape(-1) # [B*S]
-            tp1_repeated = tp1.repeat_interleave(self.prior.num_categories) # [B*S]
+            tp1_repeated = tp1.repeat_interleave(self.hparams.num_categories) # [B*S]
             log_pi_ref_tp1 = self.prior.extract('cumulative', tp1_repeated, row_id=x_tp1_d) # [B*S, S]
             log_u_tp1_d = torch.logsumexp(
                 self.log_cp_cores[d][None, :, :] + log_pi_ref_tp1[:, None, :], # [B*S, K, S]
                 dim=-1
             )  # [B*S, K]
             log_u_tp1_d = (log_u_tp1_d
-                .reshape(x_t.shape[0], self.prior.num_categories, self.hparams.num_potentials)
+                .reshape(x_t.shape[0], self.hparams.num_categories, self.hparams.num_potentials)
                 .permute(0, 2, 1) # [B, K, S]
             )
 
             batch_idx = torch.arange(x_t.shape[0], device=self.device)
             log_u_tp1_star = log_u_tp1_d[batch_idx, k_star, :] # [B, S]
             logits_x_tp1_d = self.prior.extract('onestep', t_orig+1, row_id=x_t[:, d]) + log_u_tp1_star # [B, S]
-
-            x_tp1[:, d] = torch.multinomial(
-                torch.softmax(logits_x_tp1_d, dim=-1), num_samples=1
-            ).squeeze(-1)
+            logits[:, d, :] = logits_x_tp1_d
+            
+        x_tp1 = gumbel_sample(logits, tau=self.hparams.tau, dim=-1)
+        if return_transitions:
+            return x_tp1.reshape(input_shape), logits
         return x_tp1.reshape(input_shape)
 
     @torch.no_grad()
-    def sample(self, x: torch.Tensor) -> torch.Tensor:
+    def sample(
+        self, 
+        x_start: torch.Tensor, 
+        use_onestep_sampling: bool = True
+    ) -> torch.Tensor:
         """Sample from the model starting from `x` returning the final sample."""
-        for t in range(0, self.prior.num_timesteps + 1):
-            t = torch.tensor([t] * x.shape[0], device=self.device)
-            x = self.markov_sample(x, t)
-        return x
+        if use_onestep_sampling:
+            input_shape = x_start.shape
+            x_start = x_start.flatten(start_dim=1) # (B, D)
+
+            log_z = torch.zeros(x_start.shape[0], self.hparams.num_potentials, device=self.device)
+            for d in range(self.hparams.dim):
+                log_pi_ref = self.prior.extract_last_cum_matrix(x_start[:, d]) # (B, S)
+                log_z = log_z + torch.logsumexp(
+                    self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :], dim=2
+                ) # (1, K, S) + (B, 1, S) -> (B, K)
+
+            log_w_k = self.log_alpha[None, :] + log_z # (B, K)
+            k_star = gumbel_sample(log_w_k, dim=-1, tau=self.hparams.tau) # (B,)
+
+            logits = torch.empty(x_start.shape[0], self.hparams.dim, self.hparams.num_categories, device=self.device)
+            for d in range(self.hparams.dim):
+                log_pi_ref = self.prior.extract_last_cum_matrix(x_start[:, d]) # (B, S)
+                log_cp_cores_d = self.log_cp_cores[d][None, :, :].expand(x_start.shape[0], -1, -1) # (B, K, S)
+                log_cp_cores_d_selected = torch.gather(
+                    log_cp_cores_d, dim=1, index=k_star[:, None, None].expand(-1, -1, self.hparams.num_categories)
+                ).squeeze(1) # (B, 1, S) -> (B, S)
+                log_p_d_selected = log_cp_cores_d_selected + log_pi_ref[:, :] # (B, S)
+                logits[:, d, :] = log_p_d_selected
+            x_end = gumbel_sample(
+                logits, dim=-1, tau=self.hparams.tau
+            ).reshape(input_shape)
+        else:
+
+            x_t = x_start
+            for t in range(0, self.hparams.num_timesteps + 1):
+                t = torch.full([x_start.shape[0]], t, device=self.device)
+                x_t = self.markov_sample(x_t, t, return_transitions=False)
+            x_end = x_t
+        return x_end
     
     @torch.no_grad()
-    def sample_trajectory(self, x: torch.Tensor) -> torch.Tensor:
-        """Sample from the model starting from `x` returning the full trajectory."""
-        trajectory = [x]
-        for t in range(0, self.prior.num_timesteps + 1):
-            t = torch.tensor([t] * x.shape[0], device=self.device)
-            x = self.markov_sample(x, t)
-            trajectory.append(x)
+    def sample_trajectory(
+        self, 
+        x_start: torch.Tensor, 
+        use_onestep_sampling: bool = False,
+        return_transitions: bool = False
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        if use_onestep_sampling:
+            assert not return_transitions, \
+                'Returning transitions is not supported when using bridge samples!'
+        
+        trajectory, transitions = [x_start], []
+        if use_onestep_sampling:
+            x_end = self.sample(x_start, use_onestep_sampling=True)
+            
+            for t in range(1, self.hparams.num_timesteps + 1):
+                t = torch.full((x_start.shape[0],), t, device=x_start.device)
+                x_t = self.prior.sample_bridge(x_start, x_end, t)
+                trajectory.append(x_t)
+            trajectory.append(x_end)
+            
+        else:
+            x_t = x_start
+            for t in range(0, self.hparams.num_timesteps + 1):
+                t = torch.full([x_t.shape[0]], t, device=self.device)
+                out = self.markov_sample(x_t, t, return_transitions=return_transitions)
+                if return_transitions:
+                    x_t, logits = out
+                    transitions.append(logits)
+                else:
+                    x_t = out
+                trajectory.append(x_t)
+
         trajectory = torch.stack(trajectory, dim=0)
+        if return_transitions:
+            transitions = torch.stack(transitions, dim=0)
+            return trajectory, transitions
         return trajectory

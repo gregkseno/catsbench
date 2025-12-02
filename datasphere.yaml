@@ -3,9 +3,10 @@ desc: Train CSBM on benchmark images
 cmd: >
   python -m src.run \
     paths.data_dir="${DS_PROJECT_HOME}/data" \
-      seed=1 data.num_workers=7 data.pin_memory=true \
-      experiment=csbm/benchmark_images/images_g001 \
-      +trainer.check_val_every_n_epoch=5
+    paths.ckpt_dir="${DS_PROJECT_HOME}/checkpoints" \
+    seed=1 data.num_workers=15 data.pin_memory=true \
+    experiment=csbm/benchmark_images/images_g001 \
+    +trainer.check_val_every_n_epoch=1
 env:
   python:
     type: manual
@@ -13,7 +14,7 @@ env:
     pip:
       index-url: https://pypi.org/simple
       extra-index-urls:
-        - https://download.pytorch.org/whl/cu124
+        - https://download.pytorch.org/whl/cu118
     requirements-file: requirements.txt
     # vars:
     # - PIP_NO_BUILD_ISOLATION: "1"

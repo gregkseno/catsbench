@@ -15,14 +15,14 @@ from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 
 from src.utils import convert_to_numpy, fig2img
 from src.metrics.c2st import ClassifierTwoSampleTest
-from src.utils.logging.console import RankedLogger
-from benchmark import BenchmarkTexts
+from src.utils.ranked_logger import RankedLogger
+from benchmark import BenchmarkText
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-class BenchmarkTextsLogger(Callback):
-    benchmark: BenchmarkTexts
+class BenchmarkTextMetricsCallback(Callback):
+    benchmark: BenchmarkText
 
     def __init__(
         self,
@@ -149,7 +149,7 @@ class BenchmarkTextsLogger(Callback):
         )
 
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
-        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
+        fb = getattr(pl_module, 'fb', None) or 'forward' 
         
         perplexity = pl_module.perplexity.compute()
         pl_module.log(f'val/perplexity_{fb}', perplexity)
@@ -191,7 +191,7 @@ class BenchmarkTextsLogger(Callback):
         )
 
     def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
-        fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
+        fb = getattr(pl_module, 'fb', None) or 'forward' 
         
         perplexity = pl_module.perplexity.compute()
         pl_module.log(f'val/perplexity_{fb}', perplexity)

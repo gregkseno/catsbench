@@ -5,7 +5,7 @@ from lightning import Callback
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 
-from src.utils.logging.console import RankedLogger
+from src.utils.ranked_logger import RankedLogger
 
 logger = RankedLogger(__name__, rank_zero_only=True)
 

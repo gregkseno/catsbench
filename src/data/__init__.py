@@ -1,4 +1,4 @@
-from src.data.benchmark import BenchmarkDataModule
 from src.data.toy import ToyDataModule
-from src.data.benchmark_images import BenchmarkImagesDataModule
-from src.data.benchmark_texts import BenchmarkTextsDataModule
+from src.data.benchmark_hdg import BenchmarkHDGDataModule
+from src.data.benchmark_image import BenchmarkImageDataModule
+from src.data.benchmark_text import BenchmarkTextDataModule

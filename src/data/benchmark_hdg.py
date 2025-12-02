@@ -1,17 +1,16 @@
 from typing import Any, Dict, Literal, Optional
 
-import torch
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 
-from src.utils.logging.console import RankedLogger
+from src.utils.ranked_logger import RankedLogger
 from src.utils import CoupleDataset, InfiniteCoupleDataset
 from benchmark import Benchmark
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-class BenchmarkDataModule(LightningDataModule):
+class BenchmarkHDGDataModule(LightningDataModule):
     def __init__(
         self,
         dim: int,
@@ -60,15 +59,11 @@ class BenchmarkDataModule(LightningDataModule):
             self.benchmark = Benchmark(**self.hparams.benchmark_config, device=device)
             log.info(f"Loading Benchmark datasets to {device}...")
 
-            # Permute the target dataset to ensure unpaired setup
-            random_indices = torch.randperm(len(self.benchmark.target_dataset))
-            self.benchmark.target_dataset = self.benchmark.target_dataset[random_indices]
-
             ###################### TRAINING DATASET ######################
             self.data_train = InfiniteCoupleDataset(
                 self.batch_size_per_device,
                 sample_input=self.benchmark.sample_input,
-                sample_target=self.benchmark.sample_target,
+                sample_target=self.benchmark.sample_target
             )
 
             ####################### VALIDATION DATASET ######################
