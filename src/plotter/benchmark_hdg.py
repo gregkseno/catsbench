@@ -156,7 +156,7 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         traj_start = traj_start.reshape(-1, *x_start.shape[1:])
 
         # ground truth trajectories
-        trajectories = self.benchmark.sample_target_given_input(
+        trajectories = self.benchmark.sample(
             traj_start, return_trajectories=True
         )
         trajectories = convert_to_numpy(trajectories.reshape(-1, self.dim))

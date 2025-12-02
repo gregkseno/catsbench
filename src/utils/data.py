@@ -39,17 +39,6 @@ def logits_prod(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.T
     log_matrix2 = log_matrix2[:, *insert_nones, :, :] # [batchsize, ..., num_categories, num_categories]
     return torch.logsumexp(log_matrix1 + log_matrix2, dim=-2)
 
-def stable_clamp(
-    tensor: torch.FloatTensor, type: Literal['logs', 'probs'] = 'probs'
-) -> torch.FloatTensor:
-    finfo = torch.finfo(tensor.dtype)
-    if type == 'probs':
-        return tensor.clamp(min=finfo.tiny, max=1.0)
-    elif type == 'logs':
-        return tensor.clamp(min=math.log(finfo.tiny), max=0.0)
-    else:
-        raise ValueError(f"Unknown tesnor type: {type}! Must be 'logs' or 'probs'.")
-
 def gumbel_sample(logits: torch.Tensor, dim: int = -1, tau: float = 1.0) -> torch.Tensor:
     finfo = torch.finfo(logits.dtype)
     noise = torch.rand_like(logits)

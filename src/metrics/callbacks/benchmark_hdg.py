@@ -91,7 +91,7 @@ class BenchmarkHDGMetricsCallback(Callback):
             )
         else:
             repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
-            cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
+            cond_x_end = self.benchmark.sample(repeated_x_start)
             cond_pred_x_end = pl_module.sample(repeated_x_start)
             pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
             
@@ -147,7 +147,7 @@ class BenchmarkHDGMetricsCallback(Callback):
             pl_module.metrics.update(x_end, pred_x_end)
             
             repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
-            cond_x_end = self.benchmark.sample_target_given_input(repeated_x_start)
+            cond_x_end = self.benchmark.sample(repeated_x_start)
             cond_pred_x_end = pl_module.sample(repeated_x_start)
             pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
 

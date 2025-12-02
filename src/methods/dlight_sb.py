@@ -304,7 +304,8 @@ class DLightSB(LightningModule):
             
         x_tp1 = gumbel_sample(logits, tau=self.hparams.tau, dim=-1)
         if return_transitions:
-            return x_tp1.reshape(input_shape), logits
+            # TODO: Optimize logits computation
+            return x_tp1.reshape(input_shape), self.get_transition_logits(x_t, t_orig)
         return x_tp1.reshape(input_shape)
 
     @torch.no_grad()
