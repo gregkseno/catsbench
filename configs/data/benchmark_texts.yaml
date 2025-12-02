@@ -1,4 +1,4 @@
-_target_: src.data.BenchmarkTextsDataModule
+_target_: src.data.BenchmarkDataModule
 dim: 64 
 num_categories: 4096
 num_potentials: 10
@@ -9,7 +9,9 @@ pin_memory: false
 dir: ${paths.data_dir}/benchmark_texts
 generator_path: ${paths.ckpt_dir}/gpt2-tinystories-final
 
-benchmark_config:
+benchmark:
+   _target_: benchmark.BenchmarkText
+  _partial_: true
   dim: 64
   generator_path: ${data.generator_path}
   alpha: ${prior.alpha}
@@ -18,6 +20,8 @@ benchmark_config:
   num_timesteps: ${prior.num_timesteps}
   num_skip_steps: ${prior.num_skip_steps}
   num_val_samples: null
+  reversed: true
+  tau: 1.0
   prior_type: ${prior.prior_type}
   save_path: ${data.dir}
   benchmark_type: gaussian_mixture
