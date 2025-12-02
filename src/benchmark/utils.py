@@ -1,6 +1,7 @@
-from typing import Mapping, Optional, Tuple, Union
+from typing import Literal, Mapping, Optional, Tuple, Union
 import logging
 
+import math
 import numpy as np
 import torch
 import torch.distributed as dist
@@ -20,6 +21,24 @@ def log_space_product_temp(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor)
 def log_space_product(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
     out = torch.log(torch.matmul(torch.exp(log_matrix1), torch.exp(log_matrix2)))
     return out  
+
+def stable_clamp(
+    tensor: torch.FloatTensor, type: Literal['logs', 'probs'] = 'probs'
+) -> torch.FloatTensor:
+    finfo = torch.finfo(tensor.dtype)
+    if type == 'probs':
+        return tensor.clamp(min=finfo.tiny, max=1.0)
+    elif type == 'logs':
+        return tensor.clamp(min=math.log(finfo.tiny), max=0.0)
+    else:
+        raise ValueError(f"Unknown tesnor type: {type}! Must be 'logs' or 'probs'.")
+
+def gumbel_sample(logits: torch.Tensor, dim: int = -1, tau: float = 1.0) -> torch.Tensor:
+    finfo = torch.finfo(logits.dtype)
+    noise = torch.rand_like(logits)
+    noise = torch.clamp(noise, min=finfo.tiny, max=1. - finfo.eps)
+    gumbel_noise = -torch.log(-torch.log(noise))
+    return torch.argmax((logits / tau) + gumbel_noise, dim=dim)
 
 def continuous_to_discrete(
     batch: Union[torch.Tensor, np.ndarray], 

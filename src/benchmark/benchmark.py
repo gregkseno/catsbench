@@ -1,20 +1,16 @@
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional, Tuple, Union
 import os
 
 import torch
 from torch import nn
+from transformers import GPT2LMHeadModel, GPT2TokenizerFast
+
+from tqdm import tqdm
 
 from benchmark.prior import Prior
 from benchmark.stylegan2 import legacy, dnnlib
 from benchmark.stylegan2.training.networks import Generator
-from benchmark.utils import  continuous_to_discrete, sample_separated_means, Logger
-import torch
-from transformers import GPT2LMHeadModel, GPT2Tokenizer
-from torch.nn.utils.rnn import pad_sequence
-
-from transformers import GPT2LMHeadModel, GPT2TokenizerFast
-import torch
-from tqdm import tqdm
+from benchmark.utils import  continuous_to_discrete, sample_separated_means, Logger, gumbel_sample
 
 log = Logger(__name__, rank_zero_only=True)
 SPREADS = {50:{2:1.5, 16:1.5, 64:2.5}, 200:{2:4, 16:8, 64:16}}
@@ -66,13 +62,13 @@ class BenchmarkBase:
         input_shape = x_t.shape
         x_t = x_t.flatten(start_dim=1)
         t_orig = t  # keep original for onestep
-        t = self.prior.num_timesteps + 1 - t_orig
-        tp1 = self.prior.num_timesteps - t_orig
+        t = self.hparams.num_timesteps + 1 - t_orig
+        tp1 = self.hparams.num_timesteps - t_orig
 
         log_u_t = torch.empty(
-            x_t.shape[0], self.num_potentials, self.dim, device=self.device
+            x_t.shape[0], self.hparams.num_potentials, self.hparams.dim, device=self.device
         ) # [B, K, D]
-        for d in range(self.dim):
+        for d in range(self.hparams.dim):
             log_pi_ref_t = self.prior.extract('cumulative', t, row_id=x_t[:, d]) # [B, S]
             log_u_t[:, :, d] = torch.logsumexp(
                 self.log_cp_cores[d][None, :, :] + log_pi_ref_t[:, None, :], dim=-1 # [B, K, S] 
@@ -80,72 +76,155 @@ class BenchmarkBase:
         sum_log_u_t = log_u_t.sum(dim=-1)  # [B, K]
 
         transition_logits = torch.empty(
-            x_t.shape[0], self.dim, self.prior.num_categories, device=self.device
+            x_t.shape[0], self.hparams.dim, self.hparams.num_categories, device=self.device
         ) # [B, D, S]
-        x_tp1_d = torch.arange(self.prior.num_categories, device=self.device) # [S]
+        x_tp1_d = torch.arange(self.hparams.num_categories, device=self.device) # [S]
         x_tp1_d = x_tp1_d.unsqueeze(0).repeat(x_t.shape[0], 1).reshape(-1) # [B*S]
-        tp1_repeated = tp1.repeat_interleave(self.prior.num_categories) # [B*S]
-        for d in range(self.dim):
+        tp1_repeated = tp1.repeat_interleave(self.hparams.num_categories) # [B*S]
+        for d in range(self.hparams.dim):
             log_pi_ref_tp1 = self.prior.extract('cumulative', tp1_repeated, row_id=x_tp1_d) # [B*S, S]
             log_u_tp1_d = torch.logsumexp(
                 self.log_cp_cores[d][None, :, :] + log_pi_ref_tp1[:, None, :], dim=-1 # [B*S, K, S]
             )  # [B*S, K]
-            log_u_tp1_d = log_u_tp1_d.reshape(x_t.shape[0], self.prior.num_categories, self.num_potentials) # [B, S, K]
+            log_u_tp1_d = log_u_tp1_d.reshape(x_t.shape[0], self.hparams.num_categories, self.hparams.num_potentials) # [B, S, K]
             log_u_tp1_d = log_u_tp1_d.permute(0, 2, 1) # [B, K, S]      
             log_phi_tp1_d = torch.logsumexp(
                 self.log_alpha[None, :, None] + log_u_tp1_d + (sum_log_u_t - log_u_t[:, :, d])[:, :, None], dim=1 # [B, K, S]
             ) # [B, S]
             transition_logits[:, d, :] = log_phi_tp1_d + self.prior.extract('onestep', t_orig+1, row_id=x_t[:, d]) # [B, S]
-        return transition_logits.reshape(*input_shape, self.prior.num_categories) # [B, ..., S]
+        return transition_logits.reshape(*input_shape, self.hparams.num_categories) # [B, ..., S]
+
+    @torch.no_grad()
+    def markov_sample(
+        self, 
+        x_t: torch.Tensor, 
+        t: torch.Tensor,
+        return_transitions: bool = False
+    ) -> torch.Tensor:
+        input_shape = x_t.shape
+        x_t = x_t.flatten(start_dim=1)
+
+        t_orig = t  # keep original for onestep
+        t   = self.hparams.num_timesteps + 1 - t_orig
+        tp1 = self.hparams.num_timesteps - t_orig
+
+        log_u_t = torch.empty(x_t.shape[0], self.hparams.num_potentials, self.hparams.dim, device=self.device)
+        for d in range(self.hparams.dim):
+            x_d = x_t[:, d] # [B]
+            log_pi_ref_t = self.prior.extract('cumulative', t, row_id=x_d) # [B, S]
+            log_u_t[:, :, d] = torch.logsumexp(
+                self.log_cp_cores[d][None, :, :] + log_pi_ref_t[:, None, :], dim=-1
+            ) # [B, K]
+
+        log_w_k = self.log_alpha[None, :] + log_u_t.sum(dim=-1) # [B, K]
+        k_star = gumbel_sample(log_w_k, tau=self.hparams.tau, dim=-1)  # [B]
+
+        logits = torch.empty(x_t.shape[0], self.hparams.dim, self.hparams.num_categories, device=self.device)
+        for d in range(self.hparams.dim):
+            x_tp1_d = torch.arange(self.hparams.num_categories, device=self.device) # [S]
+            x_tp1_d = x_tp1_d.unsqueeze(0).repeat(x_t.shape[0], 1).reshape(-1) # [B*S]
+            tp1_repeated = tp1.repeat_interleave(self.hparams.num_categories) # [B*S]
+            log_pi_ref_tp1 = self.prior.extract('cumulative', tp1_repeated, row_id=x_tp1_d) # [B*S, S]
+            log_u_tp1_d = torch.logsumexp(
+                self.log_cp_cores[d][None, :, :] + log_pi_ref_tp1[:, None, :], # [B*S, K, S]
+                dim=-1
+            )  # [B*S, K]
+            log_u_tp1_d = (log_u_tp1_d
+                .reshape(x_t.shape[0], self.hparams.num_categories, self.hparams.num_potentials)
+                .permute(0, 2, 1) # [B, K, S]
+            )
+
+            batch_idx = torch.arange(x_t.shape[0], device=self.device)
+            log_u_tp1_star = log_u_tp1_d[batch_idx, k_star, :] # [B, S]
+            logits_x_tp1_d = self.prior.extract('onestep', t_orig+1, row_id=x_t[:, d]) + log_u_tp1_star # [B, S]
+            logits[:, d, :] = logits_x_tp1_d
+            
+        x_tp1 = gumbel_sample(logits, tau=self.hparams.tau, dim=-1)
+        if return_transitions:
+            # TODO: Optimize logits computation
+            return x_tp1.reshape(input_shape), self.get_transition_logits(x_t, t_orig)
+        return x_tp1.reshape(input_shape)
+
+    @torch.no_grad()
+    def sample(
+        self, 
+        x_start: torch.Tensor, 
+        use_onestep_sampling: bool = True
+    ) -> torch.Tensor:
+        """Sample from the model starting from `x` returning the final sample."""
+        if use_onestep_sampling:
+            input_shape = x_start.shape
+            x_start = x_start.flatten(start_dim=1) # (B, D)
+
+            log_z = torch.zeros(x_start.shape[0], self.hparams.num_potentials, device=self.device)
+            for d in range(self.hparams.dim):
+                log_pi_ref = self.prior.extract_last_cum_matrix(x_start[:, d]) # (B, S)
+                log_z = log_z + torch.logsumexp(
+                    self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :], dim=2
+                ) # (1, K, S) + (B, 1, S) -> (B, K)
+
+            log_w_k = self.log_alpha[None, :] + log_z # (B, K)
+            k_star = gumbel_sample(log_w_k, dim=-1, tau=self.hparams.tau) # (B,)
+
+            logits = torch.empty(x_start.shape[0], self.hparams.dim, self.hparams.num_categories, device=self.device)
+            for d in range(self.hparams.dim):
+                log_pi_ref = self.prior.extract_last_cum_matrix(x_start[:, d]) # (B, S)
+                log_cp_cores_d = self.log_cp_cores[d][None, :, :].expand(x_start.shape[0], -1, -1) # (B, K, S)
+                log_cp_cores_d_selected = torch.gather(
+                    log_cp_cores_d, dim=1, index=k_star[:, None, None].expand(-1, -1, self.hparams.num_categories)
+                ).squeeze(1) # (B, 1, S) -> (B, S)
+                log_p_d_selected = log_cp_cores_d_selected + log_pi_ref[:, :] # (B, S)
+                logits[:, d, :] = log_p_d_selected
+            x_end = gumbel_sample(
+                logits, dim=-1, tau=self.hparams.tau
+            ).reshape(input_shape)
+        else:
+
+            x_t = x_start
+            for t in range(0, self.hparams.num_timesteps + 1):
+                t = torch.full([x_start.shape[0]], t, device=self.device)
+                x_t = self.markov_sample(x_t, t, return_transitions=False)
+            x_end = x_t
+        return x_end
     
     @torch.no_grad()
-    def sample_target_given_input(self, x: torch.Tensor, return_trajectories: bool = False) -> torch.Tensor:
-        input_shape = x.shape
-        x = x.flatten(start_dim=1)
-
-        log_z = torch.zeros(x.shape[0], self.num_potentials, device=self.device)
-        log_pi_ref_list = []
-        for d in range(self.dim):
-            x_d = x[:, d]
-            log_pi_ref = self.prior.extract_last_cum_matrix(x_d)
-            
-            log_pi_ref_list.append(log_pi_ref)
-                
-            log_joint = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(K, S) + (B, S) -> (B, K, S)
-            log_inner = torch.logsumexp(log_joint, dim=2)  # (B, K)
-            log_z = log_z + log_inner # (B, K)
+    def sample_trajectory(
+        self, 
+        x_start: torch.Tensor, 
+        use_onestep_sampling: bool = False,
+        return_transitions: bool = False
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        if use_onestep_sampling:
+            assert not return_transitions, \
+                'Returning transitions is not supported when using bridge samples!'
         
-        log_w_k = self.log_alpha[None, :] + log_z  # (K,) + (B, K) -> (B, K)
-        noise = torch.rand_like(log_w_k)
-        noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
-        gumbel_noise = -torch.log(-torch.log(noise))
-        k_stars = torch.argmax(log_w_k + gumbel_noise, dim=-1) # (B,)
-
-        y_samples = torch.empty(x.shape[0], self.dim, dtype=torch.long, device=self.device)
-        batch_idx = torch.arange(x.shape[0], device=self.device)
-
-        for d in range(self.dim):
-            log_pi_ref = log_pi_ref_list[d]
-                
-            log_p_d_all = self.log_cp_cores[d][None, :, :] + log_pi_ref[:, None, :] #(batch_size, K, S)
-            log_p_d_selected = log_p_d_all[batch_idx, k_stars, :] #(batch_size, S)
+        trajectory, transitions = [x_start], []
+        if use_onestep_sampling:
+            x_end = self.sample(x_start, use_onestep_sampling=True)
             
-            noise = torch.rand_like(log_p_d_selected)
-            noise = torch.clamp(noise, min=torch.finfo(noise.dtype).tiny, max=1.)
-            gumbel_noise = -torch.log(-torch.log(noise))
-            y_d = torch.argmax(log_p_d_selected + gumbel_noise, dim=-1)
-            y_samples[:, d] = y_d
-               
-        if not return_trajectories:
-            return y_samples.reshape(input_shape)
-        else:
-            trajectory = [x]
-            for t in range(1, self.prior.num_timesteps + 1):
-                t = torch.full((x.shape[0],), t, device=x.device)
-                x_t = self.prior.sample_bridge(x, y_samples, t)
+            for t in range(1, self.hparams.num_timesteps + 1):
+                t = torch.full((x_start.shape[0],), t, device=x_start.device)
+                x_t = self.prior.sample_bridge(x_start, x_end, t)
                 trajectory.append(x_t)
-            trajectory.append(y_samples)
-            return torch.stack(trajectory, dim=0)
+            trajectory.append(x_end)
+            
+        else:
+            x_t = x_start
+            for t in range(0, self.hparams.num_timesteps + 1):
+                t = torch.full([x_t.shape[0]], t, device=self.device)
+                out = self.markov_sample(x_t, t, return_transitions=return_transitions)
+                if return_transitions:
+                    x_t, logits = out
+                    transitions.append(logits)
+                else:
+                    x_t = out
+                trajectory.append(x_t)
+
+        trajectory = torch.stack(trajectory, dim=0)
+        if return_transitions:
+            transitions = torch.stack(transitions, dim=0)
+            return trajectory, transitions
+        return trajectory
     
     def save(
         self, solver_path: str, source_path: str, target_path: str, dir: str
@@ -229,7 +308,7 @@ class Benchmark(BenchmarkBase):
             log.info('Sampling validation dataset...')
             assert num_val_samples is not None, 'For benchmark computation the `num_val_samples` must be provided!'
             self.input_dataset = self.sample_input(num_val_samples)
-            self.target_dataset = self.sample_target_given_input(self.input_dataset)
+            self.target_dataset = self.sample(self.input_dataset)
 
             random_indices = torch.randperm(len(self.target_dataset))
             self.input_dataset  = self.input_dataset[random_indices]
@@ -258,14 +337,14 @@ class Benchmark(BenchmarkBase):
     def sample_target(self, num_samples: int) -> torch.Tensor:
         '''Sample independent target data'''
         input_samples = self.sample_input(num_samples)
-        target_samples = self.sample_target_given_input(input_samples)
+        target_samples = self.sample(input_samples)
         return target_samples
     
     @torch.no_grad()
     def sample_input_target(self, num_samples: int) -> Tuple[torch.Tensor, torch.Tensor]:
         '''Sample paired input and target data'''
         input_samples = self.sample_input(num_samples)
-        target_samples = self.sample_target_given_input(input_samples)
+        target_samples = self.sample(input_samples)
         return input_samples, target_samples
 
 class BenchmarkImage(BenchmarkBase):
@@ -331,7 +410,7 @@ class BenchmarkImage(BenchmarkBase):
                 noise = torch.randn((samples_per_batch, 512), device=self.device)
                 start, end = samples_per_batch * i, samples_per_batch * (i + 1)
                 self.input_dataset[start:end] = self._postporcess(self.generator(noise, None)).cpu()
-                self.target_dataset[start:end] = self.sample_target_given_input(
+                self.target_dataset[start:end] = self.sample(
                     self.input_dataset[start:end].to(device)
                 ).reshape_as(self.input_dataset[start:end])
 
@@ -360,14 +439,14 @@ class BenchmarkImage(BenchmarkBase):
     def sample_target(self, num_samples: int) -> torch.Tensor:
         noise = torch.randn((num_samples, 512), device=self.device)
         input_samples = self._postporcess(self.generator(noise, None))
-        target_samples = self.sample_target_given_input(input_samples)
+        target_samples = self.sample(input_samples)
         return target_samples.reshape_as(input_samples)
     
     @torch.no_grad()
     def sample_input_target(self, num_samples: int)-> Tuple[torch.Tensor, torch.Tensor]:
         noise = torch.randn((num_samples, 512), device=self.device)
         input_samples = self._postporcess(self.generator(noise, None))
-        target_samples = self.sample_target_given_input(input_samples)
+        target_samples = self.sample(input_samples)
         return input_samples, target_samples.reshape_as(input_samples)
 
 class SentenceGenerator:
@@ -478,7 +557,7 @@ class BenchmarkText(BenchmarkBase):
             for i in tqdm(range(num_batches)):
                 start, end = samples_per_batch * i, samples_per_batch * (i + 1)
                 self.input_dataset[start:end] = self.generator.generate_tokens(batch_size=samples_per_batch, n_tokens=self.dim).cpu()
-                self.target_dataset[start:end] = self.sample_target_given_input(
+                self.target_dataset[start:end] = self.sample(
                     self.input_dataset[start:end].to(device)
                 ).reshape_as(self.input_dataset[start:end])
 
@@ -493,11 +572,11 @@ class BenchmarkText(BenchmarkBase):
     @torch.no_grad()
     def sample_target(self, num_samples: int) -> torch.Tensor:
         tokens = self.generator.generate_tokens(batch_size=num_samples, n_tokens=self.dim)#.to('cuda')
-        noised_tokens = self.sample_target_given_input(tokens)
+        noised_tokens = self.sample(tokens)
         return noised_tokens.reshape_as(tokens)
     
     @torch.no_grad()
     def sample_input_target(self, num_samples: int)-> Tuple[torch.Tensor, torch.Tensor]:
         input_tokens = self.generator.generate_tokens(batch_size=num_samples, n_tokens=self.dim)#.to('cuda')
-        target_tokens = self.sample_target_given_input(input_tokens)
+        target_tokens = self.sample(input_tokens)
         return input_tokens, target_tokens.reshape_as(input_tokens)
