@@ -106,6 +106,10 @@ class BenchmarkHDGMetricsCallback(Callback):
             true_trajectory, true_transition_logits = self.benchmark.sample_trajectory(x_start, return_transitions=True)
             pred_trajectory, pred_transition_logits = pl_module.sample_trajectory(x_start, return_transitions=True)
             
+            # we need only num_steps + 1 points to compute transitions
+            true_trajectory = true_trajectory[:-1]
+            pred_trajectory = pred_trajectory[:-1]
+            
             timesteps = torch.arange(true_trajectory.shape[0], device=pl_module.device)
             timesteps = timesteps.repeat_interleave(true_trajectory.shape[1])
             

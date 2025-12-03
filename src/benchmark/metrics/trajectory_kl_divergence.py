@@ -21,15 +21,16 @@ class TrajectoryKLDivergence(KLDivergence):
     def update(self, p: torch.Tensor, q: torch.Tensor) -> None:
         if len(p.shape) < 3 or p.shape != q.shape:
             raise ValueError(
-                "Inputs must be trajectories with shape [batch_size, ..., num_categories]!"
+                'Expected `p` and `q` to have the same shape with at least 3 dimensions, '
+                f'but got p: {p.shape}, q: {q.shape}.'
             )
         if self.logits:
             p = p.log_softmax(dim=-1)
             q = q.log_softmax(dim=-1)
 
-        mode = 'logs' if self.logits else 'probs'
-        p = stable_clamp(p, mode=mode)
-        q = stable_clamp(q, mode=mode)
+        type = 'logs' if self.logits else 'probs'
+        p = stable_clamp(p, type=type)
+        q = stable_clamp(q, type=type)
         
         super().update(
             p=p.flatten(end_dim=-2), 
