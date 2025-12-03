@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from sklearn.decomposition import PCA
 
+from lightning import Trainer
 from lightning.pytorch.loggers import WandbLogger, CometLogger
 from lightning.pytorch.utilities import rank_zero_only
 
@@ -15,7 +16,7 @@ from benchmark import BenchmarkHDG
 
 
 class BenchmarkHDGPlotterCallback(BasePlotterCallback):
-    benchmark: BenchmarkHDG
+    benchmark: Optional[BenchmarkHDG] = None
 
     def __init__(
         self,
@@ -75,7 +76,19 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         self.trajectory_lines_config = {
             'back': {'c': 'black', 'markeredgecolor': 'black', 'linewidth': 2, 'zorder': 2},
             'front': {'c': 'grey', 'markeredgecolor': 'black', 'linewidth': 1, 'zorder': 2}
-        }    
+        }
+
+    def setup(
+        self,
+        trainer: Trainer, 
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM], 
+        stage: Literal['fit', 'validate', 'test']
+    ) -> None:
+        if not self.benchmark:
+            return
+        assert hasattr(trainer.datamodule, 'benchmark'), \
+            'Wrong datamodule! It should have `benchmark` attribute'
+        self.benchmark = trainer.datamodule.benchmark
 
     @rank_zero_only
     def _log_smaples(

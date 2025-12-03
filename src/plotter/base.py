@@ -5,11 +5,8 @@ import torch
 from lightning.pytorch import Callback, Trainer, LightningModule
 from lightning.pytorch.utilities import rank_zero_only
 
-from benchmark.benchmark import BenchmarkBase
-
 
 class BasePlotterCallback(Callback):
-    benchmark: BenchmarkBase
     dim: int
     num_categories: int
     num_samples: int

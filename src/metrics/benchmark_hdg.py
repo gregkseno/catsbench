@@ -19,7 +19,7 @@ from ..utils.ranked_logger import RankedLogger
 log = RankedLogger(__name__, rank_zero_only=True)
 
 class BenchmarkHDGMetricsCallback(Callback):
-    benchmark: BenchmarkHDG
+    benchmark: Optional[BenchmarkHDG] = None
 
     def __init__(
         self,
@@ -43,10 +43,9 @@ class BenchmarkHDGMetricsCallback(Callback):
         pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM], 
         stage: Literal['fit', 'validate', 'test']
     ) -> None:
-        if hasattr(pl_module, 'metrics'):
+        if not self.benchmark and hasattr(pl_module, 'metrics'):
             return
-
-        # get benchmark class
+        
         assert hasattr(trainer.datamodule, 'benchmark'), \
             'Wrong datamodule! It should have `benchmark` attribute'
         self.benchmark = trainer.datamodule.benchmark
