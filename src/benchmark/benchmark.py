@@ -338,6 +338,9 @@ class BenchmarkHDG(BenchmarkBase):
             
             self.save(solver_path, source_path, target_path, benchmark_dir)
 
+        if self.reversed:
+            self.input_dataset, self.target_dataset = self.target_dataset, self.input_dataset
+
     @torch.no_grad()
     def _sample_input(self, num_samples: int) -> torch.Tensor:
         '''Sample independent source data'''
@@ -444,6 +447,9 @@ class BenchmarkImage(BenchmarkBase):
                 ).reshape_as(self.input_dataset[start:end])
 
             self.save(solver_path, source_path, target_path, benchmark_dir)
+
+        if self.reversed:
+            self.input_dataset, self.target_dataset = self.target_dataset, self.input_dataset
 
     @staticmethod
     def _postprocess(outputs: torch.Tensor) -> torch.Tensor:
@@ -598,6 +604,9 @@ class BenchmarkText(BenchmarkBase):
                 ).reshape_as(self.input_dataset[start:end])
 
             self.save(solver_path, source_path, target_path, benchmark_dir)
+
+        if self.reversed:
+            self.input_dataset, self.target_dataset = self.target_dataset, self.input_dataset
 
     
     @torch.no_grad()
