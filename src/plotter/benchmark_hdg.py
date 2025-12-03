@@ -84,14 +84,22 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM], 
         stage: Literal['fit', 'validate', 'test']
     ) -> None:
-        if not self.benchmark:
+        if self.benchmark is not None:
             return
         assert hasattr(trainer.datamodule, 'benchmark'), \
             'Wrong datamodule! It should have `benchmark` attribute'
         self.benchmark = trainer.datamodule.benchmark
 
+        if self.dim > 2:
+            samples = torch.cat(
+                self.benchmark.sample_input_target(num_samples=10_000),
+                dim=0
+            )
+            samples = convert_to_numpy(samples)
+            self.pca.fit(samples)
+
     @rank_zero_only
-    def _log_smaples(
+    def _log_samples(
         self,
         x_start: torch.Tensor | np.ndarray, 
         x_end: torch.Tensor | np.ndarray, 
@@ -171,8 +179,8 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         traj_start = traj_start.reshape(-1, *x_start.shape[1:])
 
         # ground truth trajectories
-        trajectories = self.benchmark.sample(
-            traj_start, return_trajectories=True
+        trajectories = self.benchmark.sample_trajectory(
+            traj_start, use_onestep_sampling=True
         )
         trajectories = convert_to_numpy(trajectories.reshape(-1, self.dim))
         if self.dim > 2:
@@ -186,7 +194,7 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
             axs[0].plot(trajectories[:, i, 0], trajectories[:, i, 1], **self.trajectory_lines_config['back'])
             axs[0].plot(
                 trajectories[:, i, 0], trajectories[:, i, 1], **self.trajectory_lines_config['front'], 
-                label='Trajectory (fitted)' if i == 0 else ''
+                label='Trajectory (ground truth)' if i == 0 else ''
             )
 
         # model's trajectories
@@ -213,7 +221,7 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
             axs[1].plot(pred_trajectories[:, i, 0], pred_trajectories[:, i, 1], **self.trajectory_lines_config['back'])
             axs[1].plot(
                 pred_trajectories[:, i, 0], pred_trajectories[:, i, 1], **self.trajectory_lines_config['front'], 
-                label='Trajectory (ground truth)' if i == 0 else ''
+                label='Trajectory (fitted)' if i == 0 else ''
             )
         
         for i in range(2):

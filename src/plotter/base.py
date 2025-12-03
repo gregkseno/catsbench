@@ -48,7 +48,7 @@ class BasePlotterCallback(Callback):
             return
         x_start = torch.cat(buf['x_start'], dim=0)[:self.num_samples]
         x_end = torch.cat(buf['x_end'], dim=0)[:self.num_samples]
-        self._log_smaples(x_start, x_end, pl_module, stage)
+        self._log_samples(x_start, x_end, pl_module, stage)
         self._log_trajectories(x_start, x_end, pl_module, stage=stage)
         self._reset_buf(stage)
 
@@ -104,7 +104,7 @@ class BasePlotterCallback(Callback):
         self._log_buf('test', pl_module)
 
     @rank_zero_only
-    def _log_smaples(
+    def _log_samples(
         self,
         x_start: torch.Tensor | np.ndarray, 
         x_end: torch.Tensor | np.ndarray, 

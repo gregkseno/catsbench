@@ -43,7 +43,7 @@ class BenchmarkHDGMetricsCallback(Callback):
         pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM], 
         stage: Literal['fit', 'validate', 'test']
     ) -> None:
-        if not self.benchmark and hasattr(pl_module, 'metrics'):
+        if self.benchmark is not None and hasattr(pl_module, 'metrics'):
             return
         
         assert hasattr(trainer.datamodule, 'benchmark'), \
