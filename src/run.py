@@ -90,11 +90,15 @@ def main(config: DictConfig):
             log.info(f'method_choice: {method_choice}')
             log.info(f'experiment_choice: {experiment_choice}')
             log.info(f'config.seed: {config.seed}')
-            subdirs = [
-                os.path.join(exp_dir, sub_dir) for sub_dir in os.listdir(exp_dir)
-            ]
-            latest_subdir = min(subdirs, key=os.path.getmtime)
-            ckpt_path = os.path.join(latest_subdir, 'checkpoints', 'last.ckpt')           
+            # select the latest subdir by folder name of format 'YYYY-MM-DD_HH-MM-SS'
+            # and if this folder contains train.log file
+            subdirs = [os.path.join(exp_dir, subdir) for subdir in os.listdir(exp_dir)]
+            subdirs = [subdir for subdir in subdirs if 'train.log' in os.listdir(subdir)]
+            latest_subdir = max(subdirs, key=lambda x: os.path.basename(x))
+            ckpts = os.listdir(os.path.join(latest_subdir, 'checkpoints'))
+            ckpts = [ckpt for ckpt in ckpts if ckpt.startswith('epoch_')]
+            last_ckpt = max(ckpts, key=lambda x: int(x.split('_')[1].split('.')[0]))
+            ckpt_path = os.path.join(latest_subdir, 'checkpoints', last_ckpt)       
         
         log.info(f'Starting testing with ckpt_path: {ckpt_path}.')
         trainer.test(model=method, datamodule=datamodule, ckpt_path=ckpt_path)
