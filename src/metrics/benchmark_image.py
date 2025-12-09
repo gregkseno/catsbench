@@ -4,8 +4,8 @@ import torch
 from torchmetrics.image import FrechetInceptionDistance
 from lightning.pytorch import Callback, Trainer, LightningModule
 
-from benchmark import BenchmarkImage
-from benchmark.metrics import ClassifierTwoSampleTest
+from catsbench import BenchmarkImage
+from catsbench.metrics import ClassifierTwoSampleTest
 
 
 class BenchmarkImageMetricsCallback(Callback):

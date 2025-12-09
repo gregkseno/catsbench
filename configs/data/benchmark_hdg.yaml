@@ -10,7 +10,7 @@ pin_memory: false
 dir: ${paths.data_dir}/benchmark_hdg
 
 benchmark:
-  _target_: benchmark.BenchmarkHDG
+  _target_: catsbench.BenchmarkHDG
   _partial_: true
   alpha: ${prior.alpha}
   dim: ${data.dim}

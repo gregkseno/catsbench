@@ -5,7 +5,7 @@ from lightning import LightningDataModule
 
 from src.utils.ranked_logger import RankedLogger
 from src.utils import CoupleDataset, InfiniteCoupleDataset
-from benchmark import BenchmarkHDG, BenchmarkImage, BenchmarkText
+from catsbench import BenchmarkHDG, BenchmarkImage, BenchmarkText
 
 
 log = RankedLogger(__name__, rank_zero_only=True)

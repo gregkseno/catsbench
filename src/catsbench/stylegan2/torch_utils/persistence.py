@@ -20,7 +20,7 @@ import inspect
 import copy
 import uuid
 import types
-from benchmark.stylegan2 import dnnlib
+from catsbench.stylegan2 import dnnlib
 
 #----------------------------------------------------------------------------
 

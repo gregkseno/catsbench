@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch
 from torch import nn
 from tqdm import tqdm
-from benchmark.utils import broadcast, gumbel_sample, log_space_product
+from catsbench.utils import broadcast, gumbel_sample, log_space_product
 
 
 def get_cum_matrices(num_timesteps: int, log_onestep_matrix: torch.Tensor) -> torch.Tensor:

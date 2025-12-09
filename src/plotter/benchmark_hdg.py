@@ -11,7 +11,7 @@ from lightning.pytorch.utilities import rank_zero_only
 from .base import BasePlotterCallback
 from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
 from ..utils import convert_to_numpy, fig2img
-from benchmark import BenchmarkHDG
+from catsbench import BenchmarkHDG
 
 
 

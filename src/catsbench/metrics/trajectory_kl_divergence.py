@@ -2,7 +2,7 @@ from typing import Literal, Optional
 import torch
 from torchmetrics.regression import KLDivergence
 
-from benchmark.utils import stable_clamp
+from catsbench.utils import stable_clamp
 
 
 class TrajectoryKLDivergence(KLDivergence):

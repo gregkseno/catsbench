@@ -9,11 +9,11 @@
 import numpy as np
 import scipy.signal
 import torch
-from benchmark.stylegan2.torch_utils import persistence
-from benchmark.stylegan2.torch_utils import misc
-from benchmark.stylegan2.torch_utils.ops import upfirdn2d
-from benchmark.stylegan2.torch_utils.ops import grid_sample_gradfix
-from benchmark.stylegan2.torch_utils.ops import conv2d_gradfix
+from catsbench.stylegan2.torch_utils import persistence
+from catsbench.stylegan2.torch_utils import misc
+from catsbench.stylegan2.torch_utils.ops import upfirdn2d
+from catsbench.stylegan2.torch_utils.ops import grid_sample_gradfix
+from catsbench.stylegan2.torch_utils.ops import conv2d_gradfix
 
 #----------------------------------------------------------------------------
 # Coefficients of various wavelet decomposition low-pass filters.

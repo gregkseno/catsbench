@@ -12,7 +12,7 @@ from lightning.pytorch.utilities import rank_zero_only
 from src.utils import convert_to_numpy, fig2img
 from src.metrics.c2st import ClassifierTwoSampleTest
 from src.utils.ranked_logger import RankedLogger
-from benchmark import BenchmarkImage
+from catsbench import BenchmarkImage
 
 
 log = RankedLogger(__name__, rank_zero_only=True)

@@ -14,7 +14,7 @@ code."""
 import re
 import numpy as np
 import torch
-from benchmark.stylegan2 import dnnlib
+from catsbench.stylegan2 import dnnlib
 
 from . import misc
 

@@ -4,8 +4,8 @@ import torch
 from torchmetrics import MetricCollection
 from lightning.pytorch import Callback, Trainer
 
-from benchmark import BenchmarkHDG
-from benchmark.metrics import (
+from catsbench import BenchmarkHDG
+from catsbench.metrics import (
     ClassifierTwoSampleTest,
     ShapeScore,
     TrendScore,

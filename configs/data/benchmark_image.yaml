@@ -10,7 +10,7 @@ dir: ${paths.data_dir}/benchmark_hdg_image
 generator_path: ${paths.ckpt_dir}/cmnist_stylegan.pkl
 
 benchmark:
-  _target_: benchmark.BenchmarkImage
+  _target_: catsbench.BenchmarkImage
   _partial_: true
   dim: 3072
   input_shape: [3, 32, 32]

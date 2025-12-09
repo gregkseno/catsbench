@@ -8,12 +8,12 @@
 
 import numpy as np
 import torch
-from benchmark.stylegan2.torch_utils import misc
-from benchmark.stylegan2.torch_utils import persistence
-from benchmark.stylegan2.torch_utils.ops import conv2d_resample
-from benchmark.stylegan2.torch_utils.ops import upfirdn2d
-from benchmark.stylegan2.torch_utils.ops import bias_act
-from benchmark.stylegan2.torch_utils.ops import fma
+from catsbench.stylegan2.torch_utils import misc
+from catsbench.stylegan2.torch_utils import persistence
+from catsbench.stylegan2.torch_utils.ops import conv2d_resample
+from catsbench.stylegan2.torch_utils.ops import upfirdn2d
+from catsbench.stylegan2.torch_utils.ops import bias_act
+from catsbench.stylegan2.torch_utils.ops import fma
 
 #----------------------------------------------------------------------------
 

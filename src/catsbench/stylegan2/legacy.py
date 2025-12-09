@@ -12,8 +12,8 @@ import re
 import copy
 import numpy as np
 import torch
-from benchmark.stylegan2 import dnnlib
-from benchmark.stylegan2.torch_utils import misc
+from catsbench.stylegan2 import dnnlib
+from catsbench.stylegan2.torch_utils import misc
 
 #----------------------------------------------------------------------------
 

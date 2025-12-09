@@ -15,8 +15,8 @@ from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 
 from src.utils import convert_to_numpy, fig2img
 from src.utils.ranked_logger import RankedLogger
-from benchmark import BenchmarkText
-from benchmark.metrics import ClassifierTwoSampleTest
+from catsbench import BenchmarkText
+from catsbench.metrics import ClassifierTwoSampleTest
 
 
 log = RankedLogger(__name__, rank_zero_only=True)

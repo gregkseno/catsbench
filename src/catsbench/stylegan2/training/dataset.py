@@ -12,7 +12,7 @@ import zipfile
 import PIL.Image
 import json
 import torch
-from benchmark.stylegan2 import dnnlib
+from catsbench.stylegan2 import dnnlib
 
 try:
     import pyspng

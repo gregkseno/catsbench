@@ -1,4 +1,4 @@
-from benchmark.stylegan2.torch_utils import persistence
+from catsbench.stylegan2.torch_utils import persistence
 
 @persistence.import_hook
 def _remap_legacy_imports(meta):

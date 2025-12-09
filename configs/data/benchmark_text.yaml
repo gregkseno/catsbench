@@ -10,7 +10,7 @@ dir: ${paths.data_dir}/benchmark_hdg_texts
 generator_path: ${paths.ckpt_dir}/gpt2-tinystories-final
 
 benchmark:
-   _target_: benchmark.BenchmarkText
+  _target_: catsbench.BenchmarkText
   _partial_: true
   dim: 64
   generator_path: ${data.generator_path}

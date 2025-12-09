@@ -7,10 +7,10 @@ from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 
 from tqdm import tqdm
 
-from benchmark.prior import Prior
-from benchmark.stylegan2 import legacy, dnnlib
-from benchmark.stylegan2.training.networks import Generator
-from benchmark.utils import  continuous_to_discrete, sample_separated_means, Logger, gumbel_sample
+from catsbench.prior import Prior
+from catsbench.stylegan2 import legacy, dnnlib
+from catsbench.stylegan2.training.networks import Generator
+from catsbench.utils import  continuous_to_discrete, sample_separated_means, Logger, gumbel_sample
 
 log = Logger(__name__, rank_zero_only=True)
 SPREADS = {50:{2:1.5, 16:1.5, 64:2.5}, 200:{2:4, 16:8, 64:16}}
