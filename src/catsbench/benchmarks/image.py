@@ -53,7 +53,8 @@ class BenchmarkImage(BenchmarkBase):
                     'Please make sure they match the benchmark data shape.'
                 )
             
-            self.generator = Generator(**generator_kwargs).to(device)
+            generator = Generator(**generator_kwargs).to(device)
+            self.register_buffer('generator', generator)
 
         self.register_buffers(init_benchmark, device)
 
