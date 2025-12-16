@@ -402,10 +402,10 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             return target_samples, input_samples
         return input_samples, target_samples
 
-    def _plot_distribution_samples(self, num_samples: int):
+    def _plot_samples(self, num_samples: int):
         raise NotImplementedError
     
-    def _plot_trajectory_samples(
+    def _plot_trajectories(
         self, 
         num_samples: int, 
         num_trajectories: int, 
@@ -419,5 +419,5 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         num_trajectories: int, 
         num_translations: int
     ):
-        self._plot_distribution_samples(num_samples)
-        self._plot_trajectory_samples(num_samples, num_trajectories, num_translations)
+        self._plot_samples(num_samples)
+        self._plot_trajectories(num_samples, num_trajectories, num_translations)

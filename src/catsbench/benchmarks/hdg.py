@@ -56,7 +56,7 @@ class BenchmarkHDG(BenchmarkBase):
         target_samples = self.sample(input_samples)
         return target_samples
 
-    def _plot_distribution_samples(self, num_samples: int, **kwargs):
+    def _plot_samples(self, num_samples: int, **kwargs):
         use_pca = self.dim > 2
         if use_pca:
             pca = PCA(n_components=2)
@@ -104,7 +104,7 @@ class BenchmarkHDG(BenchmarkBase):
         plt.show()
         plt.close()
     
-    def _plot_trajectory_samples(
+    def _plot_trajectories(
         self, 
         num_samples: int, 
         num_trajectories: int, 
