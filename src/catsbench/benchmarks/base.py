@@ -16,7 +16,7 @@ from ..utils import (
 )
 
 log = Logger('catsbench', rank_zero_only=True)
-STDS = {2:2, 16:2, 64:2, 3072:15}
+STDS = {2:2, 16:2, 64:2, 3072:15, 4096:15}
 
 @dataclass
 class BenchmarkBaseConfig:
