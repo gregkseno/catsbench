@@ -27,6 +27,7 @@ class BenchmarkBaseConfig:
     prior_type: Literal['gaussian', 'uniform']
     benchmark_type: Literal['gaussian', 'uniform']
     num_val_samples: int
+    init_batch_size: int
     reverse: bool
     tau: float
     params_dtype: str = 'float32'
@@ -36,7 +37,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
     def __init__(
         self,
         config: BenchmarkBaseConfig,
-        init_params: bool = True,
+        init_benchmark: bool = True,
         device: Union[str, torch.device] = 'cpu',
     ):
         super().__init__()
@@ -50,11 +51,12 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         self.prior_type = config.prior_type
         self.benchmark_type = config.benchmark_type
         self.num_val_samples = config.num_val_samples
+        self.init_batch_size = config.init_batch_size
         self.reverse = config.reverse
         self.tau = config.tau
         self.params_dtype = getattr(torch, config.params_dtype)
 
-        if init_params:
+        if init_benchmark:
             log.info('Initializing parameters...')
             log_alpha, log_cp_cores = self._init_parameters(
                 config.benchmark_type, self.params_dtype, device
@@ -71,7 +73,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             )
         self.register_buffer('log_alpha', log_alpha)
         self.register_buffer('log_cp_cores', log_cp_cores)
-        
+
         log.info('Initializing prior...')
         self.prior = Prior(
             alpha=config.alpha,
@@ -83,6 +85,23 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             dtype=self.params_dtype,
             device=device
         )
+
+        if init_benchmark:
+            log.info('Initializing validation dataset...')
+            input_dataset, target_dataset = self._init_dataset(
+                num_samples=self.num_val_samples,
+                batch_size=self.init_batch_size,
+            )
+        else:
+            log.info('Skipping dataset initialization!')
+            input_dataset = torch.empty(
+                (self.num_val_samples, self.dim), dtype=torch.long, device=device
+            )
+            target_dataset = torch.empty(
+                (self.num_val_samples, self.dim), dtype=torch.long, device=device
+            )
+        self.register_buffer('input_dataset', input_dataset)
+        self.register_buffer('target_dataset', target_dataset)
         
     def _init_parameters(
         self, 
@@ -151,7 +170,30 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             raise ValueError(f'Unknown benchmark type: {benchmark_type}')
         
         return log_alpha, log_cp_cores
-    
+
+    def _init_dataset(
+        self,
+        num_samples: int,
+        batch_size: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        input_dataset = torch.empty((num_samples, self.dim), dtype=torch.long, device=self.device)
+        target_dataset = torch.empty((num_samples, self.dim), dtype=torch.long, device=self.device)
+
+        batch_sizes_list = [batch_size] * (num_samples // batch_size)
+        if num_samples % batch_size:
+            batch_sizes_list.append(num_samples % batch_size)
+        for i, bs in enumerate(batch_sizes_list):
+            start = i * batch_size
+            input_batch = self.sample_input(bs)
+            target_batch = self.sample(input_batch)
+            input_dataset[start:start+bs] = input_batch
+            target_dataset[start:start+bs] = target_batch
+
+        random_indices = torch.randperm(len(target_dataset))
+        input_dataset  = input_dataset[random_indices]
+        target_dataset = target_dataset[random_indices]
+        return input_dataset, target_dataset
+
     @property
     def name(self) -> str:
         return f'd{self.dim}_s{self.num_categories}_{self.prior.prior_type}_a{self.prior.alpha}_{self.benchmark_type}'
@@ -351,7 +393,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         '''Sample paired input and target data'''
         input_samples = self._sample_input(num_samples)
         target_samples = self.sample(input_samples)
-        if self.reversed:
+        if self.reverse:
             return target_samples, input_samples
         return input_samples, target_samples
 

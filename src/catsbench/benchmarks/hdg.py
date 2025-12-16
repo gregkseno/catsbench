@@ -25,30 +25,8 @@ class BenchmarkHDG(BenchmarkBase):
         init_benchmark: bool = True,
         device: str = 'cpu'
     ):
-        super().__init__(config, init_benchmark, device)
         self.input_distribution = config.input_distribution
-        if init_benchmark:
-            log.info('Sampling validation dataset...')
-            input_dataset = self.sample_input(config.num_val_samples)
-            target_dataset = self.sample(input_dataset)
-
-            random_indices = torch.randperm(len(target_dataset))
-            input_dataset  = input_dataset[random_indices]
-            target_dataset = target_dataset[random_indices]
-
-            if self.reverse:
-                input_dataset, target_dataset = target_dataset, input_dataset
-        else:
-            log.info('Skipping dataset building!')
-            input_dataset = torch.empty(
-                (self.num_val_samples, self.dim), dtype=torch.long, device=device
-            )
-            target_dataset = torch.empty(
-                (self.num_val_samples, self.dim), dtype=torch.long, device=device
-            )
-
-        self.register_buffer('input_dataset', input_dataset)
-        self.register_buffer('target_dataset', target_dataset)
+        super().__init__(config, init_benchmark, device)
             
     @property
     def name(self) -> str:
