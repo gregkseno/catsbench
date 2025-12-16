@@ -48,7 +48,7 @@ def continuous_to_discrete(
     if isinstance(batch, np.ndarray):
         batch = torch.tensor(batch).contiguous()
     if quantize_range is None:
-        quantize_range = (-3, 3)
+        quantize_range = (-5, 5)
     bin_edges = torch.linspace(
         quantize_range[0], 
         quantize_range[1], 
@@ -56,30 +56,17 @@ def continuous_to_discrete(
         device=batch.device
     )
     discrete_batch = torch.bucketize(batch, bin_edges)
-    return discrete_batch
+    return discrete_batch.contiguous()
 
-def sample_separated_means(
-    num_potentials: int, 
-    dim: int, 
-    num_categories: int, 
-    min_dist: float = 5,
-    max_attempts: int = 5000,
-    device: str ='cpu'
-):
-    means = []
-    attempts = 0
-    low, high = 5, num_categories - 5
-
-    while len(means) < num_potentials and attempts < max_attempts:
-        candidate = torch.randint(low, high, (dim,), device=device)
-        if all(torch.norm(candidate - m.float()) >= min_dist for m in means):
-            means.append(candidate)
-        attempts += 1
-
-    if len(means) < num_potentials:
-        raise RuntimeError(f"Could only generate {len(means)} points with min_dist={min_dist}")
+def convert_to_numpy(x: torch.Tensor | np.ndarray) -> np.ndarray:
+    if isinstance(x, torch.Tensor):
+        x = x.detach().cpu().numpy()
+    return x
     
-    return torch.stack(means)
+def convert_to_torch(x: torch.Tensor | np.ndarray) -> torch.Tensor:
+    if isinstance(x, np.ndarray):
+        x = torch.tensor(x)
+    return x
 
 class Logger(logging.LoggerAdapter):
     """A multi-GPU-friendly python command line logger using torch.distributed."""
