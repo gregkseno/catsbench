@@ -370,26 +370,26 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             return trajectory, transitions
         return trajectory
 
-    def _sample_input(self, num_samples: int) -> torch.Tensor:
+    def _sample_input(self, num_samples: int) -> torch.LongTensor:
         raise NotImplementedError
 
-    def _sample_target(self, num_samples: int) -> torch.Tensor:
+    def _sample_target(self, num_samples: int) -> torch.LongTensor:
         raise NotImplementedError
 
     @torch.no_grad()
-    def sample_input(self, num_samples: int) -> torch.Tensor:
+    def sample_input(self, num_samples: int) -> torch.LongTensor:
         if self.reverse:
             return self._sample_target(num_samples)
         return self._sample_input(num_samples)
     
     @torch.no_grad()
-    def sample_target(self, num_samples: int) -> torch.Tensor:
+    def sample_target(self, num_samples: int) -> torch.LongTensor:
         if self.reverse:
             return self._sample_input(num_samples)
         return self._sample_target(num_samples)
     
     @torch.no_grad()
-    def sample_input_target(self, num_samples: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def sample_input_target(self, num_samples: int) -> Tuple[torch.LongTensor, torch.LongTensor]:
         '''Sample paired input and target data'''
         input_samples = self._sample_input(num_samples)
         target_samples = self.sample(input_samples)

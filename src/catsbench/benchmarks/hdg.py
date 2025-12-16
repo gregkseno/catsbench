@@ -33,7 +33,7 @@ class BenchmarkHDG(BenchmarkBase):
         return f'hdg_' + super().name
     
     @torch.no_grad()
-    def _sample_input(self, num_samples: int) -> torch.Tensor:
+    def _sample_input(self, num_samples: int) -> torch.LongTensor:
         '''Sample independent source data'''
         if self.input_distribution == 'gaussian':
             samples = continuous_to_discrete(
@@ -50,7 +50,7 @@ class BenchmarkHDG(BenchmarkBase):
         return samples
     
     @torch.no_grad()
-    def _sample_target(self, num_samples: int) -> torch.Tensor:
+    def _sample_target(self, num_samples: int) -> torch.LongTensor:
         '''Sample independent target data'''
         input_samples = self.sample_input(num_samples)
         target_samples = self.sample(input_samples)
