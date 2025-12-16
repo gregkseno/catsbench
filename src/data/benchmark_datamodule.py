@@ -15,7 +15,7 @@ class BenchmarkDataModule(LightningDataModule):
         self,
         batch_size: int,
         val_batch_size: int,
-        benchmark: Callable,
+        benchmark: Callable, # from_pretrained method of Benchmark classes
         num_workers: int = 0,
         pin_memory: bool = False,
     ) -> None:
