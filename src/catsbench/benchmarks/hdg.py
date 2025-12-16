@@ -22,11 +22,16 @@ class BenchmarkHDG(BenchmarkBase):
     def __init__(
         self, 
         config: BenchmarkHDGConfig,
+        *,
         init_benchmark: bool = True,
         device: str = 'cpu'
     ):
         self.input_distribution = config.input_distribution
-        super().__init__(config, init_benchmark, device)
+        super().__init__(
+            config, 
+            init_benchmark=init_benchmark, 
+            device=device
+        )
             
     @property
     def name(self) -> str:
@@ -68,7 +73,7 @@ class BenchmarkHDG(BenchmarkBase):
         # plot samples
         fig, axs = plt.subplots(
             1, 2, dpi=kwargs.get('dpi', 200),
-            figsize=kwargs.get('fig_size', (12, 4))
+            figsize=kwargs.get('fig_size', (8, 4))
         )
         axs[0].scatter(
             x_start[:, 0], x_start[:, 1],

@@ -37,6 +37,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
     def __init__(
         self,
         config: BenchmarkBaseConfig,
+        *,
         init_benchmark: bool = True,
         device: Union[str, torch.device] = 'cpu',
     ):
@@ -423,4 +424,5 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         num_translations: int
     ):
         self._plot_samples(num_samples)
-        self._plot_trajectories(num_samples, num_trajectories, num_translations)
+        if not self.reverse:
+            self._plot_trajectories(num_samples, num_trajectories, num_translations)
