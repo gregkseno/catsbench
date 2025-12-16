@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional 
 
 import torch
 from torchvision.utils import make_grid
@@ -17,7 +17,11 @@ log = Logger(__name__, rank_zero_only=True)
 
 @dataclass 
 class BenchmarkImageConfig(BenchmarkBaseConfig):
-    ...
+    generator_kwargs: Dict[str, Any] = {
+        'z_dim': 512, 'c_dim': 0, 'w_dim': 512,
+        'img_resolution': 32,
+        'img_channels': 3,
+    }
 
 class BenchmarkImage(BenchmarkBase):
 
@@ -27,7 +31,6 @@ class BenchmarkImage(BenchmarkBase):
         *,
         init_benchmark: bool = True,
         generator_path: Optional[str] = None,
-        generator_kwargs: Optional[dict] = None,
         device: str = 'cpu'
     ):
         if not config.reverse:
@@ -38,24 +41,12 @@ class BenchmarkImage(BenchmarkBase):
             log.info('Loading StyleGAN2 generator from new checkpoint...')
             if generator_path is None:
                 raise ValueError('generator_path must be provided when init_benchmark is True')
-            self.generator = self._load_generator(generator_path, device)
+            generator = self._load_generator(generator_path, device)
         else:
             log.info('Skipping StyleGAN2 generator initialization!')
-            if generator_kwargs is None:
-                generator_kwargs = {
-                    'z_dim': 512, 'c_dim': 0, 'w_dim': 512,
-                    'img_resolution': self.input_shape[1],
-                    'img_channels': self.input_shape[0],
-                }
-            else:
-                log.warning(
-                    'Using provided generator_kwargs have not been verified for correctness! ' \
-                    'Please make sure they match the benchmark data shape.'
-                )
-            
-            generator = Generator(**generator_kwargs).to(device)
-            self.register_buffer('generator', generator)
+            generator = Generator(**config.generator_kwargs).to(device)
 
+        self.register_buffer('generator', generator)
         self.register_buffers(init_benchmark, device)
 
     def _load_generator(self, generator_path: str, device: str = 'cpu') -> Generator:
