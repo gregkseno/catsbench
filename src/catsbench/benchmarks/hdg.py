@@ -63,14 +63,25 @@ class BenchmarkHDG(BenchmarkBase):
         # prepare samples
         x_start = convert_to_numpy(self.input_dataset[:num_samples])
         x_end = convert_to_numpy(self.target_dataset[:num_samples])
+        if self.reverse:
+            pred_x_end = convert_to_numpy(self.sample(
+                self.target_dataset[:num_samples], 
+                use_onestep_sampling=True
+            ))
+        else:
+            pred_x_end = convert_to_numpy(self.sample(
+                self.input_dataset[:num_samples], 
+                use_onestep_sampling=True
+            ))
         if use_pca:
             x_start = pca.transform(x_start)
             x_end = pca.transform(x_end)
+            pred_x_end = pca.transform(pred_x_end)
 
         # plot samples
         fig, axs = plt.subplots(
-            1, 2, dpi=kwargs.get('dpi', 200),
-            figsize=kwargs.get('fig_size', (8, 4))
+            1, 3, dpi=kwargs.get('dpi', 200),
+            figsize=kwargs.get('fig_size', (12, 4))
         )
         axs[0].scatter(
             x_start[:, 0], x_start[:, 1],
@@ -81,6 +92,11 @@ class BenchmarkHDG(BenchmarkBase):
             x_end[:, 0], x_end[:, 1],
             label=r'$p_{end}$', s=kwargs.get('s', 35),  
             c='orange', edgecolor='black'    
+        )
+        axs[2].scatter(
+            pred_x_end[:, 0], pred_x_end[:, 1],
+            label=r'$p_{pred}$', s=kwargs.get('s', 35),  
+            c='blue', edgecolor='black'    
         )
 
         fig.suptitle('Benchmark samples', fontsize=16)
