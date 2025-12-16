@@ -1,4 +1,4 @@
-from typing import Any, Literal, Optional, Union
+from typing import Any, Callable, Literal, Optional, Union
 
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
@@ -13,16 +13,11 @@ log = RankedLogger(__name__, rank_zero_only=True)
 class BenchmarkDataModule(LightningDataModule):
     def __init__(
         self,
-        dim: int,
-        num_categories: int,
-        num_potentials: int,
         batch_size: int,
         val_batch_size: int,
-        input_dist: Literal['gaussian', 'uniform'],
-        benchmark: Union[BenchmarkHDG, BenchmarkImage, BenchmarkText],
+        benchmark: Callable,
         num_workers: int = 0,
         pin_memory: bool = False,
-        dir: str = './data/benchmark',
     ) -> None:
         super().__init__()
         # somehow this function is able to load all 
@@ -35,8 +30,8 @@ class BenchmarkDataModule(LightningDataModule):
         self.data_test: Optional[Dataset] = None
 
     def prepare_data(self) -> None:
-        pass
-        # Benchmark.download(...)
+        # cache the benchmark initialization
+        self.hparams.benchmark(init_benchmark=False, device='cpu')
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data by seting variables: `self.data_train`, `self.data_val`, `self.data_test`."""
@@ -56,7 +51,7 @@ class BenchmarkDataModule(LightningDataModule):
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.benchmark and not self.data_train and not self.data_val and not self.data_test:
             device = self.trainer.strategy.root_device if self.trainer is not None else 'cpu'
-            self.benchmark = self.hparams.benchmark(device=device)
+            self.benchmark = self.hparams.benchmark(init_benchmark=False, device=device)
             log.info(f"Loading Benchmark datasets to {device}...")
 
             ###################### TRAINING DATASET ######################
