@@ -33,7 +33,7 @@ class BenchmarkBaseConfig:
     init_batch_size: int
     reverse: bool
     tau: float
-    params_dtype: str = 'float32'
+    params_dtype: str
 
 class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
 

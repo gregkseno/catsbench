@@ -17,11 +17,7 @@ log = Logger(__name__, rank_zero_only=True)
 
 @dataclass 
 class BenchmarkImageConfig(BenchmarkBaseConfig):
-    generator_kwargs: Dict[str, Any] = {
-        'z_dim': 512, 'c_dim': 0, 'w_dim': 512,
-        'img_resolution': 32,
-        'img_channels': 3,
-    }
+    generator_kwargs: Dict[str, Any]
 
 class BenchmarkImage(BenchmarkBase):
 

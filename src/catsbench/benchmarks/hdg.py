@@ -16,7 +16,7 @@ log = Logger(__name__, rank_zero_only=True)
 
 @dataclass 
 class BenchmarkHDGConfig(BenchmarkBaseConfig):
-    input_distribution: Literal['gaussian', 'uniform'] = 'gaussian'
+    input_distribution: Literal['gaussian', 'uniform']
 
 class BenchmarkHDG(BenchmarkBase):
     def __init__(
