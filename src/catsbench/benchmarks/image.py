@@ -27,6 +27,7 @@ class BenchmarkImage(BenchmarkBase):
         *,
         init_benchmark: bool = True,
         generator_path: Optional[str] = None,
+        generator_kwargs: Optional[dict] = None,
         device: str = 'cpu'
     ):
         if not config.reverse:
@@ -40,11 +41,19 @@ class BenchmarkImage(BenchmarkBase):
             self.generator = self._load_generator(generator_path, device)
         else:
             log.info('Skipping StyleGAN2 generator initialization!')
-            self.generator = Generator(
-                512, 0, 512,
-                self.input_shape[1],
-                self.input_shape[0],
-            ).to(device)
+            if generator_kwargs is None:
+                generator_kwargs = {
+                    'z_dim': 512, 'c_dim': 0, 'w_dim': 512,
+                    'img_resolution': self.input_shape[1],
+                    'img_channels': self.input_shape[0],
+                }
+            else:
+                log.warning(
+                    'Using provided generator_kwargs have not been verified for correctness! ' \
+                    'Please make sure they match the benchmark data shape.'
+                )
+            
+            self.generator = Generator(**generator_kwargs).to(device)
 
         self.register_buffers(init_benchmark, device)
 
