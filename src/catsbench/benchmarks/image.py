@@ -48,6 +48,7 @@ class BenchmarkImage(BenchmarkBase):
     def _load_generator(self, generator_path: str, device: str = 'cpu') -> Generator:
         with dnnlib.util.open_url(generator_path) as f:
             generator: Generator = legacy.load_network_pkl(f)['G_ema'].to(device)
+        generator.eval()
         return generator
 
     @property
