@@ -91,6 +91,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             input_dataset, target_dataset = self._init_dataset(
                 num_samples=self.num_val_samples,
                 batch_size=self.init_batch_size,
+                reverse=self.reverse
             )
         else:
             log.info('Skipping dataset initialization!')
@@ -175,6 +176,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         self,
         num_samples: int,
         batch_size: int,
+        reverse: bool
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         input_dataset = torch.empty((num_samples, self.dim), dtype=torch.long, device=self.device)
         target_dataset = torch.empty((num_samples, self.dim), dtype=torch.long, device=self.device)
@@ -184,7 +186,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             batch_sizes_list.append(num_samples % batch_size)
         for i, bs in enumerate(batch_sizes_list):
             start = i * batch_size
-            input_batch = self.sample_input(bs)
+            input_batch = self._sample_input(bs)
             target_batch = self.sample(input_batch)
             input_dataset[start:start+bs] = input_batch
             target_dataset[start:start+bs] = target_batch
@@ -192,6 +194,9 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         random_indices = torch.randperm(len(target_dataset))
         input_dataset  = input_dataset[random_indices]
         target_dataset = target_dataset[random_indices]
+        if reverse:
+            input_dataset, target_dataset = target_dataset, input_dataset
+
         return input_dataset, target_dataset
 
     @property

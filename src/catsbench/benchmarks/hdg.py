@@ -52,7 +52,7 @@ class BenchmarkHDG(BenchmarkBase):
     @torch.no_grad()
     def _sample_target(self, num_samples: int) -> torch.LongTensor:
         '''Sample independent target data'''
-        input_samples = self.sample_input(num_samples)
+        input_samples = self._sample_input(num_samples)
         target_samples = self.sample(input_samples)
         return target_samples
 
@@ -68,15 +68,13 @@ class BenchmarkHDG(BenchmarkBase):
         # prepare samples
         x_start = convert_to_numpy(self.input_dataset[:num_samples])
         x_end = convert_to_numpy(self.target_dataset[:num_samples])
-        pred_x_end = convert_to_numpy(self.sample(self.input_dataset[:num_samples]))
         if use_pca:
             x_start = pca.transform(x_start)
             x_end = pca.transform(x_end)
-            pred_x_end = pca.transform(pred_x_end)
 
         # plot samples
         fig, axs = plt.subplots(
-            1, 3, dpi=kwargs.get('dpi', 200),
+            1, 2, dpi=kwargs.get('dpi', 200),
             figsize=kwargs.get('fig_size', (12, 4))
         )
         axs[0].scatter(
@@ -89,15 +87,10 @@ class BenchmarkHDG(BenchmarkBase):
             label=r'$p_{end}$', s=kwargs.get('s', 35),  
             c='orange', edgecolor='black'    
         )
-        axs[2].scatter(
-            pred_x_end[:, 0], pred_x_end[:, 1], 
-            label=r'$p_{\theta}$', s=kwargs.get('s', 35), 
-            c='yellow', edgecolor='black'
-        ) 
 
         fig.suptitle('Benchmark samples', fontsize=16)
         if use_pca:
-            max_value = np.abs(pred_x_end).max()
+            max_value = np.abs(x_end).max()
             axlim = [-max_value - 5, max_value + 5]
         else:
             axlim = [0, self.num_categories - 1]
