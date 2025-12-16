@@ -27,11 +27,8 @@ class BenchmarkHDG(BenchmarkBase):
         device: str = 'cpu'
     ):
         self.input_distribution = config.input_distribution
-        super().__init__(
-            config, 
-            init_benchmark=init_benchmark, 
-            device=device
-        )
+        super().__init__(config)
+        self.register_buffers(init_benchmark, device)
             
     @property
     def name(self) -> str:

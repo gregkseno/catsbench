@@ -34,13 +34,7 @@ class BenchmarkBaseConfig:
 
 class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
 
-    def __init__(
-        self,
-        config: BenchmarkBaseConfig,
-        *,
-        init_benchmark: bool = True,
-        device: Union[str, torch.device] = 'cpu',
-    ):
+    def __init__(self, config: BenchmarkBaseConfig):
         super().__init__()
         self.config = config
         self.dim = config.dim
@@ -57,10 +51,14 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         self.tau = config.tau
         self.params_dtype = getattr(torch, config.params_dtype)
 
+    def register_buffers(
+        self, init_benchmark: bool = True, 
+        device: Union[str, torch.device] = 'cpu'
+    ):
         if init_benchmark:
             log.info('Initializing parameters...')
             log_alpha, log_cp_cores = self._init_parameters(
-                config.benchmark_type, self.params_dtype, device
+                self.benchmark_type, self.params_dtype, device
             )
         else:
             log.info('Skipping parameters initialization!')
@@ -77,12 +75,12 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
 
         log.info('Initializing prior...')
         self.prior = Prior(
-            alpha=config.alpha,
-            num_categories=config.num_categories,
-            num_timesteps=config.num_timesteps,
-            num_skip_steps=config.num_skip_steps,
-            tau=config.tau,
-            prior_type=config.prior_type,
+            alpha=self.alpha,
+            num_categories=self.num_categories,
+            num_timesteps=self.num_timesteps,
+            num_skip_steps=self.num_skip_steps,
+            tau=self.tau,
+            prior_type=self.prior_type,
             dtype=self.params_dtype,
             device=device
         )
