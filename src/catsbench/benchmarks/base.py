@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 from torch.distributions.normal import Normal
 
+from tqdm.auto import tqdm
+
 from .hub_mixin import BenchmarkModelHubMixin
 from ..prior import Prior
 from ..utils import (
@@ -14,11 +16,12 @@ from ..utils import (
 )
 
 log = Logger('catsbench', rank_zero_only=True)
-STDS = {2:2, 16:2, 64:2}
+STDS = {2:2, 16:2, 64:2, 3072:15}
 
 @dataclass
 class BenchmarkBaseConfig:
     dim: int
+    input_shape: Tuple[int, ...]
     num_potentials: int
     num_categories: int
     alpha: float
@@ -38,6 +41,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         super().__init__()
         self.config = config
         self.dim = config.dim
+        self.input_shape = config.input_shape
         self.num_potentials = config.num_potentials
         self.num_categories = config.num_categories
         self.alpha = config.alpha
@@ -57,9 +61,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
     ):
         if init_benchmark:
             log.info('Initializing parameters...')
-            log_alpha, log_cp_cores = self._init_parameters(
-                self.benchmark_type, self.params_dtype, device
-            )
+            log_alpha, log_cp_cores = self._init_parameters(device=device)
         else:
             log.info('Skipping parameters initialization!')
             log_alpha = torch.empty(
@@ -90,43 +92,39 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             input_dataset, target_dataset = self._init_dataset(
                 num_samples=self.num_val_samples,
                 batch_size=self.init_batch_size,
-                reverse=self.reverse
             )
         else:
             log.info('Skipping dataset initialization!')
             input_dataset = torch.empty(
-                (self.num_val_samples, self.dim), dtype=torch.long, device=device
+                (self.num_val_samples, *self.input_shape), dtype=torch.long, device=device
             )
             target_dataset = torch.empty(
-                (self.num_val_samples, self.dim), dtype=torch.long, device=device
+                (self.num_val_samples, *self.input_shape), dtype=torch.long, device=device
             )
         self.register_buffer('input_dataset', input_dataset)
         self.register_buffer('target_dataset', target_dataset)
         
     def _init_parameters(
-        self, 
-        benchmark_type: Literal['gaussian', 'uniform'], 
-        dtype: torch.dtype = torch.float32,
-        device: Union[str, torch.device] = 'cpu'
+        self, device: Union[str, torch.device] = 'cpu'
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # initialize weights uniformly
         log_alpha = torch.log(
             torch.ones(
                 self.num_potentials, 
-                dtype=dtype, 
+                dtype=self.params_dtype, 
                 device=device
             ) / self.num_potentials
         )
 
         # initialize CP cores
-        if benchmark_type == 'gaussian':
+        if self.benchmark_type == 'gaussian':
             # means are sampled from uniformly from sphere of radius 5
             # use rejection sampling to ensure means are well separated
             means_list = []
             min_dist = 2.5 * STDS[self.dim]
             for _ in range(self.num_potentials):
                 for _ in range(100):
-                    candidate = torch.randn(self.dim, 1, dtype=dtype, device=device)
+                    candidate = torch.randn(self.dim, 1, dtype=self.params_dtype, device=device)
                     candidate = 5 * candidate / candidate.norm()
                     
                     if not means_list:
@@ -144,14 +142,14 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             stds = torch.full(
                 (self.dim, self.num_potentials), 
                 fill_value=STDS[self.dim], 
-                dtype=dtype,
+                dtype=self.params_dtype,
                 device=device
             ).unsqueeze(-1)
 
             # autmatically scale to the num_categories
             means = continuous_to_discrete(
                 means, self.num_categories, quantize_range=(-5,5)
-            ).unsqueeze(-1).to(dtype=dtype)
+            ).unsqueeze(-1).to(dtype=self.params_dtype)
             log.info(f'Sampled means (indices):\n{means.squeeze(-1).T.cpu().numpy()}')
             
             # compute log probs
@@ -161,13 +159,13 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             ).view(1, 1, self.num_categories)
             log_cp_cores = distribution.log_prob(values) # (D, K, S)
 
-        elif benchmark_type == 'uniform':
+        elif self.benchmark_type == 'uniform':
             log_cp_cores = torch.rand(
-                (self.dim, self.num_potentials, self.num_categories), dtype=dtype, device=device
+                (self.dim, self.num_potentials, self.num_categories), dtype=self.params_dtype, device=device
             ) # (D, K, S)
 
         else:
-            raise ValueError(f'Unknown benchmark type: {benchmark_type}')
+            raise ValueError(f'Unknown benchmark type: {self.benchmark_type}')
         
         return log_alpha, log_cp_cores
 
@@ -175,14 +173,14 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         self,
         num_samples: int,
         batch_size: int,
-        reverse: bool
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        input_dataset = torch.empty((num_samples, self.dim), dtype=torch.long, device=self.device)
-        target_dataset = torch.empty((num_samples, self.dim), dtype=torch.long, device=self.device)
+        input_dataset = torch.empty((num_samples, *self.input_shape), dtype=torch.long, device=self.device)
+        target_dataset = torch.empty((num_samples, *self.input_shape), dtype=torch.long, device=self.device)
 
         batch_sizes_list = [batch_size] * (num_samples // batch_size)
         if num_samples % batch_size:
             batch_sizes_list.append(num_samples % batch_size)
+        batch_sizes_list = tqdm(batch_sizes_list, desc='Initializing dataset')
         for i, bs in enumerate(batch_sizes_list):
             start = i * batch_size
             input_batch = self._sample_input(bs)
@@ -193,7 +191,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         random_indices = torch.randperm(len(target_dataset))
         input_dataset  = input_dataset[random_indices]
         target_dataset = target_dataset[random_indices]
-        if reverse:
+        if self.reverse:
             input_dataset, target_dataset = target_dataset, input_dataset
 
         return input_dataset, target_dataset
