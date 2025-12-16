@@ -72,11 +72,11 @@ class _LegacyUnpickler(pickle.Unpickler):
         
         # Redirect legacy StyleGAN2 imports to your package
         if module == 'torch_utils.persistence':
-            module = 'benchmark.stylegan2.torch_utils.persistence'
+            module = 'catsbench.stylegan2.torch_utils.persistence'
         elif module == 'dnnlib':
-            module = 'benchmark.stylegan2.dnnlib'
+            module = 'catsbench.stylegan2.dnnlib'
         elif module == 'dnnlib.util':
-            module = 'benchmark.stylegan2.dnnlib.util'
+            module = 'catsbench.stylegan2.dnnlib.util'
         return super().find_class(module, name)
 
 
