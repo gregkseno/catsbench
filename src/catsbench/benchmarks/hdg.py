@@ -48,13 +48,6 @@ class BenchmarkHDG(BenchmarkBase):
         else:
             raise ValueError(f'Unknown input distribution: {self.input_distribution}')
         return samples
-    
-    @torch.no_grad()
-    def _sample_target(self, num_samples: int) -> torch.LongTensor:
-        '''Sample independent target data'''
-        input_samples = self._sample_input(num_samples)
-        target_samples = self.sample(input_samples)
-        return target_samples
 
     def _plot_samples(self, num_samples: int, **kwargs):
         use_pca = self.dim > 2

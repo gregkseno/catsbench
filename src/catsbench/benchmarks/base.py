@@ -378,8 +378,11 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
     def _sample_input(self, num_samples: int) -> torch.LongTensor:
         raise NotImplementedError
 
+    @torch.no_grad()
     def _sample_target(self, num_samples: int) -> torch.LongTensor:
-        raise NotImplementedError
+        input_samples = self._sample_input(num_samples)
+        target_samples = self.sample(input_samples)
+        return target_samples
 
     @torch.no_grad()
     def sample_input(self, num_samples: int) -> torch.LongTensor:
