@@ -3,6 +3,6 @@
   num_categories: ${data.num_categories}
   num_timesteps: 15
   num_skip_steps: 8
+  tau: 1
   prior_type: gaussian # choices: "uniform", "gaussian", "von_mises"
-  eps: 1e-20
   dtype: float32

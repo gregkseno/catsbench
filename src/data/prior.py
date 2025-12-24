@@ -141,7 +141,6 @@ class Prior(nn.Module):
         prior_type: Literal[
             'uniform', 
             'gaussian',
-            'uniform_closed_form'
         ] = 'uniform',
         dtype: torch.dtype = torch.float32,
         device: Union[str, torch.device] = 'cpu'
