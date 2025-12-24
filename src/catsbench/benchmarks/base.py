@@ -198,7 +198,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
 
     @property
     def name(self) -> str:
-        return f'd{self.dim}_s{self.num_categories}_{self.prior.prior_type}_a{self.prior.alpha}_{self.benchmark_type}'
+        return f'd{self.dim}_s{self.num_categories}_prior_{self.prior.prior_type}_a{self.prior.alpha}'
 
     @property
     def device(self) -> str:

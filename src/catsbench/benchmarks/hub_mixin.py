@@ -146,6 +146,7 @@ class BenchmarkModelHubMixin(PyTorchModelHubMixin):
         Returns:
             `str`: The url of the commit of your benchmark in the given repository.
         '''
+        # TODO: Add README.md generation with generated plots of the benchmark samples and trajectories.
         api = HfApi(token=token)
         repo_id = api.create_repo(repo_id=repo_id, private=private, exist_ok=True).repo_id
 

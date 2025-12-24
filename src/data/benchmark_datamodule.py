@@ -13,6 +13,8 @@ log = RankedLogger(__name__, rank_zero_only=True)
 class BenchmarkDataModule(LightningDataModule):
     def __init__(
         self,
+        dim: int,
+        num_categories: int,
         batch_size: int,
         val_batch_size: int,
         benchmark: Callable, # from_pretrained method of Benchmark classes
