@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Tuple, Union
 
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
@@ -14,6 +14,7 @@ class BenchmarkDataModule(LightningDataModule):
     def __init__(
         self,
         dim: int,
+        input_shape: Tuple[int, ...],
         num_categories: int,
         batch_size: int,
         val_batch_size: int,

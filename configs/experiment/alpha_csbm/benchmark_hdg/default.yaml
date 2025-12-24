@@ -13,13 +13,12 @@ defaults:
 
 data:
   dim: ???
+  input_shape: [${data.dim}]
   num_categories: 50
-  num_potentials: 4
   batch_size: 128 
   val_batch_size: 128
   num_workers: 0
   pin_memory: false
-  dir: ${paths.data_dir}/benchmark_hdg
 
 model:
  timestep_dim: ${data.dim}
