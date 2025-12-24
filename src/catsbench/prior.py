@@ -2,7 +2,7 @@ from typing import Literal, Optional, Union
 
 import torch
 from torch import nn
-from .utils import broadcast, gumbel_sample, log_space_product
+from .utils import broadcast, gumbel_sample, log_space_product, logits_prod
 
 
 def get_cum_matrices(
@@ -217,3 +217,41 @@ class Prior(nn.Module):
         x_t = torch.where(is_first_step, x_start, x_t)
 
         return x_t
+
+    # following methods for baseline methods (d-imf) only
+    def bridge_logits(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        r"""Calculates log probability of $p(x_{t} | x_{0}, x_{1})$."""
+        log_p_start_t = self.extract('cumulative', t, row_id=x_start)
+        log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
+        logits = log_p_start_t + log_p_t_end
+        return logits
+    
+    def posterior_logits(
+        self, 
+        x_start: torch.Tensor, 
+        x_t: torch.Tensor, 
+        t: torch.Tensor, 
+        logits: bool = False,
+    ) -> torch.Tensor:
+        r"""Calculates logits of $p(x_{t-1} | x_{t}, x_{0})$.
+        If logits is True, the output is summed over x_0 and transition matrix returned.""" 
+        if not logits:
+            x_start_logits = torch.log(torch.nn.functional.one_hot(x_start, self.num_categories) + self.eps)
+        else:
+            x_start_logits = x_start.clone()
+        assert x_start_logits.shape == x_t.shape + (self.num_categories,), \
+            f"x_start_logits.shape: {x_start_logits.shape}, x_t.shape: {x_t.shape}"
+        x_start_logits = x_start_logits.to(self.dtype)
+        # fact1 is "guess of x_{t}" from x_{t-1}
+        log_fact1 = self.extract('onestep', t, row_id=x_t)
+
+        # fact2 is "guess of x_{t-1}" from x_{0}
+        x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
+        log_fact2 = logits_prod(x_start_logits, self.log_p_cum[t-1]) 
+
+        p_posterior_logits = log_fact1 + log_fact2
+
+        # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already
+        is_first_step = broadcast(t, x_t.dim()) == 1
+        p_posterior_logits = torch.where(is_first_step, x_start_logits, p_posterior_logits)
+        return p_posterior_logits
