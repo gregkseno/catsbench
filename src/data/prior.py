@@ -173,6 +173,10 @@ class Prior(nn.Module):
         # register as non-persistent buffer to avoid saving in checkpoints
         self.register_buffer("log_p_onestep", log_p_onestep, persistent=False)
         self.register_buffer("log_p_cum", log_p_cum, persistent=False)
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.log_p_onestep.dtype
         
     def extract(
         self, 
@@ -231,7 +235,7 @@ class Prior(nn.Module):
         r"""Calculates logits of $p(x_{t-1} | x_{t}, x_{0})$.
         If logits is True, the output is summed over x_0 and transition matrix returned.""" 
         if not logits:
-            eps = x_start.finfo().eps
+            eps = torch.finfo(self.dtype).eps
             x_start_logits = torch.log(torch.nn.functional.one_hot(x_start, self.num_categories) + eps)
         else:
             x_start_logits = x_start.clone()
@@ -262,7 +266,7 @@ class Prior(nn.Module):
         r"""Calculates logits of $p(x_{t+1} | x_{t}, x_{1})$.
         If logits is True, the output is summed over x_1 and transition matrix returned.""" 
         if not logits:
-            eps = x_end.finfo().eps
+            eps = torch.finfo(self.dtype).eps
             x_end_logits = torch.log(torch.nn.functional.one_hot(x_end, self.num_categories) + eps)
         else:
             x_end_logits = x_end.clone()
