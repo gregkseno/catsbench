@@ -35,8 +35,8 @@ method:
   use_mini_batch: false
   num_first_iterations: 3
   kl_loss_coeff: ???
-  ce_loss_coeff: ???
-  mse_loss_coeff: 0
+  ce_loss_coeff: 0
+  mse_loss_coeff: ???
   ignore_index: -100
   accumulate_grad_batches: 1
   argmax_mode: false
