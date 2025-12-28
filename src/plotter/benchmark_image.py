@@ -1,17 +1,17 @@
-from typing import Any, Dict, Literal, Tuple
+from typing import Any, Dict, Literal, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
 from torchvision.utils import make_grid
-from torchmetrics.image import FrechetInceptionDistance
 from lightning.pytorch import Callback, Trainer, LightningModule
 from lightning.pytorch.loggers import WandbLogger, CometLogger, TensorBoardLogger
 from lightning.pytorch.utilities import rank_zero_only
 
-from src.utils import convert_to_numpy, fig2img
-from src.metrics.c2st import ClassifierTwoSampleTest
-from src.utils.ranked_logger import RankedLogger
+from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
+from ..utils import convert_to_numpy, fig2img
+from ..utils.ranked_logger import RankedLogger
+
 from catsbench import BenchmarkImage
 
 
@@ -25,7 +25,6 @@ class BenchmarkImagePlotterCallback(Callback):
         dim: int,
         input_shape: Tuple[int, int, int],
         num_categories: int,
-        train_test_split: float,
         num_samples: int, 
         num_trajectories: int, 
         num_translations: int,
@@ -35,164 +34,21 @@ class BenchmarkImagePlotterCallback(Callback):
         self.input_shape = input_shape
         self.num_categories = num_categories
 
-        self.train_test_split = train_test_split
         self.num_samples = num_samples
         self.num_trajectories = num_trajectories
         self.num_translations = num_translations
-        self._buffers = {
-            stage: {'x_start': [], 'x_end': []} \
-                for stage in ('train', 'val', 'test')
-        }
-
-    def _reset_buf(self, stage: Literal['train', 'val', 'test']) -> None:
-        self._buffers[stage]['x_start'].clear()
-        self._buffers[stage]['x_end'].clear()
-
-    def _accumulate_buf(
-        self, 
-        stage: Literal['train', 'val', 'test'],
-        x_start: torch.Tensor, 
-        x_end: torch.Tensor
-    ) -> None:
-        buf = self._buffers[stage]
-        have = sum(t.shape[0] for t in buf['x_start'])
-        remain = self.num_samples - have
-        if remain <= 0:
-            return
-        take = min(remain, x_start.shape[0])
-        buf['x_start'].append(x_start[:take].detach())
-        buf['x_end'].append(x_end[:take].detach())
-
-    def _log_buf(self, stage: Literal['train', 'val', 'test'], pl_module: LightningModule) -> None:
-        buf = self._buffers[stage]
-        if not buf['x_start']:
-            return
-        x_start = torch.cat(buf['x_start'], dim=0)[:self.num_samples]
-        x_end = torch.cat(buf['x_end'], dim=0)[:self.num_samples]
-        self._log_smaples(x_start, x_end, pl_module, stage)
-        self._log_trajectories(x_start, x_end, pl_module, stage=stage)
-        self._reset_buf(stage)
 
     def setup(
         self,
         trainer: Trainer, 
-        pl_module: LightningModule, 
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM], 
         stage: Literal['fit', 'validate', 'test']
     ) -> None:
-        if pl_module.current_epoch != 0 and stage != 'fit':
+        if self.benchmark is not None:
             return
-
-        # get benchmark class
         assert hasattr(trainer.datamodule, 'benchmark'), \
             'Wrong datamodule! It should have `benchmark` attribute'
         self.benchmark = trainer.datamodule.benchmark
-        self.benchmark.to(pl_module.device)
-
-        # initialize metrics
-        pl_module.fid = FrechetInceptionDistance(normalize=True)
-
-        paired_input_shape = [self.input_shape[0]*2, *self.input_shape[1:]]
-        pl_module.c2st = ClassifierTwoSampleTest(
-            dim=2*self.dim, input_shape=paired_input_shape, model='cnn'
-        )
-
-    def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        self._reset_buf('train')
-
-    def on_train_batch_end(
-        self,
-        trainer: Trainer,
-        pl_module: LightningModule,
-        outputs: Dict[str, Any],
-        batch: Tuple[torch.Tensor, torch.Tensor],
-        batch_idx: int,
-    ) -> None:
-        pl_module.eval()
-        x_start, x_end = outputs['x_start'], outputs['x_end']
-        self._accumulate_buf('train', x_start, x_end)
-
-    def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        self._log_buf('train', pl_module)
-
-    def on_validation_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        self._reset_buf('val')
-
-    def on_validation_batch_end(
-        self,
-        trainer: Trainer,
-        pl_module: LightningModule,
-        outputs: Dict[str, Any],
-        batch: Tuple[torch.Tensor, torch.Tensor],
-        batch_idx: int,
-    ) -> None:
-        pl_module.eval()
-        x_start, x_end = outputs['x_start'], outputs['x_end']
-        self._accumulate_buf('val', x_start, x_end)
-
-        pred_x_end = pl_module.sample(x_start)
-        pl_module.fid.update(x_end, real=True)
-        pl_module.fid.update(pred_x_end, real=False)
-        len_data = len(trainer.val_dataloaders) if trainer.limit_val_batches is None else trainer.limit_val_batches
-        train_mode = batch_idx < int(len_data * self.train_test_split)
-        with torch.inference_mode(not train_mode):
-            pl_module.c2st.update(
-                torch.cat([x_start, x_end], dim=1),
-                torch.cat([x_start, pred_x_end], dim=1),
-                train=train_mode
-            )
-
-    def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
-        fb = getattr(pl_module, 'fb', None) or 'forward' 
-        
-        fid = pl_module.fid.compute()
-        pl_module.log(f'val/fid_{fb}', fid)
-        pl_module.fid.reset()
-
-        c2st = pl_module.c2st.compute()
-        pl_module.log(f'val/c2st_{fb}', c2st)
-        pl_module.c2st.reset()
-
-        self._log_buf('val', pl_module)
-
-    def on_test_epoch_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
-        self._reset_buf('test')
-
-    def on_test_batch_end(
-        self,
-        trainer: Trainer,
-        pl_module: LightningModule,
-        outputs: Dict[str, Any],
-        batch: Tuple[torch.Tensor, torch.Tensor],
-        batch_idx: int,
-    ) -> None:
-        pl_module.eval()
-        x_start, x_end = outputs['x_start'], outputs['x_end']
-        self._accumulate_buf('test', x_start, x_end)
-
-        pred_x_end = pl_module.sample(x_start)
-        pl_module.fid.update(x_end, real=True)
-        pl_module.fid.update(pred_x_end, real=False)
-        len_data = len(trainer.test_dataloaders) if trainer.limit_test_batches is None else trainer.limit_test_batches
-        train_mode = batch_idx < int(len_data * self.train_test_split)
-        with torch.inference_mode(not train_mode):
-            pl_module.c2st.update(
-                torch.cat([x_start, x_end], dim=1),
-                torch.cat([x_start, pred_x_end], dim=1),
-                train=train_mode
-            )
-
-    def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
-        fb = getattr(pl_module, 'fb', None) or 'forward' 
-        # fast metric first
-        c2st = pl_module.c2st.compute()
-        pl_module.log(f'test/c2st_{fb}', c2st)
-        pl_module.c2st.reset()
-
-        fid = pl_module.fid.compute()
-        pl_module.log(f'val/fid_{fb}', fid)
-        pl_module.fid.reset()
-
-        self._log_buf('test', pl_module)
 
     @rank_zero_only
     def _log_smaples(

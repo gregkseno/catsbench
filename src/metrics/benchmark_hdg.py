@@ -2,7 +2,7 @@ from typing import Any, Dict, Literal, Optional, Tuple, Union
 import torch
 
 from torchmetrics import MetricCollection
-from lightning.pytorch import Callback, Trainer
+from lightning.pytorch import Trainer
 
 from catsbench import BenchmarkHDG
 from catsbench.metrics import (
@@ -12,14 +12,15 @@ from catsbench.metrics import (
     TrajectoryKLDivergence
 )
 
+from .base import BaseMetricsCallback
 from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
 from ..utils.ranked_logger import RankedLogger
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-class BenchmarkHDGMetricsCallback(Callback):
-    benchmark: Optional[BenchmarkHDG] = None
+class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
+    benchmark: BenchmarkHDG
 
     def __init__(
         self,
@@ -37,19 +38,10 @@ class BenchmarkHDGMetricsCallback(Callback):
         self.train_test_split = train_test_split
         self.classifier_lr = classifier_lr
 
-    def setup(
+    def _init_metrics(
         self,
-        trainer: Trainer, 
         pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM], 
-        stage: Literal['fit', 'validate', 'test']
     ) -> None:
-        if self.benchmark is not None and hasattr(pl_module, 'metrics'):
-            return
-        
-        assert hasattr(trainer.datamodule, 'benchmark'), \
-            'Wrong datamodule! It should have `benchmark` attribute'
-        self.benchmark = trainer.datamodule.benchmark
-        
         # initialize unconditional metrics
         pl_module.metrics = MetricCollection(
             {'shape_score': ShapeScore(self.dim, self.num_categories, conditional=False),
@@ -76,7 +68,6 @@ class BenchmarkHDGMetricsCallback(Callback):
         batch_idx: int,
         stage: Literal['train', 'val', 'test'] = 'train',
     ) -> None:
-        pl_module.eval()
         x_start, x_end = outputs['x_start'], outputs['x_end']
 
         # update unconditional metrics
@@ -131,7 +122,6 @@ class BenchmarkHDGMetricsCallback(Callback):
                 q=pl_module.get_transition_logits(true_trajectory, timesteps)
             )
             
-
     def _compute_and_log_metrics(
         self,
         trainer: Trainer,
@@ -164,45 +154,3 @@ class BenchmarkHDGMetricsCallback(Callback):
             reverse_kl_div = pl_module.reverse_kl_div.compute()
             pl_module.log(f'{stage}/reverse_kl_div_{fb}', reverse_kl_div)
             pl_module.reverse_kl_div.reset()
-            
-    def on_validation_batch_end(
-        self,
-        trainer: Trainer,
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
-        outputs: Dict[str, Any],
-        batch: Tuple[torch.Tensor, torch.Tensor],
-        batch_idx: int,
-    ) -> None:
-        self._update_metrics(
-            trainer, pl_module, outputs, batch_idx, stage='val'
-        )
-       
-    def on_validation_epoch_end(
-        self, 
-        trainer: Trainer, 
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM]
-    ):
-        self._compute_and_log_metrics(
-            trainer, pl_module, stage='val'
-        )
-
-    def on_test_batch_end(
-        self,
-        trainer: Trainer,
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
-        outputs: Dict[str, Any],
-        batch: Tuple[torch.Tensor, torch.Tensor],
-        batch_idx: int,
-    ) -> None:
-        self._update_metrics(
-            trainer, pl_module, outputs, batch_idx, stage='test'
-        )
-
-    def on_test_epoch_end(
-        self, 
-        trainer: Trainer, 
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM]
-    ):
-        self._compute_and_log_metrics(
-            trainer, pl_module, stage='test'
-        )
