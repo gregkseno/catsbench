@@ -8,21 +8,8 @@ from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
 
 class BaseMetricsCallback(Callback):
 
-    def __init__(
-        self,
-        dim: int,
-        num_categories: int,
-        num_cond_samples: int,
-        train_test_split: Optional[float] = 0.8,
-        classifier_lr: Optional[float] = 1e-2,
-    ):
+    def __init__(self,):
         super().__init__()
-        self.dim = dim
-        self.num_categories = num_categories
-
-        self.num_cond_samples = num_cond_samples
-        self.train_test_split = train_test_split
-        self.classifier_lr = classifier_lr
 
     def _init_metrics(
         self,
