@@ -142,7 +142,7 @@ class Prior(nn.Module):
             'uniform', 
             'gaussian',
         ] = 'uniform',
-        dtype: str = 'float32',
+        dtype: Union[str, torch.dtype] = torch.float32,
         device: Union[str, torch.device] = 'cpu'
     ) -> None:
         super().__init__()
@@ -152,7 +152,8 @@ class Prior(nn.Module):
         self.num_skip_steps = num_skip_steps
         self.tau = tau
         self.prior_type = prior_type
-        dtype = getattr(torch, dtype, torch.float32)
+        if dtype is str:
+            dtype = getattr(torch, dtype, torch.float32)
 
         if prior_type == 'gaussian':
             log_p_onestep = gaussian_onestep(
