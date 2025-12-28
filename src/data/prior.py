@@ -152,7 +152,7 @@ class Prior(nn.Module):
         self.num_skip_steps = num_skip_steps
         self.tau = tau
         self.prior_type = prior_type
-        if dtype is str:
+        if isinstance(dtype, str):
             dtype = getattr(torch, dtype, torch.float32)
 
         if prior_type == 'gaussian':
