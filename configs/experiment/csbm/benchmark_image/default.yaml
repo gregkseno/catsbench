@@ -15,13 +15,10 @@ data:
   dim: 3072
   input_shape: [3, 32, 32]
   num_categories: 256
-  num_potentials: 10
-  batch_size: 256
+  batch_size: 32
   val_batch_size: 100
   num_workers: 0
   pin_memory: false
-  dir: ${paths.data_dir}/benchmark_image
-  generator_path: ${paths.ckpt_dir}/cmnist_stylegan2.pkl
 
 prior:
   alpha: ???
