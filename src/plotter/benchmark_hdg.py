@@ -16,7 +16,7 @@ from catsbench import BenchmarkHDG
 
 
 class BenchmarkHDGPlotterCallback(BasePlotterCallback):
-    benchmark: BenchmarkHDG
+    benchmark: Optional[BenchmarkHDG] = None
 
     def __init__(
         self,

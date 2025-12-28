@@ -1,4 +1,4 @@
-from typing import Any, Dict, Literal, Tuple, Union
+from typing import Any, Dict, Literal, Optional, Tuple, Union
 import torch
 
 from torchmetrics.image import FrechetInceptionDistance
@@ -12,7 +12,7 @@ from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
 
 
 class BenchmarkImageMetricsCallback(BaseMetricsCallback):
-    benchmark: BenchmarkImage
+    benchmark: Optional[BenchmarkImage] = None
 
     def __init__(
         self,

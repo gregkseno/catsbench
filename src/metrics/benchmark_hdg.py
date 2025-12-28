@@ -20,7 +20,7 @@ from ..utils.ranked_logger import RankedLogger
 log = RankedLogger(__name__, rank_zero_only=True)
 
 class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
-    benchmark: BenchmarkHDG
+    benchmark: Optional[BenchmarkHDG] = None
 
     def __init__(
         self,

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Literal, Tuple, Union
+from typing import Any, Dict, Literal, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -16,7 +16,7 @@ from catsbench import BenchmarkImage
 
 
 class BenchmarkImagePlotterCallback(BasePlotterCallback):
-    benchmark: BenchmarkImage
+    benchmark: Optional[BenchmarkImage] = None
 
     def __init__(
         self,

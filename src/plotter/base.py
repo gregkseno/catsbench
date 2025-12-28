@@ -7,11 +7,6 @@ from lightning.pytorch.utilities import rank_zero_only
 
 
 class BasePlotterCallback(Callback):
-    dim: int
-    num_categories: int
-    num_samples: int
-    num_trajectories: int
-    num_translations: int
 
     def __init__(
         self,

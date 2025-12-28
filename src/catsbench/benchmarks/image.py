@@ -25,6 +25,7 @@ class BenchmarkImage(BenchmarkBase):
         self, 
         config: BenchmarkImageConfig,
         *,
+        num_timesteps: Optional[int] = None,
         init_benchmark: bool = True,
         generator_path: Optional[str] = None,
         device: str = 'cpu'
@@ -32,7 +33,7 @@ class BenchmarkImage(BenchmarkBase):
         if not config.reverse:
             raise ValueError('Only reverse benchmarks are supported for image data.')
         
-        super().__init__(config)
+        super().__init__(config, num_timesteps)
         if init_benchmark:
             log.info('Loading StyleGAN2 generator from new checkpoint...')
             if generator_path is None:
