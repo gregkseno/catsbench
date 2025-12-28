@@ -125,7 +125,7 @@ class BenchmarkHDGMetricsCallback(Callback):
                 q=self.benchmark.get_transition_logits(pred_trajectory, timesteps)
             )
             if isinstance(pl_module, (CSBM, AlphaCSBM)):
-                timesteps = (timesteps + 1).flip(dims=[0])
+                timesteps = (pl_module.prior.num_timesteps + 1) - timesteps
             pl_module.forward_kl_div.update(
                 p=true_transition_logits, 
                 q=pl_module.get_transition_logits(true_trajectory, timesteps)

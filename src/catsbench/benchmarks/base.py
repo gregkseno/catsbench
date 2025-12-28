@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, Tuple, Union
+from typing import Literal, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -37,7 +37,11 @@ class BenchmarkBaseConfig:
 
 class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
 
-    def __init__(self, config: BenchmarkBaseConfig):
+    def __init__(
+        self, 
+        config: BenchmarkBaseConfig,
+        num_timesteps: Optional[int] = None
+    ):
         super().__init__()
         self.config = config
         self.dim = config.dim
@@ -45,8 +49,6 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         self.num_potentials = config.num_potentials
         self.num_categories = config.num_categories
         self.alpha = config.alpha
-        self.num_timesteps = config.num_timesteps
-        self.num_skip_steps = config.num_skip_steps
         self.prior_type = config.prior_type
         self.benchmark_type = config.benchmark_type
         self.num_val_samples = config.num_val_samples
@@ -54,6 +56,18 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         self.reverse = config.reverse
         self.tau = config.tau
         self.params_dtype = getattr(torch, config.params_dtype)
+
+        if num_timesteps is not None:
+            # check that num_timesteps is compatible config's num_timesteps and num_skip_steps
+            total_timesteps = (config.num_timesteps + 1) * config.num_skip_steps
+            # the num_timesteps must be devisible by new num_timesteps
+            if total_timesteps % (num_timesteps + 1) != 0:
+                raise ValueError(
+                    f'num_timesteps {num_timesteps} is not compatible with config.num_timesteps '
+                    f'{config.num_timesteps} and config.num_skip_steps {config.num_skip_steps}'
+                )
+            self.num_timesteps = num_timesteps
+            self.num_skip_steps = total_timesteps // num_timesteps
 
     def register_buffers(
         self, init_benchmark: bool = True, 

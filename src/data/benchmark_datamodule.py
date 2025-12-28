@@ -19,6 +19,7 @@ class BenchmarkDataModule(LightningDataModule):
         batch_size: int,
         val_batch_size: int,
         benchmark: Callable, # from_pretrained method of Benchmark classes
+        num_timesteps: Optional[int] = None,
         num_workers: int = 0,
         pin_memory: bool = False,
     ) -> None:
@@ -54,7 +55,11 @@ class BenchmarkDataModule(LightningDataModule):
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.benchmark and not self.data_train and not self.data_val and not self.data_test:
             device = self.trainer.strategy.root_device if self.trainer is not None else 'cpu'
-            self.benchmark = self.hparams.benchmark(init_benchmark=False, device=device)
+            self.benchmark = self.hparams.benchmark(
+                num_timesteps=self.hparams.num_timesteps, 
+                init_benchmark=False, 
+                device=device
+            )
             log.info(f"Loading Benchmark datasets to {device}...")
 
             ###################### TRAINING DATASET ######################

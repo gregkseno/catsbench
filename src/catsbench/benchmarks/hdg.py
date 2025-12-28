@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 import numpy as np
 import torch
@@ -23,11 +23,12 @@ class BenchmarkHDG(BenchmarkBase):
         self, 
         config: BenchmarkHDGConfig,
         *,
+        num_timesteps: Optional[int] = None,
         init_benchmark: bool = True,
         device: str = 'cpu'
     ):
         self.input_distribution = config.input_distribution
-        super().__init__(config)
+        super().__init__(config, num_timesteps)
         self.register_buffers(init_benchmark, device)
             
     @property

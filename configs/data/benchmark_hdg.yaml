@@ -2,6 +2,7 @@ _target_: src.data.BenchmarkDataModule
 dim: 16
 input_shape: [16]
 num_categories: 100
+num_timesteps: ${prior.num_timesteps} # override (optional) to match methods num_timesteps
 batch_size: 128
 val_batch_size: 32
 num_workers: 0
