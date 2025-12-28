@@ -49,7 +49,7 @@ class BenchmarkImagePlotterCallback(BasePlotterCallback):
         self.benchmark = trainer.datamodule.benchmark
 
     @rank_zero_only
-    def _log_smaples(
+    def _log_samples(
         self,
         x_start: torch.Tensor | np.ndarray, 
         x_end: torch.Tensor | np.ndarray, 
