@@ -8,7 +8,7 @@ from torchmetrics.functional import auroc
 
 
 class ClassifierTwoSampleTest(Metric):
-    is_differentiable = True
+    is_differentiable = False
     higher_is_better = True
     full_state_update = False
     probs: torch.Tensor
@@ -78,7 +78,8 @@ class ClassifierTwoSampleTest(Metric):
 
         if train:
             self.model.train()
-            with torch.enable_grad():
+
+            with torch.inference_mode(False), torch.enable_grad():
                 loss = self.criterion(self.model(x).squeeze(-1), y)
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
