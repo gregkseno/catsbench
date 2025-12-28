@@ -56,7 +56,7 @@ class BenchmarkHDGMetricsCallback(Callback):
              'trend_score': TrendScore(self.dim, self.num_categories, conditional=False)},
         )
         # initialize conditional metrics
-        if self.benchmark.reversed: 
+        if self.benchmark.reverse: 
             pl_module.c2st = ClassifierTwoSampleTest(
                 dim=2*self.dim, num_categories=self.num_categories, lr=self.classifier_lr
             )
@@ -147,7 +147,7 @@ class BenchmarkHDGMetricsCallback(Callback):
         pl_module.metrics.reset()
 
         # compute and log conditional metrics
-        if self.benchmark.reversed:
+        if self.benchmark.reverse:
             c2st = pl_module.c2st.compute()
             pl_module.log(f'{stage}/c2st_{fb}', c2st)
             pl_module.c2st.reset()
