@@ -13,7 +13,8 @@ defaults:
 
 data:
   dim: ???
-  input_shape: [${data.dim}]
+  input_shape: 
+    - ${data.dim}
   num_categories: 50
   batch_size: 128 
   val_batch_size: 128
