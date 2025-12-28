@@ -68,6 +68,9 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
                 )
             self.num_timesteps = num_timesteps
             self.num_skip_steps = total_timesteps // num_timesteps
+        else:
+            self.num_timesteps = config.num_timesteps
+            self.num_skip_steps = config.num_skip_steps
 
     def register_buffers(
         self, init_benchmark: bool = True, 

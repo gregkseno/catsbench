@@ -42,13 +42,14 @@ class BenchmarkImage(BenchmarkBase):
             log.info('Skipping StyleGAN2 generator initialization!')
             generator = Generator(**config.generator_kwargs).to(device)
 
-        self.register_buffer('generator', generator)
+        generator.eval()
+        generator.requires_grad_(False)
+        self.register_module('generator', generator)
         self.register_buffers(init_benchmark, device)
 
     def _load_generator(self, generator_path: str, device: str = 'cpu') -> Generator:
         with dnnlib.util.open_url(generator_path) as f:
             generator: Generator = legacy.load_network_pkl(f)['G_ema'].to(device)
-        generator.eval()
         return generator
 
     @property
