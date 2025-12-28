@@ -1,5 +1,5 @@
 metric_callback:
-  _target_: src.utils.BenchmarkImageMetricsCallback
+  _target_: src.metrics.BenchmarkImageMetricsCallback
   dim: ${data.dim}
   num_categories: ${data.num_categories}
   train_test_split: 0.8
