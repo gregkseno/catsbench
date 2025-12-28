@@ -67,19 +67,17 @@ class ClassifierTwoSampleTest(Metric):
         return x_onehot.flatten(start_dim=1).float()
 
     def update(self, real_data: torch.Tensor, pred_data: torch.Tensor, train: bool) -> None:
-        x_real = self._process_input(real_data)
-        x_pred = self._process_input(pred_data)
-
-        x = torch.cat([x_real, x_pred], dim=0)
-        y = torch.cat([
-            torch.ones(x_real.shape[0], device=x.device),
-            torch.zeros(x_pred.shape[0], device=x.device)
-        ], dim=0)
-
         if train:
             self.model.train()
-
             with torch.inference_mode(False), torch.enable_grad():
+                x_real = self._process_input(real_data)
+                x_pred = self._process_input(pred_data)
+
+                x = torch.cat([x_real, x_pred], dim=0)
+                y = torch.cat([
+                    torch.ones(x_real.shape[0], device=x.device),
+                    torch.zeros(x_pred.shape[0], device=x.device)
+                ], dim=0)
                 loss = self.criterion(self.model(x).squeeze(-1), y)
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
@@ -88,6 +86,14 @@ class ClassifierTwoSampleTest(Metric):
         else:
             self.model.eval()
             with torch.no_grad():
+                x_real = self._process_input(real_data)
+                x_pred = self._process_input(pred_data)
+
+                x = torch.cat([x_real, x_pred], dim=0)
+                y = torch.cat([
+                    torch.ones(x_real.shape[0], device=x.device),
+                    torch.zeros(x_pred.shape[0], device=x.device)
+                ], dim=0)
                 probs = torch.sigmoid(self.model(x).squeeze(-1)).detach()
             self.probs.append(probs)
             self.targets.append(y.detach().long())
