@@ -142,7 +142,7 @@ class Prior(nn.Module):
             'uniform', 
             'gaussian',
         ] = 'uniform',
-        dtype: torch.dtype = torch.float32,
+        dtype: str = 'float32',
         device: Union[str, torch.device] = 'cpu'
     ) -> None:
         super().__init__()
@@ -152,6 +152,7 @@ class Prior(nn.Module):
         self.num_skip_steps = num_skip_steps
         self.tau = tau
         self.prior_type = prior_type
+        dtype = getattr(torch, dtype, torch.float32)
 
         if prior_type == 'gaussian':
             log_p_onestep = gaussian_onestep(
@@ -164,7 +165,7 @@ class Prior(nn.Module):
                 dtype=dtype, device=device
             )
         else:
-            raise NotImplementedError(f'Got unknown prior: {prior_type} or centroids is None!')
+            raise NotImplementedError(f'Got unknown prior: {prior_type}!')
         log_p_cum = get_cum_matrices(
             prior_type, alpha, num_timesteps, 
             num_skip_steps, log_p_onestep
