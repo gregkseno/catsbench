@@ -122,6 +122,7 @@ class BenchmarkHDG(BenchmarkBase):
         num_translations: int,
         **kwargs
     ):
+        # TODO: Add input samples scatter plot
         use_pca = self.dim > 2
         if use_pca:
             pca = PCA(n_components=2)

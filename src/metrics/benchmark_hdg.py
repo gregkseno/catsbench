@@ -84,7 +84,7 @@ class BenchmarkHDGMetricsCallback(Callback):
         pl_module.metrics.update(x_end, pred_x_end)
 
         # update conditional metrics
-        if self.benchmark.reversed:
+        if self.benchmark.reverse:
             loader_attr = "train_dataloader" if stage == "train" else f"{stage}_dataloaders"
             limit = getattr(trainer, f"limit_{stage}_batches")
             loader = getattr(trainer, loader_attr)
