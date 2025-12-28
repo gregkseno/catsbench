@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - override /data: benchmark_hdg_image
+  - override /data: benchmark_image
   - override /model: null
   - override /method: dlight_sb
   - override /callbacks:
@@ -20,7 +20,7 @@ data:
   val_batch_size: 100
   num_workers: 0
   pin_memory: false
-  dir: ${paths.data_dir}/benchmark_hdg_image
+  dir: ${paths.data_dir}/benchmark_image
   generator_path: ${paths.ckpt_dir}/cmnist_stylegan2.pkl
 
 prior:
