@@ -8,16 +8,14 @@ from lightning.pytorch import Callback, Trainer, LightningModule
 from lightning.pytorch.loggers import WandbLogger, CometLogger, TensorBoardLogger
 from lightning.pytorch.utilities import rank_zero_only
 
+from .base import BasePlotterCallback
 from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
 from ..utils import convert_to_numpy, fig2img
-from ..utils.ranked_logger import RankedLogger
 
 from catsbench import BenchmarkImage
 
 
-log = RankedLogger(__name__, rank_zero_only=True)
-
-class BenchmarkImagePlotterCallback(Callback):
+class BenchmarkImagePlotterCallback(BasePlotterCallback):
     benchmark: BenchmarkImage
 
     def __init__(

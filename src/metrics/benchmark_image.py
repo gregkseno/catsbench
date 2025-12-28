@@ -17,14 +17,12 @@ class BenchmarkImageMetricsCallback(BaseMetricsCallback):
     def __init__(
         self,
         dim: int,
-        input_shape: Tuple[int, int, int],
         num_categories: int,
         train_test_split: float = 0.8,
         classifier_lr: float = 1e-2,
     ):
         super().__init__()
         self.dim = dim
-        self.input_shape = input_shape
         self.num_categories = num_categories
 
         self.classifier_lr = classifier_lr
