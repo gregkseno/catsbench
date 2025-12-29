@@ -1,7 +1,6 @@
 #!/bin/bash
-#SBATCH --job-name=benchmark_images
-#SBATCH --partition=ais-gpu
-#SBATCH --reservation=HPC-2743
+#SBATCH --job-name=test-hdg
+#SBATCH --partition=gpu_devel
 #SBATCH --gpus=1
 #SBATCH --array=0-11%1
 #SBATCH --cpus-per-task=4
