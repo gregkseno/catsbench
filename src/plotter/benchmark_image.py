@@ -64,6 +64,7 @@ class BenchmarkImagePlotterCallback(BasePlotterCallback):
         x_end = convert_to_numpy(make_grid(x_end, nrow=nrow))
 
         fig, axes = plt.subplots(1, 3, figsize=(12, 4), squeeze=True, sharex=True, sharey=True)
+        suptitle = f"Epoch {pl_module.current_epoch}"
         iteration = getattr(pl_module, "iteration", None)
         if iteration is not None:
             suptitle += f", Iteration {iteration}"
@@ -114,6 +115,7 @@ class BenchmarkImagePlotterCallback(BasePlotterCallback):
     ):
         fb = 'forward' if not pl_module.bidirectional or pl_module.current_epoch % 2 == 0 else 'backward'
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+        suptitle = f"Epoch {pl_module.current_epoch}"
         iteration = getattr(pl_module, "iteration", None)
         if iteration is not None:
             suptitle += f", Iteration {iteration}"
