@@ -5,6 +5,13 @@ from omegaconf import DictConfig, OmegaConf
 import hydra
 from hydra.utils import instantiate
 
+import torch
+try:
+    import torch_npu
+    from torch_npu.contrib import transfer_to_npu
+    torch.cuda.get_device_capability = lambda x: (7, None)
+except ImportError:
+    pass
 import lightning as L
 from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
@@ -12,14 +19,11 @@ from lightning.pytorch.loggers import Logger
 from src.utils.ranked_logger import RankedLogger
 from src.utils import instantiate_callbacks, instantiate_loggers
 
-try:
-    import torch
-    import torch_npu
-    from torch_npu.contrib import transfer_to_npu
-    torch.cuda.get_device_capability = lambda x: (7, None)
-except ImportError:
-    pass
 
+if torch.cuda.is_available():
+    major, _ = torch.cuda.get_device_capability()
+    if major >= 8: 
+        torch.set_float32_matmul_precision("high")
 
 def _detect_config_dir() -> str:
     candidates = []
