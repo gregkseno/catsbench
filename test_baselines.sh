@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=test-baselines
-#SBATCH --partition=ais-gpu
+#SBATCH --partition=gpu_a100
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=10GB
