@@ -24,6 +24,7 @@ class BenchmarkBaseConfig:
     input_shape: Tuple[int, ...]
     num_potentials: int
     num_categories: int
+    radius: float
     alpha: float
     num_timesteps: int
     num_skip_steps: int
@@ -48,6 +49,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         self.input_shape = config.input_shape
         self.num_potentials = config.num_potentials
         self.num_categories = config.num_categories
+        self.radius = config.radius
         self.alpha = config.alpha
         self.prior_type = config.prior_type
         self.benchmark_type = config.benchmark_type
@@ -78,7 +80,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
     ):
         if init_benchmark:
             log.info('Initializing parameters...')
-            log_alpha, log_cp_cores = self._init_parameters(device=device)
+            log_alpha, log_cp_cores = self._init_parameters(self.radius, device=device)
         else:
             log.info('Skipping parameters initialization!')
             log_alpha = torch.empty(
@@ -122,7 +124,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         self.register_buffer('target_dataset', target_dataset)
         
     def _init_parameters(
-        self, device: Union[str, torch.device] = 'cpu'
+        self, radius: float, device: Union[str, torch.device] = 'cpu'
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # initialize weights uniformly
         log_alpha = torch.log(
@@ -142,7 +144,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             for _ in range(self.num_potentials):
                 for _ in range(100):
                     candidate = torch.randn(self.dim, 1, dtype=self.params_dtype, device=device)
-                    candidate = 5 * candidate / candidate.norm()
+                    candidate = radius * candidate / candidate.norm()
                     
                     if not means_list:
                         means_list.append(candidate)
@@ -220,6 +222,9 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
     @property
     def device(self) -> str:
         return self.log_cp_cores.device
+    
+    def dtype(self) -> torch.dtype:
+        return self.log_cp_cores.dtype
 
     def get_transition_logits(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         input_shape = x_t.shape
@@ -242,7 +247,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             x_t.shape[0], self.dim, self.num_categories, device=self.device
         ) # [B, D, S]
         x_tp1_d = torch.arange(self.num_categories, device=self.device) # [S]
-        x_tp1_d = x_tp1_d.unsqueeze(0).repeat(x_t.shape[0], 1).reshape(-1) # [B*S]
+        x_tp1_d = x_tp1_d.unsqueeze(0).expand(x_t.shape[0], -1).flatten() # [B*S]
         tp1_repeated = tp1.repeat_interleave(self.num_categories) # [B*S]
         for d in range(self.dim):
             log_pi_ref_tp1 = self.prior.extract('cumulative', tp1_repeated, row_id=x_tp1_d) # [B*S, S]
@@ -283,11 +288,12 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         k_star = gumbel_sample(log_w_k, tau=self.tau, dim=-1)  # [B]
 
         logits = torch.empty(x_t.shape[0], self.dim, self.num_categories, device=self.device)
+        x_tp1_d = torch.arange(self.num_categories, device=self.device) # [S]
+        x_tp1_d = x_tp1_d.unsqueeze(0).repeat(x_t.shape[0], 1).reshape(-1) # [B*S]
+        tp1_repeated = tp1.repeat_interleave(self.num_categories) # [B*S]
+        log_pi_ref_tp1 = self.prior.extract('cumulative', tp1_repeated, row_id=x_tp1_d) # [B*S, S]
+        batch_idx = torch.arange(x_t.shape[0], device=self.device)
         for d in range(self.dim):
-            x_tp1_d = torch.arange(self.num_categories, device=self.device) # [S]
-            x_tp1_d = x_tp1_d.unsqueeze(0).repeat(x_t.shape[0], 1).reshape(-1) # [B*S]
-            tp1_repeated = tp1.repeat_interleave(self.num_categories) # [B*S]
-            log_pi_ref_tp1 = self.prior.extract('cumulative', tp1_repeated, row_id=x_tp1_d) # [B*S, S]
             log_u_tp1_d = torch.logsumexp(
                 self.log_cp_cores[d][None, :, :] + log_pi_ref_tp1[:, None, :], # [B*S, K, S]
                 dim=-1
@@ -296,11 +302,8 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
                 .reshape(x_t.shape[0], self.num_categories, self.num_potentials)
                 .permute(0, 2, 1) # [B, K, S]
             )
-
-            batch_idx = torch.arange(x_t.shape[0], device=self.device)
             log_u_tp1_star = log_u_tp1_d[batch_idx, k_star, :] # [B, S]
-            logits_x_tp1_d = self.prior.extract('onestep', t_orig+1, row_id=x_t[:, d]) + log_u_tp1_star # [B, S]
-            logits[:, d, :] = logits_x_tp1_d
+            logits[:, d, :] = self.prior.extract('onestep', t_orig+1, row_id=x_t[:, d]) + log_u_tp1_star # [B, S]
             
         x_tp1 = gumbel_sample(logits, tau=self.tau, dim=-1)
         if return_transitions:

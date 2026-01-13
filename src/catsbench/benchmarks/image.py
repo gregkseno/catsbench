@@ -45,6 +45,7 @@ class BenchmarkImage(BenchmarkBase):
 
         generator.eval()
         generator.requires_grad_(False)
+        # TODO: Fix generator loading from Hugging Face
         self.register_module('generator', generator)
         self.register_buffers(init_benchmark, device)
 
