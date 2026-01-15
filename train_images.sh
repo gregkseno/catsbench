@@ -31,6 +31,6 @@ export HYDRA_FULL_ERROR=1
 # esac
 
 python -m src.run \
-  seed=${SEED} data.num_workers=7 data.pin_memory=true \
-  experiment=csbm/benchmark_images/images_g001 \
+  seed=${SEED} data.num_workers=7 data.pin_memory=false \
+  experiment=csbm/benchmark_image/image_g001 \
   +trainer.check_val_every_n_epoch=1
