@@ -3,7 +3,12 @@ import json
 import os
 from dataclasses import Field, asdict, is_dataclass
 from pathlib import Path
-from typing import ClassVar, Dict, List, Optional, Protocol, Type, TypeVar, Union, override
+from typing import ClassVar, Dict, List, Optional, Protocol, Type, TypeVar, Union
+
+try:
+    from typing import override # Python 3.12+
+except ImportError:
+    from typing_extensions import override # Python 3.10-11
 
 from huggingface_hub import constants
 from huggingface_hub.hub_mixin import PyTorchModelHubMixin
