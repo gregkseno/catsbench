@@ -57,6 +57,8 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
                 {'cond_shape_score': ShapeScore(self.dim, self.num_categories, conditional=True),
                  'cond_trend_score': TrendScore(self.dim, self.num_categories, conditional=True)},
             )
+            if not hasattr(pl_module, 'get_transition_logits'):
+                return
             pl_module.forward_kl_div = TrajectoryKLDivergence(logits=True)
             pl_module.reverse_kl_div = TrajectoryKLDivergence(logits=True)
 
@@ -92,6 +94,9 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
             cond_x_end = self.benchmark.sample(repeated_x_start)
             cond_pred_x_end = pl_module.sample(repeated_x_start)
             pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
+
+            if not hasattr(pl_module, 'get_transition_logits'):
+                return
 
             true_trajectory, true_transition_logits = self.benchmark.sample_trajectory(x_start, return_transitions=True)
             pred_trajectory, pred_transition_logits = pl_module.sample_trajectory(x_start, return_transitions=True)
@@ -147,6 +152,9 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
             pl_module.log_dict(cond_metrics)
             pl_module.cond_metrics.reset()
 
+            if not hasattr(pl_module, 'get_transition_logits'):
+                return
+            
             forward_kl_div = pl_module.forward_kl_div.compute()
             pl_module.log(f'{stage}/forward_kl_div_{fb}', forward_kl_div)
             pl_module.forward_kl_div.reset()
