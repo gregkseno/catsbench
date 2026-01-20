@@ -4,6 +4,9 @@ from torch.distributions import Categorical
 from lightning import LightningModule
 from src.utils.ranked_logger import RankedLogger
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from src.data.prior import Prior
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
 
 
@@ -112,21 +115,37 @@ class PIModel(nn.Module):
 log = RankedLogger(__name__, rank_zero_only=True)
 
 HPARAMS = (
-    'dim', 'num_categories'
+    'dim', 'num_categories', 'epsilon', 'pi_layers', 'f_layers', 'f_emb_dim', 'num_timesteps',
+    'lambda_reg', 'pi_iters', 'f_reg_until', 'pi_optimizer', 'f_optimizer', 'pi_scheduler', 'f_scheduler'
 )
 
 class CNOT(LightningModule):
-    def __init__(self, prior, dim, num_categories, parameters_pi, parameters_f):
+    def __init__(self, 
+                 prior: Prior, 
+                 dim: int, 
+                 num_categories: int, 
+                 epsilon: float, 
+                 pi_layers: list, 
+                 f_layers: list, 
+                 f_emb_dim: int, 
+                 num_timesteps: int, 
+                 lambda_reg: float, 
+                 pi_iters: int, 
+                 f_reg_until: int,
+                 pi_optimizer: Optimizer, # partially initialized 
+                 f_optimizer: Optimizer, # partially initialized 
+                 pi_scheduler: Optional[LRScheduler] = None, # partially initialized 
+                 f_scheduler: Optional[LRScheduler] = None, # partially initialized 
+                 ):
+        
         super().__init__()
 
         self.save_hyperparameters(*HPARAMS, logger=False) 
+        self.iteration = 0
 
-        layers_pi = parameters_pi['layers']
-        layers_f = parameters_f['layers']
-        emb_dim = parameters_f['emb_dim']
 
-        self.pi_model = PIModel(prior, dim, num_categories, layers=layers_pi)
-        self.f_model = PotentialMLP(dim, num_categories, layers=layers_f, emb_dim=emb_dim)
+        self.pi_model = PIModel(prior, dim, num_categories, layers=pi_layers)
+        self.f_model = PotentialMLP(dim, num_categories, layers=f_layers, emb_dim=f_emb_dim)
         self.automatic_optimization = False
 
     def load_state_dict(self, state_dict, strict: bool = True):
@@ -148,11 +167,11 @@ class CNOT(LightningModule):
         f_opt  = self.hparams.f_optimizer(self.f_model.parameters())
 
         if self.hparams.scheduler is not None:
-            scheduler_pi = self.hparams.scheduler(optimizer=pi_opt)
-            scheduler_f = self.hparams.scheduler(optimizer=f_opt)
+            pi_scheduler = self.hparams.pi_scheduler(optimizer=pi_opt)
+            f_scheduler = self.hparams.f_scheduler(optimizer=f_opt)
             return [
-                {'optimizer': pi_opt, 'lr_scheduler': scheduler_pi},
-                {'optimizer': f_opt, 'lr_scheduler': scheduler_f}
+                {'optimizer': pi_opt, 'lr_scheduler': pi_scheduler},
+                {'optimizer': f_opt, 'lr_scheduler': f_scheduler}
             ]
         return [{'optimizer': pi_opt}, {'optimizer': f_opt}]
 
@@ -160,65 +179,72 @@ class CNOT(LightningModule):
     def training_step(self, batch, batch_idx):
         x_start, x_end = batch
         outputs = {'x_start': x_start, 'x_end': x_end}
-        pi_opt, f_opt = self.optimizers()
+        optimizers = {
+            'pi_model': self.optimizers()[0],
+            'f_model': self.optimizers()[1],
+        }
+        if self.lr_schedulers():
+            schedulers = {
+                'pi_model': self.lr_schedulers()[0],
+                'f_model': self.lr_schedulers()[1],
+            }
 
-        for _ in range(self.hparams.PI_ITERS):
+        pi_opt = optimizers['pi_model']
+        f_opt = optimizers['f_model']
+
+        info = {}
+
+        cycle = self.hparams.pi_iters + 1
+        if batch_idx % cycle == cycle - 1:
+            f_opt.zero_grad()
+
+            with torch.no_grad():
+                X1_given_X0 = self.pi_model(x_start, training=False)
+
+            if self.hparams.lambda_reg > 0 and self.iteration < self.hparams.f_reg_until:
+                grad_penalty = compute_gradient_penalty(self.f_model, x_end, X1_given_X0)
+                standard_loss = (self.f_model(X1_given_X0).mean() - self.f_model(x_end).mean())
+                f_loss = standard_loss + self.hparams.lambda_reg * grad_penalty
+                info['train/grad_penalty'] = grad_penalty.mean()
+            else:
+                f_loss = (self.f_model(X1_given_X0).mean() - self.f_model(x_end).mean())
+
+
+            self.manual_backward(f_loss)
+            info[f'train/f_loss'] = f_loss.mean()
+
+            self.iteration += 1
+
+            torch.nn.utils.clip_grad_norm_(self.f_model.parameters(), 1.0)
+            f_opt.step()
+        
+        else:
             pi_opt.zero_grad()
 
-            X0 = self.bench.sample_input(self.hparams.BATCH_SIZE)
-            X1 = self.bench.sample_target(self.hparams.BATCH_SIZE)
-
-            X1_given_X0, log_probs, entropies = self.pi_model(X0, training=True)
+            X1_given_X0, log_probs, entropies = self.pi_model(x_start, training=True)
 
             with torch.no_grad():
                 f_val = self.f_model(X1_given_X0).squeeze()
 
-            last_timestep = torch.full((X0.shape[0],), self.hparams.NUM_TIMESTEPS + 1, device=X0.device, dtype=torch.int32,)
-            cost = -self.prior.extract("cumulative", last_timestep, row_id=X0, column_id=X1_given_X0,).sum(dim=1)
+            last_timestep = torch.full((x_start.shape[0],), self.hparams.num_timesteps + 1, device=x_start.device, dtype=torch.int32,)
+            cost = -self.prior.extract("cumulative", last_timestep, row_id=x_start, column_id=X1_given_X0,).sum(dim=1)
             advantage = (cost - f_val).detach()
-            pi_loss = ((advantage * log_probs).mean() - self.hparams.EPSILON * entropies.mean())
+            pi_loss = ((advantage * log_probs).mean() - self.hparams.epsilon * entropies.mean())
 
             self.manual_backward(pi_loss)
 
-            torch.nn.utils.clip_grad_norm_(self.pi_model.parameters(), max(0.1, self.hparams.EPSILON),)
+            info['train/pi_loss'] = pi_loss.mean()
+            info['train/entropy'] = entropies.mean()
+
+            torch.nn.utils.clip_grad_norm_(self.pi_model.parameters(), max(0.1, self.hparams.epsilon),)
             pi_opt.step()
-
-        # ------------------
-        # Critic update
-        # ------------------
-        f_opt.zero_grad()
-
-        X0 = self.bench.sample_input(self.hparams.BATCH_SIZE)
-        X1 = self.bench.sample_target(self.hparams.BATCH_SIZE)
-
-        with torch.no_grad():
-            X1_given_X0 = self.pi_model(X0, training=False)
-
-        if self.hparams.LAMBDA_REG > 0 and self.current_epoch < self.hparams.REG_UNTIL:
-            grad_penalty = compute_gradient_penalty(self.f_model, X1, X1_given_X0)
-            standard_loss = (self.f_model(X1_given_X0).mean() - self.f_model(X1).mean())
-            f_loss = standard_loss + self.hparams.LAMBDA_REG * grad_penalty
-        else:
-            f_loss = (self.f_model(X1_given_X0).mean() - self.f_model(X1).mean())
-
-        self.manual_backward(f_loss)
-        torch.nn.utils.clip_grad_norm_(self.f_model.parameters(), 1.0)
-        f_opt.step()
         
-        self.log("train/f_loss", f_loss, prog_bar=True)
-
-        info = {
-            f'train/pi_loss': pi_loss, 
-            f'train/entropy': entropies.mean().mean(), 
-            f'train/f_loss': f_loss.mean(),
-            f'train/grad_penalty': grad_penalty.mean()
-        }
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('train/iteration', self.iteration, prog_bar=True)
         return outputs
 
-    def on_train_epoch_end(self) -> None:
-        self.iteration += 1
+    #def on_train_epoch_end(self) -> None:
+    #    self.iteration += 1
 
     def validation_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int

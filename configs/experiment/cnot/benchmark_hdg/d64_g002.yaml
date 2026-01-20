@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - cnot/benchmark_hdg/default
+
+data:
+  dim: 64
+
+prior:
+  prior_type: gaussian
+  alpha: 0.02
+
+method:
+  f_reg_until: 5000

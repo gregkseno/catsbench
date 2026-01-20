@@ -1,0 +1,38 @@
+# @package _global_
+
+defaults:
+  - override /data: benchmark_hdg
+  - override /model: null
+  - override /method: cnot
+  - override /callbacks:
+    - model_checkpoint
+    - model_summary
+    - benchmark_hdg_metrics
+  - override /trainer: gpu
+  - _self_
+
+data:
+  dim: ???
+  input_shape: 
+    - ${data.dim}
+  num_categories: 50
+  batch_size: 256 
+  val_batch_size: 128
+  num_workers: 0
+  pin_memory: false
+
+prior:
+  alpha: ???
+  prior_type: ???
+  num_timesteps: 15
+  num_skip_steps: 8
+
+method:
+  f_reg_until: ???
+
+trainer:
+  max_epochs: 1
+  limit_train_batches: 220000
+  val_check_interval: null
+  accumulate_grad_batches: 1
+  gradient_clip_val: null
