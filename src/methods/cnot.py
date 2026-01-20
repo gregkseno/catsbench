@@ -143,6 +143,7 @@ class CNOT(LightningModule):
         self.save_hyperparameters(*HPARAMS, logger=False) 
         self.iteration = 0
 
+        self.prior = prior
 
         self.pi_model = PIModel(prior, dim, num_categories, layers=pi_layers)
         self.f_model = PotentialMLP(dim, num_categories, layers=f_layers, emb_dim=f_emb_dim)
@@ -166,13 +167,13 @@ class CNOT(LightningModule):
         pi_opt = self.hparams.pi_optimizer(self.pi_model.parameters())
         f_opt  = self.hparams.f_optimizer(self.f_model.parameters())
 
-        if self.hparams.scheduler is not None:
-            pi_scheduler = self.hparams.pi_scheduler(optimizer=pi_opt)
-            f_scheduler = self.hparams.f_scheduler(optimizer=f_opt)
-            return [
-                {'optimizer': pi_opt, 'lr_scheduler': pi_scheduler},
-                {'optimizer': f_opt, 'lr_scheduler': f_scheduler}
-            ]
+        #if self.hparams.scheduler is not None:
+        #    pi_scheduler = self.hparams.pi_scheduler(optimizer=pi_opt)
+        #    f_scheduler = self.hparams.f_scheduler(optimizer=f_opt)
+        #    return [
+        #        {'optimizer': pi_opt, 'lr_scheduler': pi_scheduler},
+        #        {'optimizer': f_opt, 'lr_scheduler': f_scheduler}
+        #    ]
         return [{'optimizer': pi_opt}, {'optimizer': f_opt}]
 
     
@@ -202,7 +203,7 @@ class CNOT(LightningModule):
                 X1_given_X0 = self.pi_model(x_start, training=False)
 
             if self.hparams.lambda_reg > 0 and self.iteration < self.hparams.f_reg_until:
-                grad_penalty = compute_gradient_penalty(self.f_model, x_end, X1_given_X0)
+                grad_penalty = compute_gradient_penalty(self.f_model, x_end, X1_given_X0, device=x_start.device)
                 standard_loss = (self.f_model(X1_given_X0).mean() - self.f_model(x_end).mean())
                 f_loss = standard_loss + self.hparams.lambda_reg * grad_penalty
                 info['train/grad_penalty'] = grad_penalty.mean()
@@ -226,13 +227,14 @@ class CNOT(LightningModule):
             with torch.no_grad():
                 f_val = self.f_model(X1_given_X0).squeeze()
 
-            last_timestep = torch.full((x_start.shape[0],), self.hparams.num_timesteps + 1, device=x_start.device, dtype=torch.int32,)
+            last_timestep = torch.full((x_start.shape[0],), self.prior.num_timesteps + 1, device=x_start.device, dtype=torch.int32,)
             cost = -self.prior.extract("cumulative", last_timestep, row_id=x_start, column_id=X1_given_X0,).sum(dim=1)
             advantage = (cost - f_val).detach()
             pi_loss = ((advantage * log_probs).mean() - self.hparams.epsilon * entropies.mean())
 
             self.manual_backward(pi_loss)
 
+            info['train/cost'] = cost.mean()
             info['train/pi_loss'] = pi_loss.mean()
             info['train/entropy'] = entropies.mean()
 

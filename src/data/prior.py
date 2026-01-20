@@ -180,6 +180,30 @@ class Prior(nn.Module):
     def dtype(self) -> torch.dtype:
         return self.log_p_onestep.dtype
         
+    #def extract_old(
+    #    self, 
+    #    mat_type: Literal['onestep', 'cumulative'], 
+    #    t: torch.Tensor, 
+    #    *,
+    #    row_id: Optional[torch.Tensor] = None,
+    #    column_id: Optional[torch.Tensor] = None
+    #) -> torch.Tensor:
+    #    """Extracts row/column/element from transition matrix."""     
+    #    if (row_id is None) == (column_id is None):
+    #        raise ValueError("Provide exactly one of row_id or column_id.")
+#
+    #    if row_id is not None:
+    #        if mat_type == "onestep":
+    #            return self.log_p_onestep[row_id]
+    #        t = broadcast(t, row_id.dim() - 1)
+    #        return self.log_p_cum[t, row_id, :]
+#
+    #    else:  # column_id is not None
+    #        if mat_type == "onestep":
+    #            return self.log_p_onestep[:, column_id].movedim(0, -1).contiguous()
+    #        t = broadcast(t, column_id.dim() - 1)
+    #        return self.log_p_cum[t, :, column_id]
+
     def extract(
         self, 
         mat_type: Literal['onestep', 'cumulative'], 
@@ -189,20 +213,32 @@ class Prior(nn.Module):
         column_id: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """Extracts row/column/element from transition matrix."""     
-        if (row_id is None) == (column_id is None):
-            raise ValueError("Provide exactly one of row_id or column_id.")
-
-        if row_id is not None:
-            if mat_type == "onestep":
-                return self.log_p_onestep[row_id]
+        if row_id is not None and column_id is not None:
             t = broadcast(t, row_id.dim() - 1)
-            return self.log_p_cum[t, row_id, :]
-
-        else:  # column_id is not None
-            if mat_type == "onestep":
-                return self.log_p_onestep[:, column_id].movedim(0, -1).contiguous()
+            if mat_type  == 'onestep':
+                return self.log_p_onestep[row_id, column_id]
+            else: 
+                return self.log_p_cum[t, row_id, column_id]
+            
+        elif row_id is not None and column_id is None:
+            t = broadcast(t, row_id.dim() - 1)
+            if mat_type  == 'onestep':
+                return self.log_p_onestep[row_id]
+            else: 
+                return self.log_p_cum[t, row_id, :]
+        
+        elif row_id is None and column_id is not None:
             t = broadcast(t, column_id.dim() - 1)
-            return self.log_p_cum[t, :, column_id]
+            if mat_type == 'onestep':
+                result = torch.index_select(
+                    self.log_p_onestep, dim=1, 
+                    index=column_id.reshape(-1)
+                )
+                return result.reshape(*column_id.shape, self.num_categories)
+            else:
+                return self.log_p_cum[t, :, column_id]
+        else:   
+            raise ValueError('row_id and column_id cannot be None both!')
         
     def extract_last_cum_matrix(self, x: torch.Tensor) -> torch.Tensor:
         last_timestep = torch.full(

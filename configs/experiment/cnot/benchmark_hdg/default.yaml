@@ -31,8 +31,8 @@ method:
   f_reg_until: ???
 
 trainer:
-  max_epochs: 1
-  limit_train_batches: 220000
+  max_epochs: 10
+  limit_train_batches: 22000
   val_check_interval: null
   accumulate_grad_batches: 1
   gradient_clip_val: null
