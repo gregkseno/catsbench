@@ -61,6 +61,7 @@ def main(config: DictConfig):
     datamodule: LightningDataModule = instantiate(config.data)
     
     log.info(f'Instantiating method <{config.method._target_}>...')
+    #print(config)
     method: LightningModule = instantiate(config.method)
 
     log.info('Instantiating callbacks...')

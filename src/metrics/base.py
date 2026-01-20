@@ -3,7 +3,7 @@ import torch
 
 from lightning.pytorch import Callback, Trainer
 
-from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
+from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM, CNOT
 
 
 class BaseMetricsCallback(Callback):
@@ -13,14 +13,14 @@ class BaseMetricsCallback(Callback):
 
     def _init_metrics(
         self,
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM, CNOT],
     ) -> None:
         raise NotImplementedError
 
     def setup(
         self,
         trainer: Trainer, 
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM], 
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM, CNOT], 
         stage: Literal['fit', 'validate', 'test']
     ) -> None:
         if self.benchmark is not None and hasattr(pl_module, 'metrics'):
@@ -36,7 +36,7 @@ class BaseMetricsCallback(Callback):
     def _update_metrics(
         self,
         trainer: Trainer,
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM, CNOT],
         outputs: Dict[str, Any],
         batch_idx: int,
         stage: Literal['train', 'val', 'test'] = 'train',
@@ -46,7 +46,7 @@ class BaseMetricsCallback(Callback):
     def _compute_and_log_metrics(
         self,
         trainer: Trainer,
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM, CNOT],
         stage: Literal['train', 'val', 'test'] = 'train',
     ) -> None:
         raise NotImplementedError
@@ -54,7 +54,7 @@ class BaseMetricsCallback(Callback):
     def on_validation_batch_end(
         self,
         trainer: Trainer,
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM, CNOT],
         outputs: Dict[str, Any],
         batch: Tuple[torch.Tensor, torch.Tensor],
         batch_idx: int,
@@ -70,7 +70,7 @@ class BaseMetricsCallback(Callback):
     def on_validation_epoch_end(
         self, 
         trainer: Trainer, 
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM]
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM, CNOT]
     ):
         self._compute_and_log_metrics(
             trainer, pl_module, stage='val'
@@ -79,7 +79,7 @@ class BaseMetricsCallback(Callback):
     def on_test_batch_end(
         self,
         trainer: Trainer,
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM, CNOT],
         outputs: Dict[str, Any],
         batch: Tuple[torch.Tensor, torch.Tensor],
         batch_idx: int,
@@ -95,7 +95,7 @@ class BaseMetricsCallback(Callback):
     def on_test_epoch_end(
         self, 
         trainer: Trainer, 
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM]
+        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM, CNOT]
     ):
         self._compute_and_log_metrics(
             trainer, pl_module, stage='test'

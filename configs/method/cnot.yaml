@@ -1,7 +1,5 @@
 _target_: src.methods.cnot.CNOT
 
-model: ${model}
-
 pi_optimizer:
   _target_: torch.optim.Adam
   _partial_: true
@@ -16,6 +14,8 @@ f_optimizer:
 
 prior: ${prior}
 
+dim: ${data.dim}
+num_categories: ${data.num_categories}
 epsilon: 1
 pi_layers: [256, 256, 256, 256]
 f_layers: [64, 64, 64, 64] 
