@@ -12,10 +12,13 @@ class TrajectoryKLDivergence(KLDivergence):
 
     def __init__(
         self, 
+        dim: int,
+        num_timesteps: int,
         logits: bool = True,
-        reduction: Optional[Literal['mean', 'sum', 'none']] = 'mean',
     ):
-        super().__init__(log_prob=logits, reduction=reduction)
+        super().__init__(log_prob=logits, reduction='mean')
+        self.dim = dim
+        self.num_timesteps = num_timesteps
         self.logits = logits
 
     def update(self, p: torch.Tensor, q: torch.Tensor) -> None:
@@ -36,3 +39,7 @@ class TrajectoryKLDivergence(KLDivergence):
             p=p.flatten(end_dim=-2), 
             q=q.flatten(end_dim=-2)
         )
+
+    def compute(self) -> torch.Tensor:
+        kl_div = super().compute()
+        return self.dim * self.num_timesteps * kl_div
