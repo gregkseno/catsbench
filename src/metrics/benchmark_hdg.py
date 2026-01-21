@@ -27,12 +27,14 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
         dim: int,
         num_categories: int,
         num_cond_samples: int,
+        num_timesteps: int,
         train_test_split: Optional[float] = 0.8,
         classifier_lr: Optional[float] = 1e-2,
     ):
         super().__init__()
         self.dim = dim
         self.num_categories = num_categories
+        self.num_timesteps = num_timesteps
 
         self.num_cond_samples = num_cond_samples
         self.train_test_split = train_test_split
@@ -59,8 +61,16 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
             )
             if not hasattr(pl_module, 'get_transition_logits'):
                 return
-            pl_module.forward_kl_div = TrajectoryKLDivergence(logits=True)
-            pl_module.reverse_kl_div = TrajectoryKLDivergence(logits=True)
+            pl_module.forward_kl_div = TrajectoryKLDivergence(
+                dim=self.dim,
+                num_timesteps=self.num_timesteps,
+                logits=True,
+            )
+            pl_module.reverse_kl_div = TrajectoryKLDivergence(
+                dim=self.dim,
+                num_timesteps=self.num_timesteps,
+                logits=True,
+            )
 
     def _update_metrics(
         self,
