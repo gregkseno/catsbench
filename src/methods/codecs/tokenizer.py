@@ -1,1 +1,0 @@
-# TODO: Wrap regular Transformer tokenizer to match the interface of the codecs.
