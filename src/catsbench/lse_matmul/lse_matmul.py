@@ -122,23 +122,30 @@ def _lse_matmul_kernel(
             if USE_EXP2:
                 v2 = v * log2e
                 new = tl.maximum(blk_max, v2)
-                blk_sum = blk_sum * tl.exp2(blk_max - new) + tl.exp2(v2 - new)
+                blk_sum = blk_sum * \
+                    tl.where(blk_max == float("-inf"), 0.0, tl.exp2(blk_max - new)) + \
+                    tl.where(v2 == float("-inf"), 0.0, tl.exp2(v2 - new))
             else:
                 new = tl.maximum(blk_max, v)
-                blk_sum = blk_sum * tl.exp(blk_max - new) + tl.exp(v - new)
+                blk_sum = blk_sum * \
+                    tl.where(blk_max == float("-inf"), 0.0, tl.exp(blk_max - new)) + \
+                    tl.where(v == float("-inf"), 0.0, tl.exp(v - new))
             blk_max = new
 
         new_m = tl.maximum(m_acc, blk_max)
         if USE_EXP2:
-            s_acc = s_acc * tl.exp2(m_acc - new_m) + blk_sum * tl.exp2(blk_max - new_m)
+            s_acc = s_acc * tl.where(m_acc == float("-inf"), 0.0, tl.exp2(m_acc - new_m)) + \
+                    blk_sum * tl.where(blk_max == float("-inf"), 0.0, tl.exp2(blk_max - new_m)) 
         else:
-            s_acc = s_acc * tl.exp(m_acc - new_m) + blk_sum * tl.exp(blk_max - new_m)
+            s_acc = s_acc * tl.where(m_acc == float("-inf"), 0.0, tl.exp(m_acc - new_m)) + \
+                    blk_sum * tl.where(blk_max == float("-inf"), 0.0, tl.exp(blk_max - new_m)) 
         m_acc = new_m
 
     if USE_EXP2:
         out = (m_acc + tl.log2(s_acc)) * ln2
     else:
         out = m_acc + tl.log(s_acc)
+    out = tl.where(s_acc > 0, out, float("-inf"))
 
     tl.store(
         C_ptr + off_c + rm[:, None] * stride_cm + rn[None, :] * stride_cn,
@@ -156,12 +163,6 @@ class LSEMatmul(Function):
 
         if a.shape[-1] != b.shape[-2]:
             raise ValueError(f"Inner dim mismatch: a[..., M, K]={a.shape}, b[..., K, N]={b.shape}")
-        
-        # CPU fallback
-        if not a.is_cuda or not b.is_cuda:
-            return torch.logsumexp(
-                a.unsqueeze(-1) + b.unsqueeze(-3), dim=-2
-            )
 
         if a.dtype != torch.float32:
             a = a.float()
@@ -241,5 +242,12 @@ def lse_matmul(
     b: torch.Tensor,
     use_exp2: bool = True
 ) -> torch.Tensor:
-    return LSEMatmul.apply(a, b, use_exp2)
+    
+    if a.is_cuda and b.is_cuda:
+        return LSEMatmul.apply(a, b, use_exp2)
+
+    # CPU fallback
+    return torch.logsumexp(
+        a.unsqueeze(-1) + b.unsqueeze(-3), dim=-2
+    )
     
