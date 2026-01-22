@@ -18,17 +18,18 @@ class ClassifierTwoSampleTest(Metric):
         self, 
         dim: int,
         num_categories: int,
-        lr: float = 1e-2, 
+        lr: float = 1e-2,
+        hid_size: int = 64,
     ):
         super().__init__()
         self.dim = dim
         self.num_categories = num_categories
         self.lr = lr
-
+        self.hid_size = hid_size
         self.model = nn.Sequential(
-            nn.Linear(dim * num_categories, 64),
+            nn.Linear(dim * num_categories, hid_size),
             nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(hid_size, 1)
         )
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr)
         self.criterion = nn.BCEWithLogitsLoss()
@@ -99,9 +100,7 @@ class ClassifierTwoSampleTest(Metric):
             self.targets.append(y.detach().long())
 
     def compute(self) -> torch.Tensor:
-        if len(self.probs) == 0:
-            return torch.tensor(0.0, dtype=torch.float)
-        
+        assert len(self.probs) > 0
         probs = dim_zero_cat(self.probs)
         targets = dim_zero_cat(self.targets)
         auroc_value = auroc(probs, targets, task='binary')
