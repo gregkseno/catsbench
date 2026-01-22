@@ -28,14 +28,14 @@ def _lse_autotune_configs() -> list[triton.Config]:
 @triton.jit
 def _lse_matmul_kernel(
     A_ptr, B_ptr, C_ptr,
-    M, N, K,
+    M: tl.constexpr, N: tl.constexpr, K: tl.constexpr,
     b0: tl.constexpr, b1: tl.constexpr, b2: tl.constexpr, b3: tl.constexpr, b4: tl.constexpr, b5: tl.constexpr,
-    sa0, sa1, sa2, sa3, sa4, sa5,
-    sb0, sb1, sb2, sb3, sb4, sb5,
-    sc0, sc1, sc2, sc3, sc4, sc5,
-    stride_am, stride_ak,
-    stride_bk, stride_bn,
-    stride_cm, stride_cn,
+    sa0: tl.constexpr, sa1: tl.constexpr, sa2: tl.constexpr, sa3: tl.constexpr, sa4: tl.constexpr, sa5: tl.constexpr,
+    sb0: tl.constexpr, sb1: tl.constexpr, sb2: tl.constexpr, sb3: tl.constexpr, sb4: tl.constexpr, sb5: tl.constexpr,
+    sc0: tl.constexpr, sc1: tl.constexpr, sc2: tl.constexpr, sc3: tl.constexpr, sc4: tl.constexpr, sc5: tl.constexpr,
+    stride_am: tl.constexpr, stride_ak: tl.constexpr,
+    stride_bk: tl.constexpr, stride_bn: tl.constexpr,
+    stride_cm: tl.constexpr, stride_cn: tl.constexpr,
     BATCH_DIMS: tl.constexpr,
     USE_EXP2: tl.constexpr,
     BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
@@ -48,54 +48,53 @@ def _lse_matmul_kernel(
 
     pid_b = pid // mn
     pid2 = pid - pid_b * mn
-    pid_m = (pid2 // grid_n).to(tl.int32)
-    pid_n = (pid2 - pid_m.to(tl.int64) * grid_n).to(tl.int32)
-
+    pid_m = (pid2 // grid_n).to(tl.int64)
+    pid_n = (pid2 - pid_m * grid_n).to(tl.int64)
     
     off_a = tl.full((), 0, tl.int64)
     off_b = tl.full((), 0, tl.int64)
     off_c = tl.full((), 0, tl.int64)
 
     if BATCH_DIMS >= 1:
-        i0 = (pid_b % b0).to(tl.int32)
+        i0 = (pid_b % b0).to(tl.int64)
         pid_b = pid_b // b0
         off_a += i0 * sa0
         off_b += i0 * sb0
         off_c += i0 * sc0
     if BATCH_DIMS >= 2:
-        i1 = (pid_b % b1).to(tl.int32)
+        i1 = (pid_b % b1).to(tl.int64)
         pid_b = pid_b // b1
         off_a += i1 * sa1
         off_b += i1 * sb1
         off_c += i1 * sc1
     if BATCH_DIMS >= 3:
-        i2 = (pid_b % b2).to(tl.int32)
+        i2 = (pid_b % b2).to(tl.int64)
         pid_b = pid_b // b2
         off_a += i2 * sa2
         off_b += i2 * sb2
         off_c += i2 * sc2
     if BATCH_DIMS >= 4:
-        i3 = (pid_b % b3).to(tl.int32)
+        i3 = (pid_b % b3).to(tl.int64)
         pid_b = pid_b // b3
         off_a += i3 * sa3
         off_b += i3 * sb3
         off_c += i3 * sc3
     if BATCH_DIMS >= 5:
-        i4 = (pid_b % b4).to(tl.int32)
+        i4 = (pid_b % b4).to(tl.int64)
         pid_b = pid_b // b4
         off_a += i4 * sa4
         off_b += i4 * sb4
         off_c += i4 * sc4
     if BATCH_DIMS >= 6:
-        i5 = (pid_b % b5).to(tl.int32)
+        i5 = (pid_b % b5).to(tl.int64)
         pid_b = pid_b // b5
         off_a += i5 * sa5
         off_b += i5 * sb5
         off_c += i5 * sc5
 
     # tile indices
-    rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int32)
-    rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int32)
+    rm = (pid_m.to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M).to(tl.int64))
+    rn = (pid_n.to(tl.int64) * BLOCK_N + tl.arange(0, BLOCK_N).to(tl.int64))
     if (pid_m * BLOCK_M >= M) or (pid_n * BLOCK_N >= N):
         return
 
