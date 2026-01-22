@@ -16,15 +16,15 @@ data:
   input_shape: [3, 32, 32]
   num_categories: 256
   batch_size: 32
-  val_batch_size: 100
+  val_batch_size: 32
   num_workers: 0
   pin_memory: false
 
 prior:
   alpha: ???
   prior_type: gaussian
-  num_timesteps: 127
-  num_skip_steps: 1
+  num_timesteps: 15
+  num_skip_steps: 8
 
 method:
   use_mini_batch: true
@@ -40,6 +40,7 @@ trainer:
   max_epochs: 20
   limit_train_batches: 10000
   limit_val_batches: 200
+  limit_test_batches: 200
   limit_test_batches: 200
   val_check_interval: null
   accumulate_grad_batches: 1
