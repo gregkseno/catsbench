@@ -11,4 +11,14 @@ prior:
   alpha: 0.05
 
 method:
-  f_reg_until: 5000
+  f_reg_until: 1000000
+  f_optimizer:
+      lr: 1e-5
+  pi_optimizer:
+      lr: 1e-5
+  lambda_reg: 0
+  f_emb_dim: 64
+
+trainer:
+  max_epochs: 10
+  limit_train_batches: 22000

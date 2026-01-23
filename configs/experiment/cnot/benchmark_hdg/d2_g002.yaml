@@ -12,3 +12,13 @@ prior:
 
 method:
   f_reg_until: 5000
+  f_optimizer:
+      lr: 1e-4
+  pi_optimizer:
+      lr: 1e-4
+  lambda_reg: 0
+  f_emb_dim: 64
+
+trainer:
+  max_epochs: 5
+  limit_train_batches: 22000

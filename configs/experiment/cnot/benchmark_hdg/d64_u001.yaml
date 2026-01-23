@@ -12,3 +12,7 @@ prior:
 
 method:
   f_reg_until: 1000000
+
+trainer:
+  max_epochs: 10
+  limit_train_batches: 22000
