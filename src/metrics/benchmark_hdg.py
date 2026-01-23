@@ -132,10 +132,12 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
             )
             if isinstance(pl_module, (CSBM, AlphaCSBM)):
                 timesteps = (pl_module.prior.num_timesteps + 1) - timesteps
-            pl_module.forward_kl_div.update(
-                p=true_transition_logits, 
-                q=pl_module.get_transition_logits(true_trajectory, timesteps)
-            )
+            
+            with torch.no_grad(): # remove grads from transitions of DLightSB methods
+                pl_module.forward_kl_div.update(
+                    p=true_transition_logits, 
+                    q=pl_module.get_transition_logits(true_trajectory, timesteps)
+                )
             
     def _compute_and_log_metrics(
         self,

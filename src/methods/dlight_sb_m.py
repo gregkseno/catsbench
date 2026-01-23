@@ -192,7 +192,12 @@ class DLightSB_M(LightningModule):
         ).squeeze(-2) # [B, D, K]
         return log_u_t # [B, D, K]
 
-    def _log_u_tp1_all(self, tp1: torch.Tensor, batch_size: int) -> torch.Tensor:
+    def _log_phi_tp1_all(
+        self, 
+        log_u_t: torch.Tensor,
+        tp1: torch.Tensor,
+    ) -> torch.Tensor:
+        batch_size = log_u_t.shape[0]
         if tp1.numel() == 1 or bool((tp1 == tp1.flatten()[0]).all()):
             # all values are the save
             tp1_val = int(tp1.flatten()[0].item())
@@ -202,11 +207,45 @@ class DLightSB_M(LightningModule):
         else:
             # values are the different
             log_pi_ref_tp1 = self.prior.log_p_cum.index_select(0, tp1)  # [B, S_next, S_end]
-        log_u_tp1 = lse_matmul(
-            log_pi_ref_tp1.unsqueeze(1), # [B, 1, S_next, S_end]
+        
+        log_z_t = log_u_t.sum(dim=1) # [B, K]
+        term = log_z_t[:, None, :] - log_u_t
+        w = term + self.log_alpha.view(1, 1, -1)
+        v = lse_matmul(
             self.log_cp_cores.unsqueeze(0), # [1, D, S_end, K]
-        ).squeeze(-1) # [B, D, S_next, K]
-        return log_u_tp1
+            w.unsqueeze(-1), # [B, D, K, 1]
+        ).squeeze(-1) # [B, D, S_end]
+        log_phi_tp1 = lse_matmul(
+            log_pi_ref_tp1.unsqueeze(1), # [B, 1, S_next, S_end]
+            v.unsqueeze(-1), # [B, D, S_end, 1]
+        ).squeeze(-1) # [B, D, S_next]
+        return log_phi_tp1
+
+    def _log_u_tp1_star_all(
+        self, 
+        log_u_t: torch.Tensor,
+        tp1: torch.Tensor,
+        k_star: torch.Tensor
+    ) -> torch.Tensor:
+        batch_size = log_u_t.shape[0]
+        if tp1.numel() == 1 or bool((tp1 == tp1.flatten()[0]).all()):
+            # all values are the save
+            tp1_val = int(tp1.flatten()[0].item())
+            log_pi_ref_tp1 = self.prior.log_p_cum[tp1_val].unsqueeze(0).expand(
+                batch_size, self.hparams.num_categories, self.hparams.num_categories
+            ) # [B, S_next, S_end]
+        else:
+            # values are the different
+            log_pi_ref_tp1 = self.prior.log_p_cum.index_select(0, tp1)  # [B, S_next, S_end]
+
+        log_cp_cores = self.log_cp_cores.movedim(-1, 0).contiguous() # [K, D, S]
+        log_cp_cores_star = log_cp_cores.index_select(0, k_star)
+
+        log_u_tp1_star = lse_matmul(
+            log_pi_ref_tp1.unsqueeze(1), # [B, 1, S_next, S_end]
+            log_cp_cores_star.unsqueeze(-1), # [B, D, S_end, 1]
+        ).squeeze(-1) # [B, D, S_next]
+        return log_u_tp1_star
 
     def get_transition_logits(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         input_shape = x_t.shape
@@ -216,13 +255,7 @@ class DLightSB_M(LightningModule):
         tp1 = self.hparams.num_timesteps - t_orig
 
         log_u_t = self._log_u_t(x_t, t) # [B, D, K]
-        log_z_t = log_u_t.sum(dim=1) # [B, K]
-        log_u_tp1 = self._log_u_tp1_all(tp1, x_t.shape[0]) # [B, D, S, K]
-
-        term = (log_z_t[:, None, :] - log_u_t).unsqueeze(2) # [B, D, 1, K]
-        log_alpha = self.log_alpha.view(1, 1, 1, self.hparams.num_potentials) # [1, 1, 1, K]
-        log_phi_tp1 = torch.logsumexp(log_alpha + log_u_tp1 + term, dim=-1) # [B, D, S]
-
+        log_phi_tp1 = self._log_phi_tp1_all(log_u_t, tp1) # [B, D, S]
         onestep = self.prior.extract("onestep", t_orig + 1, row_id=x_t) # [B, D, S]
         transition_logits = log_phi_tp1 + onestep  
         return transition_logits.reshape(*input_shape, self.hparams.num_categories) # [B, ..., S]
@@ -334,19 +367,13 @@ class DLightSB_M(LightningModule):
         log_w_k = self.log_alpha[None, :] + log_z_t # [B, K]
         k_star = gumbel_sample(log_w_k, tau=self.hparams.tau, dim=-1) # [B]
 
-        log_u_tp1 = self._log_u_tp1_all(tp1, x_t.shape[0]) # [B, D, S, K]
-        k_idx = k_star.view(
-            x_t.shape[0], 1, 1, 1 # [B, 1, 1, 1]
-        ).expand(-1, self.hparams.dim, self.hparams.num_categories, 1) # [B, D, S, 1]
-        log_u_tp1_star = torch.gather(log_u_tp1, dim=-1, index=k_idx).squeeze(-1) # [B, D, S]
+        log_u_tp1_star = self._log_u_tp1_star_all(log_u_t, tp1, k_star) # [B, D, S]
         onestep = self.prior.extract("onestep", t_orig + 1, row_id=x_t) # [B, D, S]
         logits = onestep + log_u_tp1_star # [B, D, S]
         
         x_tp1 = gumbel_sample(logits, tau=self.hparams.tau, dim=-1).reshape(input_shape) # [B, ...]
         if return_transitions:
-            term = (log_z_t[:, None, :] - log_u_t).unsqueeze(2) # [B, D, 1, K]
-            log_alpha = self.log_alpha.view(1, 1, 1, self.hparams.num_potentials) # [1, 1, 1, K] 
-            log_phi_tp1 = torch.logsumexp(log_alpha + log_u_tp1 + term, dim=-1) # [B, D, S]
+            log_phi_tp1 = self._log_phi_tp1_all(log_u_t, tp1) # [B, D, S]
             transition_logits = log_phi_tp1 + onestep # [B, D, S]
             return x_tp1, transition_logits
         return x_tp1
