@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=test-hdg
-#SBATCH --partition=gpu_devel
+#SBATCH --partition=ais-gpu
+#SBATCH --reservation=HPC-2743
 #SBATCH --gpus=1
 #SBATCH --array=0-11%1
 #SBATCH --cpus-per-task=4
@@ -11,67 +12,67 @@
 
 sleep $((SLURM_ARRAY_TASK_ID * 5))
 source activate dot_bench
-SEED=1
+SEED=2
 
 case "${SLURM_ARRAY_TASK_ID}" in
   0)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d2_g002 task_name=test ckpt_path=auto
     ;;
   1)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d2_g005 task_name=test ckpt_path=auto
     ;;
   2)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d2_u0005 task_name=test ckpt_path=auto
     ;;
   3)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d2_u001 task_name=test ckpt_path=auto
     ;;
   4)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d16_g002 task_name=test ckpt_path=auto
     ;;
   5)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d16_g005 task_name=test ckpt_path=auto
     ;;
   6)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d16_u0005 task_name=test ckpt_path=auto
     ;;
   7)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d16_u001 task_name=test ckpt_path=auto
     ;;
   8)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d64_g002 task_name=test ckpt_path=auto
     ;;
   9)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d64_g005 task_name=test ckpt_path=auto
     ;;
   10)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d64_u0005 task_name=test ckpt_path=auto
     ;;
   11)
     python -m src.run \
-      seed=${SEED} data.num_workers=3 data.val_batch_size=8 \
+      seed=${SEED} data.num_workers=3 data.val_batch_size=64 \
       experiment=dlight_sb/benchmark_hdg/d64_u001 task_name=test ckpt_path=auto
     ;;
   *)

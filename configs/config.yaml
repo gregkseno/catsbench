@@ -6,7 +6,7 @@ defaults:
   - callbacks: [rich_progress_bar, model_summary, toy_metrics]
   - logger: comet
   - trainer: gpu
-  - experiment: null
+  - experiment: ???
   - hydra: default
   - _self_
 

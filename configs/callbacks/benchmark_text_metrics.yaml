@@ -1,9 +1,0 @@
-metric_callback:
-  _target_: src.utils.BenchmarkTextsLogger
-  dim: ${data.dim}
-  num_categories: ${data.num_categories}
-  train_test_split: 0.8
-  num_samples: 1 # number of samples to visualize
-  num_trajectories: 1
-  num_translations: 4
-  model_path: ${paths.ckpt_dir}/gpt2-tinystories-final

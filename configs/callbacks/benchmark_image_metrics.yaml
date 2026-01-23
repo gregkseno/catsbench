@@ -10,6 +10,6 @@ plotter_callback:
   dim: ${data.dim}
   input_shape: ${data.input_shape}
   num_categories: ${data.num_categories}
-  num_samples: 16 # number of samples to visualize
+  num_samples: 4 # number of samples to visualize
   num_trajectories: 4
   num_translations: 2

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Literal, Optional, Union
 import torch
 
 from torchmetrics.image import FrechetInceptionDistance

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Literal, Optional, Union
 import torch
 
 from torchmetrics import MetricCollection
@@ -27,12 +27,14 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
         dim: int,
         num_categories: int,
         num_cond_samples: int,
+        num_timesteps: int,
         train_test_split: Optional[float] = 0.8,
         classifier_lr: Optional[float] = 1e-2,
     ):
         super().__init__()
         self.dim = dim
         self.num_categories = num_categories
+        self.num_timesteps = num_timesteps
 
         self.num_cond_samples = num_cond_samples
         self.train_test_split = train_test_split
@@ -59,8 +61,16 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
             )
             if not hasattr(pl_module, 'get_transition_logits'):
                 return
-            pl_module.forward_kl_div = TrajectoryKLDivergence(logits=True)
-            pl_module.reverse_kl_div = TrajectoryKLDivergence(logits=True)
+            pl_module.forward_kl_div = TrajectoryKLDivergence(
+                dim=self.dim,
+                num_timesteps=self.num_timesteps,
+                logits=True,
+            )
+            pl_module.reverse_kl_div = TrajectoryKLDivergence(
+                dim=self.dim,
+                num_timesteps=self.num_timesteps,
+                logits=True,
+            )
 
     def _update_metrics(
         self,
@@ -122,10 +132,12 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
             )
             if isinstance(pl_module, (CSBM, AlphaCSBM)):
                 timesteps = (pl_module.prior.num_timesteps + 1) - timesteps
-            pl_module.forward_kl_div.update(
-                p=true_transition_logits, 
-                q=pl_module.get_transition_logits(true_trajectory, timesteps)
-            )
+            
+            with torch.no_grad(): # remove grads from transitions of DLightSB methods
+                pl_module.forward_kl_div.update(
+                    p=true_transition_logits, 
+                    q=pl_module.get_transition_logits(true_trajectory, timesteps)
+                )
             
     def _compute_and_log_metrics(
         self,

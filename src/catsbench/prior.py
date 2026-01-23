@@ -2,7 +2,9 @@ from typing import Literal, Optional, Union
 
 import torch
 from torch import nn
-from .utils import broadcast, gumbel_sample, log_space_product, logits_prod
+
+from .utils import lse_matmul, logits_prod 
+from src.utils import broadcast, gumbel_sample
 
 
 def get_cum_matrices(
@@ -37,7 +39,7 @@ def get_cum_matrices(
                 dtype=dtype, device=device
             )
         else: # use log space matrix multiplication
-            log_cum_matrices[timestep] = log_space_product(
+            log_cum_matrices[timestep] = lse_matmul(
                 log_cum_matrices[timestep-1], 
                 log_onestep_matrix
             )
@@ -116,7 +118,7 @@ def gaussian_onestep(
     
     log_p_onestep_mat_orig = log_p_onestep_mat.clone()
     for _ in range(num_skip_steps - 1):
-        log_p_onestep_mat = log_space_product(log_p_onestep_mat, log_p_onestep_mat_orig)
+        log_p_onestep_mat = lse_matmul(log_p_onestep_mat, log_p_onestep_mat_orig)
     return log_p_onestep_mat
 
 # Cumulative returns with following pattern
@@ -170,8 +172,8 @@ class Prior(nn.Module):
         )
         log_p_onestep = log_p_onestep.transpose(0, 1).contiguous()
         # register as non-persistent buffer to avoid saving in checkpoints
-        self.register_buffer("log_p_onestep", log_p_onestep, persistent=False)
-        self.register_buffer("log_p_cum", log_p_cum, persistent=False)
+        self.register_buffer('log_p_onestep', log_p_onestep, persistent=False)
+        self.register_buffer('log_p_cum', log_p_cum, persistent=False)
 
     @property
     def dtype(self) -> torch.dtype:
@@ -185,21 +187,32 @@ class Prior(nn.Module):
         row_id: Optional[torch.Tensor] = None,
         column_id: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """Extracts row/column/element from transition matrix."""     
-        if (row_id is None) == (column_id is None):
-            raise ValueError("Provide exactly one of row_id or column_id.")
+        '''Extracts row/column/element from transition matrix.''' 
+        if mat_type not in ("onestep", "cumulative"):
+            raise ValueError("mat_type must be 'onestep' or 'cumulative'")
 
-        if row_id is not None:
-            if mat_type == "onestep":
+        if row_id is not None and column_id is not None:
+            if row_id.shape != column_id.shape:
+                raise ValueError('Number of dims for row_id and column_id must be equal!')
+            if mat_type  == 'onestep':
+                return self.log_p_onestep[row_id, column_id]
+            t = broadcast(t, row_id.dim() - 1)
+            return self.log_p_cum[t, row_id, column_id]
+        
+        elif row_id is not None and column_id is None:
+            if mat_type == 'onestep':
                 return self.log_p_onestep[row_id]
             t = broadcast(t, row_id.dim() - 1)
             return self.log_p_cum[t, row_id, :]
 
-        else:  # column_id is not None
-            if mat_type == "onestep":
+        elif row_id is None and column_id is not None:
+            if mat_type == 'onestep':
                 return self.log_p_onestep[:, column_id].movedim(0, -1).contiguous()
             t = broadcast(t, column_id.dim() - 1)
             return self.log_p_cum[t, :, column_id]
+        
+        else:   
+            raise ValueError('row_id and column_id cannot be None both!')
         
     def extract_last_cum_matrix(self, x: torch.Tensor) -> torch.Tensor:
         last_timestep = torch.full(
@@ -210,7 +223,7 @@ class Prior(nn.Module):
         return self.extract('cumulative', last_timestep, row_id=x)
     
     def sample_bridge(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        r"""Samples from bridge $p(x_{t} | x_{0}, x_{1})$."""
+        r'''Samples from bridge $p(x_{t} | x_{0}, x_{1})$.'''
         log_p_start_t = self.extract('cumulative', t, row_id=x_start)
         log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
         log_probs = log_p_start_t + log_p_t_end
@@ -223,14 +236,6 @@ class Prior(nn.Module):
         x_t = torch.where(is_first_step, x_start, x_t)
 
         return x_t
-
-    # following methods for baseline methods (d-imf) only
-    def bridge_logits(self, x_start: torch.Tensor, x_end: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        r"""Calculates log probability of $p(x_{t} | x_{0}, x_{1})$."""
-        log_p_start_t = self.extract('cumulative', t, row_id=x_start)
-        log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
-        logits = log_p_start_t + log_p_t_end
-        return logits
     
     def posterior_logits(
         self, 
@@ -239,26 +244,47 @@ class Prior(nn.Module):
         t: torch.Tensor, 
         logits: bool = False,
     ) -> torch.Tensor:
-        r"""Calculates logits of $p(x_{t-1} | x_{t}, x_{0})$.
-        If logits is True, the output is summed over x_0 and transition matrix returned.""" 
+        r'''Calculates logits of $p(x_{t-1} | x_{t}, x_{0})$.
+        If logits is True, the output is summed over x_0 and transition matrix returned.''' 
         if not logits:
             eps = torch.finfo(self.dtype).eps
             x_start_logits = torch.log(torch.nn.functional.one_hot(x_start, self.num_categories) + eps)
         else:
             x_start_logits = x_start.clone()
         assert x_start_logits.shape == x_t.shape + (self.num_categories,), \
-            f"x_start_logits.shape: {x_start_logits.shape}, x_t.shape: {x_t.shape}"
+            f'x_start_logits.shape: {x_start_logits.shape}, x_t.shape: {x_t.shape}'
         x_start_logits = x_start_logits.to(self.dtype)
-        # fact1 is "guess of x_{t}" from x_{t-1}
+        # fact1 is 'guess of x_{t}' from x_{t-1}
         log_fact1 = self.extract('onestep', t, row_id=x_t)
 
-        # fact2 is "guess of x_{t-1}" from x_{0}
+        # fact2 is 'guess of x_{t-1}' from x_{0}
         x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
         log_fact2 = logits_prod(x_start_logits, self.log_p_cum[t-1]) 
 
-        p_posterior_logits = log_fact1 + log_fact2
+        return log_fact1 + log_fact2
+    
+    def posterior_logits_reverse(
+        self,
+        x_end: torch.Tensor,
+        x_t: torch.Tensor,
+        t: torch.Tensor,
+        logits: bool = False,
+    ) -> torch.Tensor:
+        r'''Calculates logits of $p(x_{t+1} | x_{t}, x_{1})$.
+        If logits is True, the output is summed over x_1 and transition matrix returned.''' 
+        if not logits:
+            eps = torch.finfo(self.dtype).eps
+            x_end_logits = torch.log(torch.nn.functional.one_hot(x_end, self.num_categories) + eps)
+        else:
+            x_end_logits = x_end.clone()
+        assert x_end_logits.shape == x_t.shape + (self.num_categories,), \
+            f'x_end_logits.shape: {x_end_logits.shape}, x_t.shape: {x_t.shape}'
 
-        # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already
-        is_first_step = broadcast(t, x_t.dim()) == 1
-        p_posterior_logits = torch.where(is_first_step, x_start_logits, p_posterior_logits)
-        return p_posterior_logits
+        log_fact1 = self.extract('onestep', t+1, row_id=x_t)  # shape: x_t.shape + (num_categories,)
+
+        x_end_logits = x_end_logits.log_softmax(dim=-1)
+        log_fact2 = logits_prod(
+            x_end_logits, self.log_p_cum[self.num_timesteps - t] #.transpose(-2, -1)
+        )
+
+        return log_fact1 + log_fact2
