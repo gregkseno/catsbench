@@ -308,42 +308,37 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         onestep = self.prior.extract("onestep", t_orig + 1, row_id=x_t) # [B, D, S]
         transition_logits = log_phi_tp1 + onestep  
         return transition_logits.reshape(*input_shape, self.num_categories) # [B, ..., S]
-
-    def get_log_v(self, x_end: torch.Tensor) -> torch.Tensor:
-        x_end = x_end.flatten(start_dim=1) # [B, D]
-        x_end = x_end.view(*x_end.shape, 1, 1).expand(-1, -1, -1, self.hparams.num_potentials) # [B, D, 1, K]
-        log_cp_cores = self.log_cp_cores.unsqueeze(0).expand(x_end.shape[0], -1, -1, -1) # [B, D, S, K]
-        log_r = torch.gather(log_cp_cores, dim=-2, index=x_end) # [B, D, 1, K]
-        log_r = log_r.squeeze(-2).sum(dim=1) # [B, K]
-        return torch.logsumexp(self.log_alpha[None, :] + log_r, dim=1) # [B]
-
-    def get_log_c(self, x_start: torch.Tensor) -> torch.Tensor:
-        x_start = x_start.flatten(start_dim=1)
-        last_timestep = torch.full(
-            size=(x_start.shape[0],), 
-            fill_value=self.hparams.num_timesteps + 1, 
-            device=self.device 
-        )
-        log_u = self._log_u_t(x_start, last_timestep) # [B, D, K]
-        log_z = log_u.sum(dim=1) # [B, K]
-        return torch.logsumexp(self.log_alpha[None, :] + log_z, dim=1) # [B]
-    
+ 
     @torch.no_grad()
     def log_prob(self, x_start: torch.Tensor, x_end: torch.Tensor) -> torch.Tensor:
         x_start = x_start.flatten(start_dim=1) # [B, D]
         x_end = x_end.flatten(start_dim=1) # [B, D]
 
-        log_v = self.get_log_v(x_end) # [B]
-        log_c = self.get_log_c(x_start) # [B]
+        last_timestep = torch.full(
+            size=(x_start.shape[0],),
+            fill_value=self.hparams.num_timesteps + 1,
+            device=self.device,
+            dtype=torch.long,
+        )
+        log_u = self._log_u_t(x_start, last_timestep) # [B, D, K]
+        log_z = log_u.sum(dim=1) # [B, K]
+        log_c = torch.logsumexp(self.log_alpha[None, :] + log_z, dim=-1) # [B]
 
         log_pi_ref = self.prior.extract_last_cum_matrix(x_start) # [B, D, S]
         log_pi_ref_sel = torch.gather(
             log_pi_ref, dim=-1, 
             index=x_end.unsqueeze(-1) # [B, D, 1]
         ).squeeze(-1) # [B, D]
-        log_base = log_pi_ref_sel.sum(dim=1) # [B]
-
-        return log_base + log_v - log_c
+        
+        d_idx = torch.arange(self.dim, device=x_end.device).unsqueeze(0) # [1, D]
+        log_r = self.log_cp_cores[d_idx, x_end] # [B, D, K]
+        inner = (
+            self.log_alpha.view(1, 1, -1) + 
+            (log_z[:, None, :] - log_u) + # marginalization
+            log_r
+        ) # [B, D, K]
+        log_mix = torch.logsumexp(inner, dim=-1) # [B, D]
+        return log_pi_ref_sel + log_mix - log_c[:, None]
 
     @torch.no_grad()
     def markov_sample(
