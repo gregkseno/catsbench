@@ -13,33 +13,6 @@ def broadcast(tensor: torch.Tensor, num_add_dims: int, dim: int = -1) -> torch.T
     shape = [*tensor.shape[:dim], *([1] * num_add_dims), *tensor.shape[dim:]]
     return tensor.reshape(*shape)
 
-def log_space_product(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
-    # if log_matrix1.is_cuda and log_matrix2.is_cuda:
-    #     import genbmm
-    #     return genbmm.logbmm(log_matrix1, log_matrix2)
-    log_matrix1 = log_matrix1[..., :, None]
-    log_matrix2 = log_matrix2[..., None, :, :]
-    return torch.logsumexp(log_matrix1 + log_matrix2, dim=-2)
-
-def logits_prod(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
-    # if log_matrix1.is_cuda and log_matrix2.is_cuda:
-    #     import genbmm
-    #     orig_shape = log_matrix1.shape
-    #     log_matrix1 = log_matrix1.reshape(orig_shape[0], -1, orig_shape[-1])
-    #     if log_matrix2.dim() == 2:
-    #         log_matrix2 = log_matrix2.unsqueeze(0).expand(log_matrix1.shape[0], -1, -1)
-    #     else:
-    #         if log_matrix2.shape[0] == 1 and log_matrix1.shape[0] != 1:
-    #             log_matrix2 = log_matrix2.expand(log_matrix1.shape[0], -1, -1)
-    #     out = genbmm.logbmm(log_matrix1, log_matrix2)
-    #     return out.reshape(*orig_shape)
-    # else:
-    log_matrix1 = log_matrix1.unsqueeze(-1) # [batchsize, ..., num_categories, 1]
-    insert_nones = [None] * (log_matrix1.ndim - 3)
-    idx = (slice(None), *insert_nones, slice(None), slice(None))
-    log_matrix2 = log_matrix2[idx] # [batchsize, ..., num_categories, num_categories]
-    return torch.logsumexp(log_matrix1 + log_matrix2, dim=-2)
-
 def gumbel_sample(logits: torch.Tensor, dim: int = -1, tau: float = 1.0) -> torch.Tensor:
     finfo = torch.finfo(logits.dtype)
     noise = torch.rand_like(logits)

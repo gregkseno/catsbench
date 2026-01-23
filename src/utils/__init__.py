@@ -1,8 +1,6 @@
 from src.utils.instantiation import instantiate_callbacks, instantiate_loggers
 from src.utils.data import (
     broadcast, 
-    log_space_product,
-    logits_prod,
     gumbel_sample,
     convert_to_numpy, 
     convert_to_torch, 
