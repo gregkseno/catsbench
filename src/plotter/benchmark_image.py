@@ -1,10 +1,10 @@
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
 from torchvision.utils import make_grid
-from lightning.pytorch import Callback, Trainer, LightningModule
+from lightning.pytorch import Trainer, LightningModule
 from lightning.pytorch.loggers import WandbLogger, CometLogger, TensorBoardLogger
 from lightning.pytorch.utilities import rank_zero_only
 

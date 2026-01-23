@@ -11,6 +11,7 @@ from src.utils import convert_to_numpy, fig2img
 
 
 class ToyPlotterCallback(Callback):
+    # TODO: Adapt to Plotter + Metrics style
     def __init__(
         self,
         num_samples: int,

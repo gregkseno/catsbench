@@ -1,4 +1,4 @@
-from typing import Any, Dict, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Literal, Tuple, Union
 import torch
 
 from lightning.pytorch import Callback, Trainer
