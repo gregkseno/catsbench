@@ -9,7 +9,9 @@ from catsbench.metrics import (
     ClassifierTwoSampleTest,
     ShapeScore,
     TrendScore,
-    TrajectoryKLDivergence
+    TrajectoryKLDivergence,
+    SBPerplexity,
+    Entropy
 )
 
 from .base import BaseMetricsCallback
@@ -49,7 +51,11 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
             {'shape_score': ShapeScore(self.dim, self.num_categories, conditional=False),
              'trend_score': TrendScore(self.dim, self.num_categories, conditional=False)},
         )
+        pl_module.entropy = Entropy(self.dim, self.num_categories)
+        pl_module.pred_entropy = Entropy(self.dim, self.num_categories)
+
         # initialize conditional metrics
+        pl_module.sb_perplexity = SBPerplexity(self.benchmark)
         if self.benchmark.reverse: 
             pl_module.c2st = ClassifierTwoSampleTest(
                 dim=2*self.dim, num_categories=self.num_categories, lr=self.classifier_lr
@@ -85,6 +91,8 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
         # update unconditional metrics
         pred_x_end = pl_module.sample(x_start)
         pl_module.metrics.update(x_end, pred_x_end)
+        pl_module.entropy.update(x_end)
+        pl_module.pred_entropy.update(pred_x_end)
 
         # update conditional metrics
         if self.benchmark.reverse:
@@ -99,11 +107,19 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
                 pred_data=torch.cat([x_start, pred_x_end], dim=-1),
                 train=train_mode
             )
+            pl_module.sb_perplexity.update(
+                x_start=pred_x_end,
+                pred_x_end=x_start
+            )
         else:
             repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
             cond_x_end = self.benchmark.sample(repeated_x_start)
             cond_pred_x_end = pl_module.sample(repeated_x_start)
             pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
+            pl_module.sb_perplexity.update(
+                x_start=x_start,
+                pred_x_end=pred_x_end
+            )
 
             if not hasattr(pl_module, 'get_transition_logits'):
                 return
@@ -154,6 +170,9 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
         pl_module.metrics.reset()
 
         # compute and log conditional metrics
+        sb_perplexity = pl_module.sb_perplexity.compute()
+        pl_module.log(f'{stage}/sb_perplexity_{fb}', sb_perplexity)
+        pl_module.sb_perplexity.reset()
         if self.benchmark.reverse:
             c2st = pl_module.c2st.compute()
             pl_module.log(f'{stage}/c2st_{fb}', c2st)
