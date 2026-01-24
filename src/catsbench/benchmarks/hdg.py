@@ -97,7 +97,7 @@ class BenchmarkHDG(BenchmarkBase):
         axs[2].scatter(
             pred_x_end[:, 0], pred_x_end[:, 1],
             label=r'$p_{pred}$', s=kwargs.get('s', 35),  
-            c='blue', edgecolor='black'    
+            c='salmon', edgecolor='black'    
         )
 
         fig.suptitle('Benchmark samples', fontsize=16)
@@ -107,7 +107,7 @@ class BenchmarkHDG(BenchmarkBase):
         else:
             axlim = [0, self.num_categories - 1]
         r = axlim[1] - axlim[0]
-        axlim = [axlim[0] + 0.1 * r, axlim[1] - 0.1 * r]
+        axlim = [axlim[0] + 0.03 * r, axlim[1] - 0.03 * r]
         for ax in axs:
             ax.grid()
             ax.set(xlim=axlim, ylim=axlim)
@@ -123,7 +123,6 @@ class BenchmarkHDG(BenchmarkBase):
         num_translations: int,
         **kwargs
     ):
-        # TODO: Add input samples scatter plot
         use_pca = self.dim > 2
         if use_pca:
             pca = PCA(n_components=2)
@@ -133,6 +132,7 @@ class BenchmarkHDG(BenchmarkBase):
             )))
 
         # prepare samples
+        x_start = convert_to_numpy(self.input_dataset[:num_samples])
         x_end = convert_to_numpy(self.target_dataset[:num_samples])
         traj_start = self.input_dataset[:num_trajectories]
         repeats = [num_translations] + [1] * traj_start.dim()
@@ -150,34 +150,40 @@ class BenchmarkHDG(BenchmarkBase):
 
         # plot samples
         fig, ax = plt.subplots(
-            1, 1, dpi=kwargs.get('dpi', 200), 
+            1, 1, dpi=kwargs.get('dpi', 100), 
             figsize=kwargs.get('fig_size', (8, 8))
+        )
+        ax.scatter(
+            x_start[:, 0], x_start[:, 1],
+            label='Start distribution', s=kwargs.get('s', 100),
+            c='grey', edgecolor='black', zorder=1, alpha=0.3, 
+            linewidth=kwargs.get('linewidth', 0.8)
         )
         ax.scatter(
             x_end[:, 0], x_end[:, 1],
             label='Fitted distribution', s=kwargs.get('s', 100),
-            c='salmon', edgecolor='black', zorder=1, 
+            c='salmon', edgecolor='black', zorder=2, 
             linewidth=kwargs.get('linewidth', 0.8)
         )
         ax.scatter(
             trajectories[0, :, 0], trajectories[0, :, 1],
             label=r'Trajectory start ($x \sim p_{start}$)', s=kwargs.get('s', 150),
-            c='lime', edgecolor='black', zorder=3
+            c='lime', edgecolor='black', zorder=4
         )
         ax.scatter(
             trajectories[-1, :, 0], trajectories[-1, :, 1], 
             label=r'Trajectory end ($y \sim p_{end}$)', s=kwargs.get('s', 80),
-            c='yellow', edgecolor='black', zorder=3
+            c='yellow', edgecolor='black', zorder=4
         )
         for i in range(num_trajectories * num_translations):
             ax.plot(
                 trajectories[:, i, 0], trajectories[:, i, 1],
                 label='Trajectory (ground truth)' if i == 0 else '',
-                c='black', markeredgecolor='black', linewidth=2, zorder=2
+                c='black', markeredgecolor='black', linewidth=2, zorder=3
             )
             ax.plot(
                 trajectories[:, i, 0], trajectories[:, i, 1],
-                c='grey', markeredgecolor='black', linewidth=1, zorder=2
+                c='grey', markeredgecolor='black', linewidth=1, zorder=3
             )
 
         fig.suptitle('Benchmark trajectories', fontsize=16)
@@ -187,7 +193,7 @@ class BenchmarkHDG(BenchmarkBase):
         else:
             axlim = [0, self.num_categories - 1]
         r = axlim[1] - axlim[0]
-        axlim = [axlim[0] + 0.1 * r, axlim[1] - 0.1 * r]
+        axlim = [axlim[0] + 0.03 * r, axlim[1] - 0.03 * r]
         ax.set(xlim=axlim, ylim=axlim)
         ax.legend(loc='lower left')
         fig.tight_layout(pad=0.5)
