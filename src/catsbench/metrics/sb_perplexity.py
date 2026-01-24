@@ -15,10 +15,7 @@ class SBPerplexity(Perplexity):
         benchmark: BenchmarkBase,
         ignore_index: Optional[int] = None
     ):
-        super().__init__(
-            ignore_index=ignore_index, 
-            reduction='mean'
-        )
+        super().__init__(ignore_index=ignore_index)
         self.benchmark = benchmark
 
     def update(
