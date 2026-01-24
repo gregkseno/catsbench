@@ -169,6 +169,14 @@ class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
         pl_module.log_dict(metrics)
         pl_module.metrics.reset()
 
+        entropy = pl_module.entropy.compute()
+        pl_module.log(f'{stage}/entropy_{fb}', entropy)
+        pl_module.entropy.reset()
+
+        pred_entropy = pl_module.pred_entropy.compute()
+        pl_module.log(f'{stage}/pred_entropy_{fb}', pred_entropy)
+        pl_module.pred_entropy.reset()
+
         # compute and log conditional metrics
         sb_perplexity = pl_module.sb_perplexity.compute()
         pl_module.log(f'{stage}/sb_perplexity_{fb}', sb_perplexity)
