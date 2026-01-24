@@ -316,7 +316,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
 
         last_timestep = torch.full(
             size=(x_start.shape[0],),
-            fill_value=self.hparams.num_timesteps + 1,
+            fill_value=self.num_timesteps + 1,
             device=self.device,
             dtype=torch.long,
         )
