@@ -60,4 +60,4 @@ class Entropy(Metric):
             plogp[non_zero] = probs[non_zero] * torch.log(probs[non_zero])
             entropy[valid] = -plogp.sum(dim=1)
 
-        return entropy
+        return entropy.mean()
