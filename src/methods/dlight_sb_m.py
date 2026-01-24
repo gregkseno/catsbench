@@ -341,7 +341,7 @@ class DLightSB_M(LightningModule):
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer = self.hparams.optimizer(
-            params=[self.log_alpha] + list(self.log_cp_cores)
+            params=[self.log_alpha, self.log_cp_cores]
         )
         if self.hparams.scheduler is not None:
             scheduler = self.hparams.scheduler(optimizer=optimizer)
