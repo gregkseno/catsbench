@@ -25,7 +25,6 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         num_samples: int,
         num_trajectories: int, 
         num_translations: int,
-        axlim: Optional[Tuple[float, float]] = None,
         samples_figsize: Optional[Tuple[int, int]] = None,
         trajectories_figsize: Optional[Tuple[int, int]] = None,
         dpi: int = 100
@@ -40,10 +39,6 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         if dim > 2:
             self.pca = PCA(n_components=2)
 
-        if dim > 2:
-            self.axlim = [7, 93] if axlim is None else axlim
-        else:
-            self.axlim = [0, num_categories]
         self.samples_fig_config = {
             'figsize': (12, 4) if samples_figsize is None else samples_figsize,
             'dpi': dpi,
@@ -126,10 +121,17 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         axes[1].scatter(x_end[:, 0], x_end[:, 1], **self.samples_end_config)
         axes[2].scatter(pred_x_end[:, 0], pred_x_end[:, 1], **self.samples_pred_config) 
         
+        if self.dim > 2:
+            max_value = np.abs(x_end).max()
+            axlim = [-max_value - 5, max_value + 5]
+        else:
+            axlim = [0, self.num_categories - 1]
+        r = axlim[1] - axlim[0]
+        axlim = [axlim[0] + 0.03 * r, axlim[1] - 0.03 * r]
         for i in range(3):
             axes[i].grid()
-            axes[i].set_xlim(self.axlim)
-            axes[i].set_ylim(self.axlim)
+            axes[i].set_xlim(axlim)
+            axes[i].set_ylim(axlim)
             axes[i].legend(loc='lower left')
         fig.tight_layout(pad=0.5)
         img = fig2img(fig)
@@ -224,10 +226,17 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
                 label='Trajectory (fitted)' if i == 0 else ''
             )
         
+        if self.dim > 2:
+            max_value = np.abs(x_end).max()
+            axlim = [-max_value - 5, max_value + 5]
+        else:
+            axlim = [0, self.num_categories - 1]
+        r = axlim[1] - axlim[0]
+        axlim = [axlim[0] + 0.03 * r, axlim[1] - 0.03 * r]
         for i in range(2):
             axs[i].legend(loc='lower left')
-            axs[i].set_xlim(self.axlim)
-            axs[i].set_ylim(self.axlim)
+            axs[i].set_xlim(axlim)
+            axs[i].set_ylim(axlim)
         fig.tight_layout(pad=0.5)
         img = fig2img(fig)
         
