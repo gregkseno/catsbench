@@ -23,10 +23,8 @@ class SBPerplexity(Perplexity):
         x_start: torch.Tensor, 
         pred_x_end: torch.Tensor
     ):
-        log_probs = self.benchmark.log_prob(
-            x_start, pred_x_end
-        )
+        logits = self.benchmark.get_cum_transition_logits(x_start)
         return super().update(
-            preds=log_probs, 
+            preds=logits, 
             target=pred_x_end
         )
