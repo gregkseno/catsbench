@@ -261,7 +261,12 @@ class Prior(nn.Module):
         x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
         log_fact2 = logits_prod(x_start_logits, self.log_p_cum[t-1]) 
 
-        return log_fact1 + log_fact2
+        p_posterior_logits = log_fact1 + log_fact2
+
+        # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already
+        is_first_step = broadcast(t, x_t.dim()) == 1
+        p_posterior_logits = torch.where(is_first_step, x_start_logits, p_posterior_logits)
+        return p_posterior_logits
     
     def posterior_logits_reverse(
         self,
@@ -287,4 +292,9 @@ class Prior(nn.Module):
             x_end_logits, self.log_p_cum[self.num_timesteps - t] #.transpose(-2, -1)
         )
 
-        return log_fact1 + log_fact2
+        p_posterior_logits = log_fact1 + log_fact2
+
+        # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already
+        is_last_step = broadcast(t, x_t.dim()) == self.num_timesteps
+        p_posterior_logits = torch.where(is_last_step, x_end_logits, p_posterior_logits)
+        return p_posterior_logits
