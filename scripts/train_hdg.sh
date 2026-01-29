@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=train-hdg
 #SBATCH --partition=ais-gpu
+#SBATCH --reservation=HPC-2743
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
 #SBATCH --array=0-2%2
