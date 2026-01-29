@@ -1,9 +1,8 @@
 import math
 import torch
-from torch.autograd import Function 
+from torch.autograd import Function
 import triton
 import triton.language as tl
-
 
 MAX_BATCH_DIMS = 6
 
@@ -28,81 +27,59 @@ def _lse_autotune_configs() -> list[triton.Config]:
 @triton.jit
 def _lse_matmul_kernel(
     A_ptr, B_ptr, C_ptr,
-    M: tl.constexpr, N: tl.constexpr, K: tl.constexpr,
+    M, N, K,
     b0: tl.constexpr, b1: tl.constexpr, b2: tl.constexpr, b3: tl.constexpr, b4: tl.constexpr, b5: tl.constexpr,
     sa0: tl.constexpr, sa1: tl.constexpr, sa2: tl.constexpr, sa3: tl.constexpr, sa4: tl.constexpr, sa5: tl.constexpr,
     sb0: tl.constexpr, sb1: tl.constexpr, sb2: tl.constexpr, sb3: tl.constexpr, sb4: tl.constexpr, sb5: tl.constexpr,
     sc0: tl.constexpr, sc1: tl.constexpr, sc2: tl.constexpr, sc3: tl.constexpr, sc4: tl.constexpr, sc5: tl.constexpr,
-    stride_am: tl.constexpr, stride_ak: tl.constexpr,
-    stride_bk: tl.constexpr, stride_bn: tl.constexpr,
-    stride_cm: tl.constexpr, stride_cn: tl.constexpr,
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
     BATCH_DIMS: tl.constexpr,
     USE_EXP2: tl.constexpr,
     BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
 ):
-    pid = tl.program_id(0).to(tl.int64)
+    log2e = 1.4426950408889634
+    ln2 = 0.6931471805599453
 
-    grid_m = (M + BLOCK_M - 1) // BLOCK_M
-    grid_n = (N + BLOCK_N - 1) // BLOCK_N
-    mn = grid_m * grid_n
+    pid_b = tl.program_id(0).to(tl.int64)
+    pid_m = tl.program_id(1).to(tl.int64)
+    pid_n = tl.program_id(2).to(tl.int64)
 
-    pid_b = pid // mn
-    pid2 = pid - pid_b * mn
-    pid_m = (pid2 // grid_n).to(tl.int64)
-    pid_n = (pid2 - pid_m * grid_n).to(tl.int64)
-    
     off_a = tl.full((), 0, tl.int64)
     off_b = tl.full((), 0, tl.int64)
     off_c = tl.full((), 0, tl.int64)
 
+    # Unrolled batch indexing, up to MAX_BATCH_DIMS=6
+    if BATCH_DIMS >= 6:
+        i5 = (pid_b % b5).to(tl.int64); pid_b = pid_b // b5
+        off_a += i5 * sa5; off_b += i5 * sb5; off_c += i5 * sc5
+    if BATCH_DIMS >= 5:
+        i4 = (pid_b % b4).to(tl.int64); pid_b = pid_b // b4
+        off_a += i4 * sa4; off_b += i4 * sb4; off_c += i4 * sc4
+    if BATCH_DIMS >= 4:
+        i3 = (pid_b % b3).to(tl.int64); pid_b = pid_b // b3
+        off_a += i3 * sa3; off_b += i3 * sb3; off_c += i3 * sc3
+    if BATCH_DIMS >= 3:
+        i2 = (pid_b % b2).to(tl.int64); pid_b = pid_b // b2
+        off_a += i2 * sa2; off_b += i2 * sb2; off_c += i2 * sc2
+    if BATCH_DIMS >= 2:
+        i1 = (pid_b % b1).to(tl.int64); pid_b = pid_b // b1
+        off_a += i1 * sa1; off_b += i1 * sb1; off_c += i1 * sc1
     if BATCH_DIMS >= 1:
         i0 = (pid_b % b0).to(tl.int64)
-        pid_b = pid_b // b0
-        off_a += i0 * sa0
-        off_b += i0 * sb0
-        off_c += i0 * sc0
-    if BATCH_DIMS >= 2:
-        i1 = (pid_b % b1).to(tl.int64)
-        pid_b = pid_b // b1
-        off_a += i1 * sa1
-        off_b += i1 * sb1
-        off_c += i1 * sc1
-    if BATCH_DIMS >= 3:
-        i2 = (pid_b % b2).to(tl.int64)
-        pid_b = pid_b // b2
-        off_a += i2 * sa2
-        off_b += i2 * sb2
-        off_c += i2 * sc2
-    if BATCH_DIMS >= 4:
-        i3 = (pid_b % b3).to(tl.int64)
-        pid_b = pid_b // b3
-        off_a += i3 * sa3
-        off_b += i3 * sb3
-        off_c += i3 * sc3
-    if BATCH_DIMS >= 5:
-        i4 = (pid_b % b4).to(tl.int64)
-        pid_b = pid_b // b4
-        off_a += i4 * sa4
-        off_b += i4 * sb4
-        off_c += i4 * sc4
-    if BATCH_DIMS >= 6:
-        i5 = (pid_b % b5).to(tl.int64)
-        pid_b = pid_b // b5
-        off_a += i5 * sa5
-        off_b += i5 * sb5
-        off_c += i5 * sc5
+        off_a += i0 * sa0; off_b += i0 * sb0; off_c += i0 * sc0
 
-    # tile indices
-    rm = (pid_m.to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M).to(tl.int64))
-    rn = (pid_n.to(tl.int64) * BLOCK_N + tl.arange(0, BLOCK_N).to(tl.int64))
-    if (pid_m * BLOCK_M >= M) or (pid_n * BLOCK_N >= N):
-        return
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M).to(tl.int64)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N).to(tl.int64)
 
-    log2e = 1.4426950408889634
-    ln2 = 0.6931471805599453
+    mask_m = offs_m < M
+    mask_n = offs_n < N
 
-    mask_m = rm < M
-    mask_n = rn < N
+    rm = tl.where(mask_m, offs_m, 0).to(tl.int64)
+    rn = tl.where(mask_n, offs_n, 0).to(tl.int64)
+
+    # Running logsumexp over K for each (m, n) element
     m_acc = tl.full((BLOCK_M, BLOCK_N), -float("inf"), tl.float32)
     s_acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
     for k0 in range(0, K, BLOCK_K):
@@ -164,17 +141,15 @@ def _lse_matmul_kernel(
 class LSEMatmul(Function):
     @staticmethod
     def forward(ctx, a: torch.Tensor, b: torch.Tensor, use_exp2: bool = True):
-        ctx.a_shape = a.shape
-        ctx.b_shape = b.shape
-        ctx.use_exp2 = use_exp2
-
         if a.shape[-1] != b.shape[-2]:
             raise ValueError(f"Inner dim mismatch: a[..., M, K]={a.shape}, b[..., K, N]={b.shape}")
 
-        if a.dtype != torch.float32:
-            a = a.float()
-        if b.dtype != torch.float32:
-            b = b.float()
+        ctx.a_shape = a.shape
+        ctx.b_shape = b.shape
+        ctx.use_exp2 = bool(use_exp2)
+
+        a = a.float()
+        b = b.float()
 
         m, k, n = a.shape[-2], a.shape[-1], b.shape[-1]
         c_batch_dims = torch.broadcast_shapes(a.shape[:-2], b.shape[:-2])
@@ -198,11 +173,11 @@ class LSEMatmul(Function):
             gm = triton.cdiv(m, meta["BLOCK_M"])
             gn = triton.cdiv(n, meta["BLOCK_N"])
             gb = math.prod(c_batch_dims) if c_batch_dims else 1
-            return (gm * gn * gb,)
+            return (gb, gm, gn)
 
         _lse_matmul_kernel[grid](
             a_view, b_view, c,
-            m, n, k,
+            M=m, N=n, K=k,
             b0=sizes[0], b1=sizes[1], b2=sizes[2], b3=sizes[3], b4=sizes[4], b5=sizes[5],
             sa0=sa_p[0], sa1=sa_p[1], sa2=sa_p[2], sa3=sa_p[3], sa4=sa_p[4], sa5=sa_p[5],
             sb0=sb_p[0], sb1=sb_p[1], sb2=sb_p[2], sb3=sb_p[3], sb4=sb_p[4], sb5=sb_p[5],
