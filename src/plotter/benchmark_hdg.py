@@ -184,6 +184,16 @@ class BenchmarkHDGPlotterCallback(BasePlotterCallback):
         trajectories = self.benchmark.sample_trajectory(
             traj_start, use_onestep_sampling=True
         )
+        num_timesteps = trajectories.shape[0]
+        if num_timesteps > 17:
+            trajectories = torch.stack([
+                    trajectories[0], 
+                    trajectories[num_timesteps // 4], 
+                    trajectories[num_timesteps // 2], 
+                    trajectories[(num_timesteps * 3) // 4], 
+                    trajectories[-1]
+                ], dim=0
+            )
         trajectories = convert_to_numpy(trajectories.reshape(-1, self.dim))
         if self.dim > 2:
             trajectories = self.pca.transform(trajectories)
