@@ -2,14 +2,12 @@ _target_: src.methods.cnot.CNOT
 
 pi_optimizer:
   _target_: torch.optim.Adam
-  _partial_: true
-  lr: 1e-3 # may be 1e-4 too
+  _partial_: true # may be 1e-4 too
   betas: [0.5, 0.999]
 
 f_optimizer:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 1e-4
   betas: [0.5, 0.999]
 
 prior: ${prior}
@@ -17,11 +15,10 @@ prior: ${prior}
 dim: ${data.dim}
 num_categories: ${data.num_categories}
 epsilon: 1
-pi_layers: [256, 256, 256, 256]
-f_layers: [64, 64, 64, 64] 
-f_emb_dim: 64
+pi_layers: [512, 512, 512, 512]
+f_layers: [512, 512, 512, 512] 
+f_emb_dim: ???
 num_timesteps: ${prior.num_timesteps}, 
-lambda_reg: 10
 pi_iters: 10 
 
 

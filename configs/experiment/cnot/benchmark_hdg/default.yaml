@@ -29,10 +29,14 @@ prior:
 
 method:
   f_reg_until: ???
+  lambda_reg: ???
+  f_emb_dim: ???
 
 trainer:
-  max_epochs: 10
-  limit_train_batches: 22000
+  max_epochs: ???
+  limit_train_batches: ???
   val_check_interval: null
   accumulate_grad_batches: 1
   gradient_clip_val: null
+
+  
