@@ -1,0 +1,137 @@
+import triton
+import triton.language as tl
+
+
+MAX_BATCH_DIMS = 6
+
+def _lse_autotune_configs() -> list[triton.Config]:
+    return [
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 16}, num_warps=8, num_stages=4),
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32}, num_warps=8, num_stages=3),
+        triton.Config({"BLOCK_M": 128, "BLOCK_N": 64,  "BLOCK_K": 32}, num_warps=4, num_stages=3),
+        triton.Config({"BLOCK_M": 64,  "BLOCK_N": 128, "BLOCK_K": 32}, num_warps=4, num_stages=3),
+        triton.Config({"BLOCK_M": 64,  "BLOCK_N": 64,  "BLOCK_K": 32}, num_warps=4, num_stages=3),
+        triton.Config({"BLOCK_M": 64,  "BLOCK_N": 64,  "BLOCK_K": 16}, num_warps=4, num_stages=4),
+        triton.Config({"BLOCK_M": 32,  "BLOCK_N": 64,  "BLOCK_K": 32}, num_warps=2, num_stages=4),
+        triton.Config({"BLOCK_M": 64,  "BLOCK_N": 32,  "BLOCK_K": 32}, num_warps=2, num_stages=4),
+        triton.Config({"BLOCK_M": 32,  "BLOCK_N": 32,  "BLOCK_K": 32}, num_warps=2, num_stages=4),
+    ]
+
+
+@triton.autotune(
+    configs=_lse_autotune_configs(),
+    key=["M", "N", "K", "USE_EXP2"],
+)
+@triton.jit
+def _lse_fwd_kernel(
+    A_ptr, B_ptr, C_ptr,
+    M, N, K,
+    b0: tl.constexpr, b1: tl.constexpr, b2: tl.constexpr, b3: tl.constexpr, b4: tl.constexpr, b5: tl.constexpr,
+    sa0: tl.constexpr, sa1: tl.constexpr, sa2: tl.constexpr, sa3: tl.constexpr, sa4: tl.constexpr, sa5: tl.constexpr,
+    sb0: tl.constexpr, sb1: tl.constexpr, sb2: tl.constexpr, sb3: tl.constexpr, sb4: tl.constexpr, sb5: tl.constexpr,
+    sc0: tl.constexpr, sc1: tl.constexpr, sc2: tl.constexpr, sc3: tl.constexpr, sc4: tl.constexpr, sc5: tl.constexpr,
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
+    BATCH_DIMS: tl.constexpr,
+    USE_EXP2: tl.constexpr,
+    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
+):
+    log2e = 1.4426950408889634
+    ln2 = 0.6931471805599453
+
+    pid_b = tl.program_id(0).to(tl.int64)
+    pid_m = tl.program_id(1).to(tl.int64)
+    pid_n = tl.program_id(2).to(tl.int64)
+
+    off_a = tl.full((), 0, tl.int64)
+    off_b = tl.full((), 0, tl.int64)
+    off_c = tl.full((), 0, tl.int64)
+
+    # Unrolled batch indexing, up to MAX_BATCH_DIMS=6
+    if BATCH_DIMS >= 6:
+        i5 = (pid_b % b5).to(tl.int64); pid_b = pid_b // b5
+        off_a += i5 * sa5; off_b += i5 * sb5; off_c += i5 * sc5
+    if BATCH_DIMS >= 5:
+        i4 = (pid_b % b4).to(tl.int64); pid_b = pid_b // b4
+        off_a += i4 * sa4; off_b += i4 * sb4; off_c += i4 * sc4
+    if BATCH_DIMS >= 4:
+        i3 = (pid_b % b3).to(tl.int64); pid_b = pid_b // b3
+        off_a += i3 * sa3; off_b += i3 * sb3; off_c += i3 * sc3
+    if BATCH_DIMS >= 3:
+        i2 = (pid_b % b2).to(tl.int64); pid_b = pid_b // b2
+        off_a += i2 * sa2; off_b += i2 * sb2; off_c += i2 * sc2
+    if BATCH_DIMS >= 2:
+        i1 = (pid_b % b1).to(tl.int64); pid_b = pid_b // b1
+        off_a += i1 * sa1; off_b += i1 * sb1; off_c += i1 * sc1
+    if BATCH_DIMS >= 1:
+        i0 = (pid_b % b0).to(tl.int64)
+        off_a += i0 * sa0; off_b += i0 * sb0; off_c += i0 * sc0
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M).to(tl.int64)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N).to(tl.int64)
+
+    mask_m = offs_m < M
+    mask_n = offs_n < N
+
+    rm = tl.where(mask_m, offs_m, 0).to(tl.int64)
+    rn = tl.where(mask_n, offs_n, 0).to(tl.int64)
+
+    # Running logsumexp over K for each (m, n) element
+    m_acc = tl.full((BLOCK_M, BLOCK_N), -float("inf"), tl.float32)
+    s_acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+    for k0 in range(0, K, BLOCK_K):
+
+        blk_max = tl.full((BLOCK_M, BLOCK_N), -float("inf"), tl.float32)
+        blk_sum = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+        for kk in tl.static_range(0, BLOCK_K):
+            k = k0 + kk
+            mk = k < K
+
+            a_k = tl.load(
+                A_ptr + off_a + rm[:, None] * stride_am + k * stride_ak,
+                mask=mask_m[:, None] & mk,
+                other=-float("inf"),
+            ).to(tl.float32)
+
+            b_k = tl.load(
+                B_ptr + off_b + k * stride_bk + rn[None, :] * stride_bn,
+                mask=mask_n[None, :] & mk,
+                other=-float("inf"),
+            ).to(tl.float32)
+
+            v = a_k + b_k
+            if USE_EXP2:
+                v2 = v * log2e
+                new = tl.maximum(blk_max, v2)
+                blk_sum = blk_sum * \
+                    tl.where(blk_max == float("-inf"), 0.0, tl.exp2(blk_max - new)) + \
+                    tl.where(v2 == float("-inf"), 0.0, tl.exp2(v2 - new))
+            else:
+                new = tl.maximum(blk_max, v)
+                blk_sum = blk_sum * \
+                    tl.where(blk_max == float("-inf"), 0.0, tl.exp(blk_max - new)) + \
+                    tl.where(v == float("-inf"), 0.0, tl.exp(v - new))
+            blk_max = new
+
+        new_m = tl.maximum(m_acc, blk_max)
+        if USE_EXP2:
+            s_acc = s_acc * tl.where(m_acc == float("-inf"), 0.0, tl.exp2(m_acc - new_m)) + \
+                    blk_sum * tl.where(blk_max == float("-inf"), 0.0, tl.exp2(blk_max - new_m)) 
+        else:
+            s_acc = s_acc * tl.where(m_acc == float("-inf"), 0.0, tl.exp(m_acc - new_m)) + \
+                    blk_sum * tl.where(blk_max == float("-inf"), 0.0, tl.exp(blk_max - new_m)) 
+        m_acc = new_m
+
+    if USE_EXP2:
+        out = (m_acc + tl.log2(s_acc)) * ln2
+    else:
+        out = m_acc + tl.log(s_acc)
+    out = tl.where(s_acc > 0, out, float("-inf"))
+
+    tl.store(
+        C_ptr + off_c + rm[:, None] * stride_cm + rn[None, :] * stride_cn,
+        out,
+        mask=mask_m[:, None] & mask_n[None, :],
+    )
+
