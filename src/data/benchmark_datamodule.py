@@ -54,8 +54,8 @@ class BenchmarkDataModule(LightningDataModule):
         # here is an `if` because the `setup` method is called multiple times 
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.benchmark and not self.data_train and not self.data_val and not self.data_test:
-            log.info(f"Loading Benchmark datasets to {device}...")
             device = self.trainer.strategy.root_device if self.trainer is not None else 'cpu'
+            log.info(f"Loading Benchmark datasets to {device}...")
             self.benchmark = self.hparams.benchmark(
                 num_timesteps=self.hparams.num_timesteps, 
                 init_benchmark=False, 
