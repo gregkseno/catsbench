@@ -1,4 +1,4 @@
-name: dot_bench
+name: catsbench
 channels:
   - conda-forge
   - defaults
