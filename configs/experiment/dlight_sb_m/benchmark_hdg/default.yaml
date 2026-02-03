@@ -28,7 +28,7 @@ prior:
   num_skip_steps: ???
 
 method:
-  num_potentials: 1000
+  num_potentials: 1000 # 64 with entropy regularization
   kl_loss_coeff: ???
   mse_loss_coeff: ???
   use_mini_batch: false

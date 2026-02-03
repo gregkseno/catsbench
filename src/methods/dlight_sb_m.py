@@ -18,7 +18,7 @@ from src.utils.ranked_logger import RankedLogger
 HPARAMS = (
     'dim', 'num_categories', 'num_potentials', 'num_timesteps',
     'sample_prob', 'use_mini_batch', 'distr_init', 'tau',
-    'kl_loss_coeff', 'mse_loss_coeff', 
+    'entropy_lambda', 'entropy_warmup_steps', 'kl_loss_coeff', 'mse_loss_coeff', 
     'optimizer', 'scheduler'
 )
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -38,6 +38,8 @@ class DLightSB_M(LightningModule):
         mse_loss_coeff: float = 0.0,
         use_mini_batch: bool = False,
         distr_init: Literal['uniform', 'gaussian', 'samples'] = 'gaussian', 
+        entropy_lambda: float = 1e-3,
+        entropy_warmup_steps: int = 20_000,
         sample_prob: float = 0.9,
         tau: float = 1.0,
     ) -> None:
@@ -55,6 +57,8 @@ class DLightSB_M(LightningModule):
 
     @torch.no_grad()
     def init_weights(self, init_samples: Optional[torch.Tensor] = None):
+        log.info('Initializing model weights')
+
         nn.init.normal_(self.log_alpha, mean=-2.0, std=0.1)
 
         if self.hparams.distr_init == 'gaussian':
@@ -124,6 +128,8 @@ class DLightSB_M(LightningModule):
         checkpoint['iteration'] = self.iteration
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        log.info('Loading model weights')
+
         self._loaded_from_ckpt = True
         if 'iteration' in checkpoint:
             self.iteration = checkpoint['iteration']
@@ -179,6 +185,15 @@ class DLightSB_M(LightningModule):
         true_probs = torch.softmax(true_logits, dim=-1)
         mse_loss = F.mse_loss(pred_probs, true_probs, reduction='sum')
         return mse_loss / true_probs.shape[0]
+    
+    def entropy_loss(self, logits: torch.Tensor, dim: int = -1) -> torch.Tensor:
+        log_probs = torch.log_softmax(logits, dim=dim)
+        probs = log_probs.exp()
+        return -(probs * log_probs).sum(dim=dim)
+
+    def _ent_lambda(self):
+        frac = min(1.0, self.global_step / self.hparams.entropy_warmup_steps)
+        return self.hparams.entropy_lambda * (1.0 - frac)
 
     def _log_u_t(
         self, 
@@ -275,15 +290,31 @@ class DLightSB_M(LightningModule):
         true_q_posterior_logits = self.prior.posterior_logits_reverse(true_x_end, x_t, t, logits=False)
         pred_p_transition_logits = self.get_transition_logits(x_t, t=t)
 
-        loss, kl, mse = 0, 0, 0
+        loss, kl, mse  = 0, 0, 0
+        posterior_eff_k, prior_eff_k = 0, 0
         if self.hparams.kl_loss_coeff > 0:
             kl = self.kl_loss(true_q_posterior_logits, pred_p_transition_logits)
-            loss += self.hparams.kl_loss_coeff * kl
+            loss = loss + self.hparams.kl_loss_coeff * kl
         if self.hparams.mse_loss_coeff > 0:
             mse = self.mse_loss(true_q_posterior_logits, pred_p_transition_logits)
-            loss += self.hparams.mse_loss_coeff * mse
-        
-        info = {f'kl_loss': kl, f'mse_loss': mse}
+            loss = loss + self.hparams.mse_loss_coeff * mse
+        if self._ent_lambda() > 0:
+            log_z_t = self._log_u_t(
+                x_t.flatten(start_dim=1), 
+                self.hparams.num_timesteps + 1 - t
+            ).sum(dim=1)
+            ent = self.entropy_loss(self.log_alpha[None, :] + log_z_t, dim=-1)
+            loss = loss - self._ent_lambda() * ent.mean()
+
+            with torch.no_grad():
+                posterior_eff_k = ent.exp().mean()
+                prior_eff_k = self.entropy_loss(self.log_alpha, dim=0).exp()
+
+        info = {
+            'kl_loss': kl, 'mse_loss': mse, 
+            'posterior_eff_k': posterior_eff_k,
+            'prior_eff_k': prior_eff_k
+        }
         return loss, info
 
     def training_step(
