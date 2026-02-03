@@ -9,9 +9,9 @@ from lightning import LightningModule
 
 from catsbench.utils import lse_matmul
 
-from src.utils import gumbel_sample
-from src.utils.ranked_logger import RankedLogger
-from src.data.prior import Prior
+from ..utils import gumbel_sample
+from ..utils.ranked_logger import RankedLogger
+from ..data.prior import Prior
 
 
 log = RankedLogger(__name__, rank_zero_only=True)

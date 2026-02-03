@@ -2,7 +2,6 @@ from typing import List
 
 import torch
 from torch import nn
-from torch.nn import functional as F
 
 class SimpleMLP(nn.Module):
     def __init__(
@@ -27,18 +26,6 @@ class SimpleMLP(nn.Module):
         self.timestep_embedding = nn.Embedding(num_timesteps + 2, timestep_dim)
     
     def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        ##############################################
-        # Additional parametrization from D3PM article
-        # x_one_hot = F.one_hot(x, self.num_categories) 
-        # mean = (self.num_categories - 1) / 2
-        # x = x / mean - 1
-        ##############################################
-
         x_start_logits = self.net(torch.cat([x.float(), self.timestep_embedding(t)], dim=1))
         x_start_logits = x_start_logits.view(-1, self.input_dim, self.num_categories)
-
-        ##############################################
-        # Additional parametrization from D3PM article
-        # x_start_logits = x_start_logits + x_one_hot
-        ##############################################
         return x_start_logits

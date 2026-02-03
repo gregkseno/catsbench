@@ -1,2 +1,2 @@
-from src.data.toy_datamodule import ToyDataModule
-from src.data.benchmark_datamodule import BenchmarkDataModule
+from .toy_datamodule import ToyDataModule
+from .benchmark_datamodule import BenchmarkDataModule

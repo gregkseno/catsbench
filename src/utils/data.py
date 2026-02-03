@@ -1,9 +1,7 @@
-from typing import Any, Callable, Literal, Optional, Tuple, Union
-import math
+from typing import Any, Callable, Optional, Tuple, Union
 import numpy as np
 import ot
 import torch
-import torch.nn.functional as F
 from torch.utils.data import Dataset, IterableDataset, DataLoader
 
 

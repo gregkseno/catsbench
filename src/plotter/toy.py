@@ -7,7 +7,7 @@ from lightning.pytorch import Callback, Trainer, LightningModule
 from lightning.pytorch.loggers import WandbLogger, CometLogger, TensorBoardLogger
 from lightning.pytorch.utilities import rank_zero_only
 
-from src.utils import convert_to_numpy, fig2img
+from ..utils import convert_to_numpy, fig2img
 
 
 class ToyPlotterCallback(Callback):

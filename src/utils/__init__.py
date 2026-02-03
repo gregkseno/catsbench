@@ -1,5 +1,5 @@
-from src.utils.instantiation import instantiate_callbacks, instantiate_loggers
-from src.utils.data import (
+from .instantiation import instantiate_callbacks, instantiate_loggers
+from .data import (
     broadcast, 
     gumbel_sample,
     convert_to_numpy, 
@@ -10,4 +10,4 @@ from src.utils.data import (
     InfiniteCoupleDataset,
     optimize_coupling
 )
-from src.utils.visualization import fig2img
+from .visualization import fig2img

@@ -9,9 +9,9 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch_ema import ExponentialMovingAverage 
 from lightning import LightningModule
 
-from src.data.prior import Prior
-from src.utils import optimize_coupling, gumbel_sample
-from src.utils.ranked_logger import RankedLogger
+from ..data.prior import Prior
+from ..utils import optimize_coupling, gumbel_sample
+from ..utils.ranked_logger import RankedLogger
 
 
 HPARAMS = (

@@ -1,2 +1,2 @@
-from src.metrics.benchmark_hd import BenchmarkHDMetricsCallback
-from src.metrics.benchmark_image import BenchmarkImageMetricsCallback
+from .benchmark_hd import BenchmarkHDMetricsCallback
+from .benchmark_image import BenchmarkImageMetricsCallback

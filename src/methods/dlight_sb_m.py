@@ -10,9 +10,9 @@ from lightning import LightningModule
 
 from catsbench.utils import lse_matmul
 
-from src.data.prior import Prior
-from src.utils import optimize_coupling, gumbel_sample
-from src.utils.ranked_logger import RankedLogger
+from ..data.prior import Prior
+from ..utils import optimize_coupling, gumbel_sample
+from ..utils.ranked_logger import RankedLogger
 
 
 HPARAMS = (

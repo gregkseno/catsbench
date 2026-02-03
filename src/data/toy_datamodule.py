@@ -5,10 +5,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 from lightning import LightningDataModule
-from src.utils import CoupleDataset, make_infinite_dataloader, continuous_to_discrete
-from torch.distributions.mixture_same_family import MixtureSameFamily
-from torch.distributions.categorical import Categorical
-from torch.distributions.multivariate_normal import MultivariateNormal
+from ..utils import CoupleDataset, make_infinite_dataloader, continuous_to_discrete
 
 
 class DiscreteUniformDataset(Dataset):

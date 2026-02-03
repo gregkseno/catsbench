@@ -3,8 +3,8 @@ from typing import Any, Callable, Optional, Tuple, Union
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 
-from src.utils.ranked_logger import RankedLogger
-from src.utils import CoupleDataset, InfiniteCoupleDataset
+from ..utils.ranked_logger import RankedLogger
+from ..utils import CoupleDataset, InfiniteCoupleDataset
 from catsbench import BenchmarkHD, BenchmarkImage
 
 

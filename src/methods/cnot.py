@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.distributions import Categorical
 from lightning import LightningModule
 from src.utils.ranked_logger import RankedLogger
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 from src.data.prior import Prior
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler

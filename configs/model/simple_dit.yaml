@@ -1,3 +1,0 @@
-_target_: src.methods.models.simple_dit.DiT
-dim: ${data.dim}
-num_categories: ${data.num_categories}
