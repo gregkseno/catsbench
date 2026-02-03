@@ -7,7 +7,6 @@ notebooks/test_*.ipynb
 **/*.pt
 **/*.pth
 data/*
-checkpoints/*
 .venv
 *.out
 images
