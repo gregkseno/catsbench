@@ -12,3 +12,4 @@ data/*
 images
 build
 **/*.egg-info
+dist
