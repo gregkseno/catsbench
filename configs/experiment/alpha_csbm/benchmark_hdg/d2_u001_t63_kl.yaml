@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-- alpha_csbm/benchmark_hdg/default
+- alpha_csbm/benchmark_hd/default
 data:
   dim: 2
 prior:

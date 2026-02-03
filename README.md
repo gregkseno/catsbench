@@ -38,11 +38,11 @@ pip install catsbench
 Load a benchmark definition and its assets from a pretrained repository:
 
 ```python
-from catsbench import BenchmarkHDG
+from catsbench import BenchmarkHD
 
-bench = BenchmarkHDG.from_pretrained(
+bench = BenchmarkHD.from_pretrained(
     "gregkseno/catsbench",
-    "hdg_d2_s50_gaussian_a0.02_gaussian",
+    "hd_d2_s50_gaussian_a0.02_gaussian",
     init_benchmark=False,  # skip heavy initialization at load time
 )
 ```
@@ -120,35 +120,35 @@ conda activate catsbench
 
 ### 🏋️ Training
 
-To start training, pick an experiment config under `configs/experiment/<method_name>/benchmark_hdg/<exp_name>.yaml` and launch it with:
+To start training, pick an experiment config under `configs/experiment/<method_name>/benchmark_hd/<exp_name>.yaml` and launch it with:
 
 ```bash
-python -m src.run experiment=<method_name>/benchmark_hdg/<exp_name>
+python -m src.run experiment=<method_name>/benchmark_hd/<exp_name>
 ```
 
 > [!TIP]Example
 >
 > ```bash
-> python -m src.run experiment=dlight_sb/benchmark_hdg/d2_g002
+> python -m src.run experiment=dlight_sb/benchmark_hd/d2_g002
 > ```
 
 ### 📊 Evaluation
 
 Use the same experiment config as in training and set a checkpoint:
 
-- Manual path: `logs/runs/<method_name>/benchmark_hdg/<exp_name>/<seed>/<date>/epoch_<...>.ckpt`
+- Manual path: `logs/runs/<method_name>/benchmark_hd/<exp_name>/<seed>/<date>/epoch_<...>.ckpt`
 - Or set `ckpt_path=auto` to automatically load the latest checkpoint based on the config.
 
 ```bash
 python -m src.run task_name=test ckpt_path=auto \
-  experiment=<method_name>/benchmark_hdg/<exp_filename>
+  experiment=<method_name>/benchmark_hd/<exp_filename>
 ```
 
 > [!TIP]Example
 >
 > ```bash
 > python -m src.run task_name=test ckpt_path=auto \
->   experiment=dlight_sb/benchmark_hdg/d2_g002
+>   experiment=dlight_sb/benchmark_hd/d2_g002
 > ```
 
 

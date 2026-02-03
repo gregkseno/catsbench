@@ -12,11 +12,11 @@ from .base import BasePlotterCallback
 from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
 from ..utils import convert_to_numpy, fig2img
 
-from catsbench import BenchmarkHDG
+from catsbench import BenchmarkHD
 
 
-class BenchmarkHDGPlotterCallback(BasePlotterCallback):
-    benchmark: Optional[BenchmarkHDG] = None
+class BenchmarkHDPlotterCallback(BasePlotterCallback):
+    benchmark: Optional[BenchmarkHD] = None
 
     def __init__(
         self,

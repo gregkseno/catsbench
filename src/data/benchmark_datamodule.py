@@ -5,7 +5,7 @@ from lightning import LightningDataModule
 
 from src.utils.ranked_logger import RankedLogger
 from src.utils import CoupleDataset, InfiniteCoupleDataset
-from catsbench import BenchmarkHDG, BenchmarkImage
+from catsbench import BenchmarkHD, BenchmarkImage
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -28,7 +28,7 @@ class BenchmarkDataModule(LightningDataModule):
         # the method arguments and put to `self.hparams`
         self.save_hyperparameters(logger=False)
 
-        self.benchmark: Optional[Union[BenchmarkHDG, BenchmarkImage]] = None
+        self.benchmark: Optional[Union[BenchmarkHD, BenchmarkImage]] = None
         self.data_train: Optional[Dataset] = None
         self.data_val: Optional[Dataset] = None
         self.data_test: Optional[Dataset] = None

@@ -4,7 +4,7 @@ import torch
 from torchmetrics import MetricCollection
 from lightning.pytorch import Trainer
 
-from catsbench import BenchmarkHDG
+from catsbench import BenchmarkHD
 from catsbench.metrics import (
     ClassifierTwoSampleTest,
     ShapeScore,
@@ -21,8 +21,8 @@ from ..utils.ranked_logger import RankedLogger
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-class BenchmarkHDGMetricsCallback(BaseMetricsCallback):
-    benchmark: Optional[BenchmarkHDG] = None
+class BenchmarkHDMetricsCallback(BaseMetricsCallback):
+    benchmark: Optional[BenchmarkHD] = None
 
     def __init__(
         self,

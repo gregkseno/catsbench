@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-- dlight_sb_m/benchmark_hdg/default
+- dlight_sb_m/benchmark_hd/default
 data:
   dim: 16
 prior:

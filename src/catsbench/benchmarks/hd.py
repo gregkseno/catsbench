@@ -15,13 +15,13 @@ from ..utils import Logger
 log = Logger(__name__, rank_zero_only=True)
 
 @dataclass 
-class BenchmarkHDGConfig(BenchmarkBaseConfig):
+class BenchmarkHDConfig(BenchmarkBaseConfig):
     input_distribution: Literal['gaussian', 'uniform']
 
-class BenchmarkHDG(BenchmarkBase):
+class BenchmarkHD(BenchmarkBase):
     def __init__(
         self, 
-        config: BenchmarkHDGConfig,
+        config: BenchmarkHDConfig,
         *,
         num_timesteps: Optional[int] = None,
         init_benchmark: bool = True,
@@ -33,7 +33,7 @@ class BenchmarkHDG(BenchmarkBase):
             
     @property
     def name(self) -> str:
-        return f'hdg_' + super().name
+        return f'hd_' + super().name
     
     @torch.no_grad()
     def _sample_input(self, num_samples: int) -> torch.LongTensor:

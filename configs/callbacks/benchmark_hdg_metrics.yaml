@@ -1,5 +1,5 @@
 metric_callback:
-  _target_: src.metrics.BenchmarkHDGMetricsCallback
+  _target_: src.metrics.BenchmarkHDMetricsCallback
   dim: ${data.dim}
   num_categories: ${data.num_categories}
   num_timesteps: ${prior.num_timesteps}
@@ -8,7 +8,7 @@ metric_callback:
   classifier_lr: 1e-2
 
 plotter_callback:
-  _target_: src.plotter.BenchmarkHDGPlotterCallback
+  _target_: src.plotter.BenchmarkHDPlotterCallback
   dim: ${data.dim}
   num_categories: ${data.num_categories}
   num_samples: 1536 # number of samples to visualizeZ

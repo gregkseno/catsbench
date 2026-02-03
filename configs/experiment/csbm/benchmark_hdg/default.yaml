@@ -1,13 +1,13 @@
 # @package _global_
 
 defaults:
-  - override /data: benchmark_hdg
+  - override /data: benchmark_hd
   - override /model: simple_mlp
   - override /method: csbm
   - override /callbacks:
     - model_checkpoint
     - model_summary
-    - benchmark_hdg_metrics
+    - benchmark_hd_metrics
   - override /trainer: gpu
   - _self_
 
