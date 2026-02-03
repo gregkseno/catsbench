@@ -16,8 +16,8 @@ import lightning as L
 from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 
-from src.utils.ranked_logger import RankedLogger
-from src.utils import instantiate_callbacks, instantiate_loggers
+from .utils.ranked_logger import RankedLogger
+from .utils import instantiate_callbacks, instantiate_loggers
 
 
 if torch.cuda.is_available():
@@ -25,25 +25,9 @@ if torch.cuda.is_available():
     if major >= 8: 
         torch.set_float32_matmul_precision("high")
 
-def _detect_config_dir() -> str:
-    candidates = []
-    ds_home = os.environ.get('DS_PROJECT_HOME')
-    if ds_home: candidates.append(os.path.join(ds_home, 'configs'))
-
-    here = os.path.abspath(__file__)
-    parent = os.path.dirname(os.path.dirname(here))  # go up 2 levels
-    candidates.append(os.path.join(parent, 'configs'))
-
-    for p in candidates:
-        if os.path.isdir(p): return p
-
-    tried = ' | '.join(candidates)
-    raise RuntimeError(f'[Hydra] Config directory not found. Tried: {tried}')
-
 log = RankedLogger(__name__, rank_zero_only=True)
-CONFIG_DIR = _detect_config_dir()
 
-@hydra.main(version_base='1.1', config_path=CONFIG_DIR, config_name='config.yaml')
+@hydra.main(version_base='1.1', config_path='./configs', config_name='config.yaml')
 def main(config: DictConfig):
     if config.get('seed'):
         L.seed_everything(config.seed, workers=True)
