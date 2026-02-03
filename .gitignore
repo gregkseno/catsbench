@@ -10,3 +10,5 @@ data/*
 .venv
 *.out
 images
+build
+**/*.egg-info
