@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 from .utils import lse_matmul, logits_prod 
-from src.utils import broadcast, gumbel_sample
+from .utils import broadcast, gumbel_sample
 
 
 def get_cum_matrices(

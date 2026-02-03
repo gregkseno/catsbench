@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "catsbench"
+version = "1.0"
+description = "A Benchmark for Categorical-State Schrödinger Bridges and Entropic Optimal Transport"
+authors = [
+    {name="Grigoriy Ksenofontov"}, 
+    {name="Xavier Aramayo"},
+    {name="Aleksei Leonov"},
+    {name="Iaroslav Koshelev"},
+    {name="Alexander Korotin"}
+]
+keywords = ["benchmark", "schrodinger bridge", "optimal transport", "discrete diffusion", "entropic optimal transport"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE.md"}
+dependencies = [
+    "click>=8.0.0",
+    "pillow>=8.4.0",
+    "scipy>=1.7.3",
+    "scikit-learn>=1.0.2",
+    "requests>=2.26.0",
+    "huggingface_hub>=0.25.0",
+    "matplotlib>=3.5.0",
+    "numpy>=1.22.0",
+    "torch>=2.0.0", # for triton
+    "torchvision>=0.15.1",
+    "torchmetrics>=0.7.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/gregkseno/catsbench"
+Issues = "https://github.com/gregkseno/catsbench/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["catsbench", "catsbench.*"]
