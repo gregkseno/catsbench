@@ -126,7 +126,7 @@ To start training, pick an experiment config under `configs/experiment/<method_n
 python -m src.run experiment=<method_name>/benchmark_hd/<exp_name>
 ```
 
-> [!TIP]Example
+> **Example:**
 >
 > ```bash
 > python -m src.run experiment=dlight_sb/benchmark_hd/d2_g002
@@ -144,7 +144,7 @@ python -m src.run task_name=test ckpt_path=auto \
   experiment=<method_name>/benchmark_hd/<exp_filename>
 ```
 
-> [!TIP]Example
+> **Example:**
 >
 > ```bash
 > python -m src.run task_name=test ckpt_path=auto \
