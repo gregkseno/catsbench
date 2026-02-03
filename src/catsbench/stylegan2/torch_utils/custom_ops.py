@@ -9,7 +9,6 @@
 import os
 import glob
 import torch
-import torch.utils.cpp_extension
 import importlib
 import hashlib
 import shutil
@@ -44,6 +43,8 @@ def _find_compiler_bindir():
 _cached_plugins = dict()
 
 def get_plugin(module_name, sources, **build_kwargs):
+    import torch.utils.cpp_extension
+    
     assert verbosity in ['none', 'brief', 'full']
 
     # Already cached?
