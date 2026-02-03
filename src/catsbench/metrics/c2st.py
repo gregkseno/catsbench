@@ -100,7 +100,8 @@ class ClassifierTwoSampleTest(Metric):
             self.targets.append(y.detach().long())
 
     def compute(self) -> torch.Tensor:
-        assert len(self.probs) > 0
+        if len(self.probs) == 0:
+            return torch.tensor(-1.2345, dtype=torch.float)
         probs = dim_zero_cat(self.probs)
         targets = dim_zero_cat(self.targets)
         auroc_value = auroc(probs, targets, task='binary')
