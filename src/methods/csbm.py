@@ -95,7 +95,9 @@ class CSBM(LightningModule):
         '''KL-divergence calculation.'''
         pred_log_probs = torch.log_softmax(pred_logits, dim=-1)
         true_log_probs = torch.log_softmax(true_logits, dim=-1)
-        return F.kl_div(pred_log_probs, true_log_probs, log_target=True, reduction='batchmean')
+        kl_loss = F.kl_div(pred_log_probs, true_log_probs, log_target=True, reduction='none')
+        kl_loss = kl_loss.sum(dim=-1).mean()
+        return kl_loss
         
     def mse_loss(
         self,
