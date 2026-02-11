@@ -412,6 +412,9 @@ class UNet(nn.Module):
         )
 
     def forward(self, x, time):
+        x_one_hot = F.one_hot(x, self.num_categories)
+        mean = (self.num_categories - 1) / 2
+        x = x / mean - 1
         time_encoded = self.positional_encoding(time)
         initial_x = self.initial_conv(x.float())
 
@@ -433,4 +436,5 @@ class UNet(nn.Module):
         # Get initial shape [3 * 256, 32, 32] with convolutions
         out = self.output_conv(x)
         out = out.view(x.shape[0], self.in_channels, self.img_size, self.img_size, self.num_categories)
+        out = out + x_one_hot
         return out
