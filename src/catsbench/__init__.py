@@ -1,7 +1,6 @@
 from importlib.metadata import version, PackageNotFoundError
 
 from .benchmarks.hd import BenchmarkHD, BenchmarkHDConfig
-from .benchmarks.image import BenchmarkImage, BenchmarkImageConfig
 
 
 try:

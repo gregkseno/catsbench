@@ -1,2 +1,1 @@
 from .benchmark_hd import BenchmarkHDMetricsCallback
-from .benchmark_image import BenchmarkImageMetricsCallback
