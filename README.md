@@ -50,20 +50,20 @@ bench = BenchmarkHD.from_pretrained(
 To sample marginals $p_0$ and $p_1$:
 
 ```python
-x_start, x_end = bench.sample_input_target(32) # ([B=32, D=2], [B=32, D=2])
-```
-
-Or sample them separately:
-
-```python
 x_start = bench.sample_input(32) # [B=32, D=2]
 x_end = bench.sample_target(32)  # [B=32, D=2]
 ```
 
 > [!IMPORTANT]
-> Both examples above sample independently, i.e., $(x_0, x_1) \sim p_0(x_0),p_1(x_1)$.
+> This samples independently from the marginals, i.e., ( (x_0, x_1) \sim p_0(x_0), p_1(x_1) ).
 
 To sample from the ground-truth EOT/SB coupling, i.e., $(x_0, x_1) \sim p_0(x_0),q^*(x_1 | x_0)$, use:
+
+```python
+x_start, x_end = bench.sample_input_target(32) # ([B=32, D=2], [B=32, D=2])
+```
+
+Or sample them separately:
 
 ```python
 x_start = bench.sample_input(32) # [B=32, D=2]
