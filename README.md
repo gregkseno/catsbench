@@ -155,15 +155,13 @@ python -m src.run task_name=test ckpt_path=auto \
 ### 🎓 Citation
 
 ```bibtex
-@misc{
-  carrasco2025enteringeradiscretediffusion,
-  title={Entering the Era of Discrete Diffusion Models: A Benchmark for {Schr\"odinger} Bridges and Entropic Optimal Transport}, 
+@inproceedings{
+  carrasco2026entering,
+  title={Entering the Era of Discrete Diffusion Models: A Benchmark for Schr\"odinger Bridges and Entropic Optimal Transport},
   author={Xavier Aramayo Carrasco and Grigoriy Ksenofontov and Aleksei Leonov and Iaroslav Sergeevich Koshelev and Alexander Korotin},
-  year={2025},
-  eprint={2509.23348},
-  archivePrefix={arXiv},
-  primaryClass={cs.LG},
-  url={https://arxiv.org/abs/2509.23348}, 
+  booktitle={The Fourteenth International Conference on Learning Representations},
+  year={2026},
+  url={https://openreview.net/forum?id=XcPDT615Gd}
 }
 ```
 
