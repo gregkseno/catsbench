@@ -17,7 +17,7 @@ This repository contains the official implementation of the paper *"Entering the
 
 ## 📌 TL;DR
 
-This paper proposes a benchmark for Schrödinger Bridge (SB) and entropic optimal transport (EOT) methods on discrete spaces, and adapts several continuous SB/EOT approaches to the discrete setting.
+This paper proposes a benchmark for entropic optimal transport (EOT) and Schrödinger Bridge (SB) methods on discrete spaces, and adapts several continuous EOT/SB approaches to the discrete setting.
 
 <!-- ![teaser](./images/teaser.png) -->
 
