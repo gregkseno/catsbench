@@ -1,8 +1,0 @@
-# @package _global_
-
-defaults:
-  - dlight_sb/benchmark_image/default
-
-prior:
-  prior_type: gaussian
-  alpha: 0.02
