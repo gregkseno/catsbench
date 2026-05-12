@@ -55,9 +55,9 @@ x_end = bench.sample_target(32)  # [B=32, D=2]
 ```
 
 > [!IMPORTANT]
-> This samples independently from the marginals, i.e., ( (x_0, x_1) \sim p_0(x_0), p_1(x_1) ).
+> This samples independently from the marginals, i.e., $(x_0, x_1) \sim p_0(x_0)p_1(x_1)$.
 
-To sample from the ground-truth EOT/SB coupling, i.e., $(x_0, x_1) \sim p_0(x_0),q^*(x_1 | x_0)$, use:
+To sample from the ground-truth EOT/SB coupling, i.e., $(x_0, x_1) \sim p_0(x_0) p^*(x_1 | x_0)$, use:
 
 ```python
 x_start, x_end = bench.sample_input_target(32) # ([B=32, D=2], [B=32, D=2])
@@ -151,7 +151,6 @@ python -m src.run task_name=test ckpt_path=auto \
 >   experiment=dlight_sb/benchmark_hd/d2_g002
 > ```
 
-
 ### 🎓 Citation
 
 ```bibtex
@@ -167,6 +166,7 @@ python -m src.run task_name=test ckpt_path=auto \
 
 ## 🙏 Credits
 
-- [Comet ML](https://www.comet.com) — experiment-tracking and visualization toolkit;
-- [Inkscape](https://inkscape.org/) — an excellent open-source editor for vector graphics;
-- [Hydra/Lightning template](https://github.com/ashleve/lightning-hydra-template) - project template used as a starting point.
+- [Comet ML](https://www.comet.com) - experiment-tracking and visualization toolkit;
+- [Inkscape](https://inkscape.org/) - an excellent open-source editor for vector graphics;
+- [Hydra/Lightning template](https://github.com/ashleve/lightning-hydra-template) - project template used as a starting point;
+- [Poster template](https://github.com/anishathalye/gemini) - template used to create the paper poster.
