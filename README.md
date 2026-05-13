@@ -5,10 +5,12 @@
 [Xavier Aramayo](https://scholar.google.com/citations?user=1B9UIYoAAAAJ),
 [Grigoriy Ksenofontov](https://scholar.google.com/citations?user=e0mirzYAAAAJ), [Aleksei Leonov](https://scholar.google.com/citations?user=gzj9nOcAAAAJ), [Iaroslav Koshelev](https://scholar.google.com/citations?user=gmaJRL4AAAAJ), [Alexander Korotin](https://scholar.google.ru/citations?user=1rIIvjAAAAAJ)
 
-[![arXiv Paper](https://img.shields.io/badge/arXiv-2502.01416-b31b1b)](https://arxiv.org/abs/2509.23348)
-[![OpenReview Paper](https://img.shields.io/badge/OpenReview-PDF-8c1b13)](https://openreview.net/forum?id=XcPDT615Gd)
+[![PyPI version](https://img.shields.io/pypi/v/catsbench)](https://pypi.org/project/catsbench/)
+[![Downloads](https://img.shields.io/pepy/dt/catsbench?label=downloads)](https://pepy.tech/projects/catsbench)
 [![GitHub](https://img.shields.io/github/stars/gregkseno/catsbench?style=social)](https://github.com/gregkseno/catsbench)
 [![Hugging Face Model](https://img.shields.io/badge/🤗%20Hugging%20Face-view-green)](https://huggingface.co/gregkseno/catsbench)
+[![arXiv Paper](https://img.shields.io/badge/arXiv-2502.01416-b31b1b)](https://arxiv.org/abs/2509.23348)
+[![OpenReview Paper](https://img.shields.io/badge/OpenReview-PDF-8c1b13)](https://openreview.net/forum?id=XcPDT615Gd)
 ![GitHub License](https://img.shields.io/github/license/gregkseno/csbm)
 
 </div>
