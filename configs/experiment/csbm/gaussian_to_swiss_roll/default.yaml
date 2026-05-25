@@ -2,7 +2,7 @@
 
 defaults:
   - override /data: toy
-  - override /model: simple_mlp
+  - override /model: denoiser_mlp
   - override /method: csbm
   - override /callbacks:
     - rich_progress_bar

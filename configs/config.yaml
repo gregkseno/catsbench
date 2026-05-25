@@ -1,7 +1,7 @@
 defaults:
   - data: toy
   - prior: default
-  - model: simple_mlp 
+  - model: denoiser_mlp 
   - method: csbm
   - callbacks: [rich_progress_bar, model_summary, toy_metrics]
   - logger: comet

@@ -3,7 +3,7 @@ from typing import List
 import torch
 from torch import nn
 
-class SimpleMLP(nn.Module):
+class DenoiserMLP(nn.Module):
     def __init__(
         self,
         input_dim: int,

@@ -2,7 +2,7 @@
 
 defaults:
   - override /data: benchmark_hd
-  - override /model: simple_mlp
+  - override /model: denoiser_mlp
   - override /method: alpha_csbm
   - override /callbacks:
     - model_checkpoint
