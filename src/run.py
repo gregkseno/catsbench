@@ -27,7 +27,7 @@ if torch.cuda.is_available():
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
-@hydra.main(version_base='1.1', config_path='./configs', config_name='config.yaml')
+@hydra.main(version_base='1.1', config_path='../configs', config_name='config.yaml')
 def main(config: DictConfig):
     if config.get('seed'):
         L.seed_everything(config.seed, workers=True)

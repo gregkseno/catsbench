@@ -1,1 +1,2 @@
 from .benchmark_datamodule import BenchmarkDataModule
+from .toy_datamodule import ToyDataModule
