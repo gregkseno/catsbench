@@ -1,5 +1,5 @@
 metric_callback:
-  _target_: src.utils.ToyLogger
+  _target_: src.plotter.ToyPlotterCallback
   num_samples: 2048
   num_trajectories: 4
   num_translations: 3
