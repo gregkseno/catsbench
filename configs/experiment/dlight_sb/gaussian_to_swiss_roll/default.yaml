@@ -19,12 +19,12 @@ data:
   num_workers: 0
   pin_memory: false
   input_dataset:
-    _target_: src.data.toy.DiscreteGaussianDataset
+    _target_: src.data.toy_datamodule.DiscreteGaussianDataset
     _partial_: true
     dim: ${data.dim}
     num_categories: ${data.num_categories}
   target_dataset:
-    _target_: src.data.toy.DiscreteSwissRollDataset
+    _target_: src.data.toy_datamodule.DiscreteSwissRollDataset
     _partial_: true
     noise: 0.8
     num_categories: ${data.num_categories}
