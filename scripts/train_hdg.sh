@@ -12,7 +12,7 @@
 sleep $((SLURM_ARRAY_TASK_ID * 5))
 source activate dot_bench
 SEED=5
-METHOD=dlight_sb # (dlight_sb cnot)
+METHOD=dlight_sb # (dlight_sb)
 
 case "${SLURM_ARRAY_TASK_ID}" in
   0)
