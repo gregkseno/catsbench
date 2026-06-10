@@ -1,4 +1,6 @@
+import math
 from typing import List, Literal
+
 import torch
 
 from torchmetrics import Metric
@@ -19,12 +21,16 @@ class TrendScore(Metric):
         num_categories: int,
         conditional: bool = False,
         reduction: Literal['mean', 'none'] = 'mean',
+        adjusted: bool = True,
     ) -> None:
         super().__init__()
+        if dim < 2:
+            raise ValueError("TrendScore requires at least two dimensions")
         self.dim = dim
         self.num_categories = num_categories
         self.conditional = conditional
         self.reduction = reduction
+        self.adjusted = adjusted
         
         if conditional:
             self.add_state("scores", default=[], dist_reduce_fx='cat')
@@ -40,6 +46,35 @@ class TrendScore(Metric):
                 dist_reduce_fx="sum",
             )
 
+    def _expected_null_tvd(
+        self,
+        real_counts: torch.Tensor,
+        pred_counts: torch.Tensor,
+        real_totals: torch.Tensor,
+        pred_totals: torch.Tensor,
+    ) -> torch.Tensor:
+        pooled_counts = real_counts + pred_counts
+        pooled_totals = real_totals + pred_totals
+        pooled_probs = pooled_counts.float() / (
+            pooled_totals + torch.finfo(pooled_totals.dtype).eps
+        )
+
+        inv_real = torch.where(
+            real_totals > 0,
+            1.0 / real_totals.clamp_min(1.0),
+            torch.zeros_like(real_totals),
+        )
+        inv_pred = torch.where(
+            pred_totals > 0,
+            1.0 / pred_totals.clamp_min(1.0),
+            torch.zeros_like(pred_totals),
+        )
+        variance = pooled_probs * (1.0 - pooled_probs) * (inv_real + inv_pred)
+        expected_l1 = math.sqrt(2.0 / math.pi) * torch.sqrt(
+            variance.clamp_min(0.0)
+        ).sum(dim=[2, 3])
+        return (0.5 * expected_l1).clamp(max=1.0 - torch.finfo(expected_l1.dtype).eps)
+
     def _compute_score(self, real_counts: torch.Tensor, pred_counts: torch.Tensor) -> torch.Tensor:
         real_totals = real_counts.sum(dim=[2, 3], keepdim=True).float() # (D, D, 1, 1)
         pred_totals = pred_counts.sum(dim=[2, 3], keepdim=True).float() # (D, D, 1, 1)
@@ -48,7 +83,20 @@ class TrendScore(Metric):
         preds = pred_counts.float() / (pred_totals + torch.finfo(pred_totals.dtype).eps)
 
         tvd = 0.5 * torch.abs(reals - preds).sum(dim=[2, 3]) # (D, D)
-        return 1.0 - tvd
+        if not self.adjusted:
+            return 1.0 - tvd
+
+        # Normal approximation to the TVD expected from two iid empirical histograms.
+        null_tvd = self._expected_null_tvd(
+            real_counts, pred_counts, real_totals, pred_totals
+        )
+        denom = (1.0 - null_tvd).clamp_min(torch.finfo(tvd.dtype).eps)
+        score = 1.0 - (tvd - null_tvd).clamp_min(0.0) / denom
+        return score.clamp(0.0, 1.0)
+
+    def _offdiag_scores(self, scores: torch.Tensor) -> torch.Tensor:
+        mask = ~torch.eye(self.dim, dtype=torch.bool, device=scores.device)
+        return scores[..., mask]
 
     def _fill_symmetric_counts(
         self, 
@@ -85,13 +133,15 @@ class TrendScore(Metric):
             raise ValueError("Expect real_data/pred_data of shape (batch_size, dim).")
         if real_data.shape[1] != self.dim:
             raise ValueError(f"Expected second dim = {self.dim}, got {real_data.shape[1]}")
+        if real_data.min() < 0 or pred_data.min() < 0:
+            raise ValueError("Data contains negative category values")
         if real_data.max() >= self.num_categories or pred_data.max() >= self.num_categories:
             raise ValueError(f"Data contains values >= num_categories ({self.num_categories})")
 
         if not hasattr(self, "_tri_i") or \
             self._tri_i.device != real_data.device or \
-                self._tri_i.numel() != (self.dim * (self.dim + 1)) // 2:
-            ii, jj = torch.triu_indices(self.dim, self.dim, offset=0, device=real_data.device)
+                self._tri_i.numel() != (self.dim * (self.dim - 1)) // 2:
+            ii, jj = torch.triu_indices(self.dim, self.dim, offset=1, device=real_data.device)
             self._tri_i = ii # (K,)
             self._tri_j = jj # (K,)
             K = ii.numel()
@@ -135,12 +185,12 @@ class TrendScore(Metric):
         if self.conditional:
             all_scores = dim_zero_cat(self.scores)
             if self.reduction == "mean":
-                return all_scores.mean()
+                return self._offdiag_scores(all_scores).mean()
             return all_scores # (N, D, D)
         
         scores = self._compute_score(self.real_counts, self.pred_counts) # (D, D)
 
         if self.reduction == "mean":
-            return scores.mean()
+            return self._offdiag_scores(scores).mean()
         return scores
     

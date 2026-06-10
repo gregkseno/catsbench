@@ -13,11 +13,12 @@ from catsbench.metrics import (
 )
 
 from .base import BaseMetricsCallback
-from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
+from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM, FSBM, FSBMReg
 from ..utils.ranked_logger import RankedLogger
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
+MetricModule = Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM, FSBM, FSBMReg]
 
 class BenchmarkHDMetricsCallback(BaseMetricsCallback):
     benchmark: Optional[BenchmarkHD] = None
@@ -30,6 +31,7 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
         num_timesteps: int,
         train_test_split: Optional[float] = 0.8,
         classifier_lr: Optional[float] = 1e-2,
+        adjusted_tv: bool = True,
     ):
         super().__init__()
         self.dim = dim
@@ -39,15 +41,22 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
         self.num_cond_samples = num_cond_samples
         self.train_test_split = train_test_split
         self.classifier_lr = classifier_lr
+        self.adjusted_tv = adjusted_tv
 
     def _init_metrics(
         self,
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM], 
+        pl_module: MetricModule, 
     ) -> None:
         # initialize unconditional metrics
         pl_module.metrics = MetricCollection(
-            {'shape_score': ShapeScore(self.dim, self.num_categories, conditional=False),
-             'trend_score': TrendScore(self.dim, self.num_categories, conditional=False)},
+            {
+                'shape_score': ShapeScore(
+                    self.dim, self.num_categories, conditional=False, adjusted=self.adjusted_tv
+                ),
+                'trend_score': TrendScore(
+                    self.dim, self.num_categories, conditional=False, adjusted=self.adjusted_tv
+                ),
+            },
         )
 
         # initialize conditional metrics
@@ -57,8 +66,14 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
             )
         else:
             pl_module.cond_metrics = MetricCollection(
-                {'cond_shape_score': ShapeScore(self.dim, self.num_categories, conditional=True),
-                 'cond_trend_score': TrendScore(self.dim, self.num_categories, conditional=True)},
+                {
+                    'cond_shape_score': ShapeScore(
+                        self.dim, self.num_categories, conditional=True, adjusted=self.adjusted_tv
+                    ),
+                    'cond_trend_score': TrendScore(
+                        self.dim, self.num_categories, conditional=True, adjusted=self.adjusted_tv
+                    ),
+                },
             )
             if not hasattr(pl_module, 'get_transition_logits'):
                 return
@@ -76,7 +91,7 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
     def _update_metrics(
         self,
         trainer: Trainer,
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
+        pl_module: MetricModule,
         outputs: Dict[str, Any],
         batch_idx: int,
         stage: Literal['train', 'val', 'test'] = 'train',
@@ -131,7 +146,7 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
                 p=pred_transition_logits, 
                 q=self.benchmark.get_transition_logits(pred_trajectory, timesteps)
             )
-            if isinstance(pl_module, (CSBM, AlphaCSBM)):
+            if isinstance(pl_module, (CSBM, AlphaCSBM, FSBM, FSBMReg)):
                 timesteps = (pl_module.prior.num_timesteps + 1) - timesteps
             
             with torch.no_grad(): # remove grads from transitions of DLightSB methods
@@ -143,7 +158,7 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
     def _compute_and_log_metrics(
         self,
         trainer: Trainer,
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
+        pl_module: MetricModule,
         stage: Literal['train', 'val', 'test'] = 'train',
     ) -> None:
         fb = getattr(pl_module, 'fb', None) or 'forward' 

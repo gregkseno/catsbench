@@ -1,4 +1,6 @@
+import math
 from typing import List, Literal
+
 import torch
 
 from torchmetrics import Metric
@@ -19,12 +21,14 @@ class ShapeScore(Metric):
         num_categories: int,
         conditional: bool = False,
         reduction: Literal['mean', 'none'] = 'mean',
+        adjusted: bool = True,
     ) -> None:
         super().__init__()
         self.dim = dim
         self.num_categories = num_categories
         self.conditional = conditional
         self.reduction = reduction
+        self.adjusted = adjusted
 
         if conditional:
             self.add_state("scores", default=[], dist_reduce_fx='cat')
@@ -40,6 +44,35 @@ class ShapeScore(Metric):
                 dist_reduce_fx="sum",
             )
 
+    def _expected_null_tvd(
+        self,
+        real_counts: torch.Tensor,
+        pred_counts: torch.Tensor,
+        real_totals: torch.Tensor,
+        pred_totals: torch.Tensor,
+    ) -> torch.Tensor:
+        pooled_counts = real_counts + pred_counts
+        pooled_totals = real_totals + pred_totals
+        pooled_probs = pooled_counts.float() / (
+            pooled_totals + torch.finfo(pooled_totals.dtype).eps
+        )
+
+        inv_real = torch.where(
+            real_totals > 0,
+            1.0 / real_totals.clamp_min(1.0),
+            torch.zeros_like(real_totals),
+        )
+        inv_pred = torch.where(
+            pred_totals > 0,
+            1.0 / pred_totals.clamp_min(1.0),
+            torch.zeros_like(pred_totals),
+        )
+        variance = pooled_probs * (1.0 - pooled_probs) * (inv_real + inv_pred)
+        expected_l1 = math.sqrt(2.0 / math.pi) * torch.sqrt(
+            variance.clamp_min(0.0)
+        ).sum(dim=1)
+        return (0.5 * expected_l1).clamp(max=1.0 - torch.finfo(expected_l1.dtype).eps)
+
     def _compute_score(self, real_counts: torch.Tensor, pred_counts: torch.Tensor) -> torch.Tensor:
         real_totals = real_counts.sum(dim=1, keepdim=True).float()
         pred_totals = pred_counts.sum(dim=1, keepdim=True).float()
@@ -48,7 +81,16 @@ class ShapeScore(Metric):
         preds = pred_counts.float() / (pred_totals + torch.finfo(pred_totals.dtype).eps)
         
         tvd = 0.5 * torch.abs(reals - preds).sum(dim=1) 
-        return 1.0 - tvd
+        if not self.adjusted:
+            return 1.0 - tvd
+
+        # Normal approximation to the TVD expected from two iid empirical histograms.
+        null_tvd = self._expected_null_tvd(
+            real_counts, pred_counts, real_totals, pred_totals
+        )
+        denom = (1.0 - null_tvd).clamp_min(torch.finfo(tvd.dtype).eps)
+        score = 1.0 - (tvd - null_tvd).clamp_min(0.0) / denom
+        return score.clamp(0.0, 1.0)
         
     @torch.no_grad()
     def update(
@@ -58,6 +100,8 @@ class ShapeScore(Metric):
     ) -> None:
         if real_data.shape != pred_data.shape or real_data.ndim != 2:
             raise ValueError("Expect two equal-shaped 2-D tensors (batch_size, dim).")
+        if real_data.min() < 0 or pred_data.min() < 0:
+            raise ValueError("Data contains negative category values")
         if real_data.max() >= self.num_categories or pred_data.max() >= self.num_categories:
             raise ValueError(f"Data contains values >= num_categories ({self.num_categories})")
 
