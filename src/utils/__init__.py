@@ -5,9 +5,9 @@ from .data import (
     convert_to_numpy, 
     convert_to_torch, 
     continuous_to_discrete,
-    make_infinite_dataloader,
     CoupleDataset,
-    InfiniteCoupleDataset,
+    RepeatedDataset,
+    SampledCoupleDataset,
     optimize_coupling
 )
 from .visualization import fig2img

@@ -2,7 +2,7 @@ from typing import Any, Callable, Optional, Tuple, Union
 import numpy as np
 import ot
 import torch
-from torch.utils.data import Dataset, IterableDataset, DataLoader
+from torch.utils.data import Dataset
 
 
 def broadcast(tensor: torch.Tensor, num_add_dims: int, dim: int = -1) -> torch.Tensor:
@@ -45,10 +45,6 @@ def continuous_to_discrete(
     discrete_batch = torch.bucketize(batch, bin_edges)
     return discrete_batch
 
-def make_infinite_dataloader(dataloader: DataLoader[Any]) -> Any:
-    while True:
-        yield from dataloader
-
 class CoupleDataset(Dataset):
     """A dataset that couples two datasets together, allowing for paired sampling."""
     def __init__(self, input_dataset: torch.Tensor, target_dataset: torch.Tensor):
@@ -63,21 +59,35 @@ class CoupleDataset(Dataset):
         return (self.input_dataset[idx % self.len_input],
                 self.target_dataset[idx % self.len_target])
 
-class InfiniteCoupleDataset(IterableDataset):
-    """A dataset that couples two datasets together, allowing for infinite paired sampling."""
-    def __init__(
-        self, 
-        batch_size: int, 
-        sample_input: Callable, 
-        sample_target: Callable
-    ):
-        self.batch_size = batch_size
+class RepeatedDataset(Dataset):
+    """Expose a finite virtual epoch by repeating a smaller dataset."""
+    def __init__(self, dataset: Dataset, length: int) -> None:
+        self.dataset = dataset
+        self.length = length
+
+    def __getitem__(self, idx: int):
+        return self.dataset[idx % len(self.dataset)]
+
+    def __len__(self) -> int:
+        return self.length
+
+class SampledCoupleDataset(Dataset):
+    """Expose freshly sampled marginals through a finite map-style dataset."""
+    def __init__(self, length: int, sample_input: Callable, sample_target: Callable) -> None:
+        self.length = length
         self.sample_input = sample_input
         self.sample_target = sample_target
 
-    def __iter__(self):
-        while True:
-            yield self.sample_input(self.batch_size), self.sample_target(self.batch_size)
+    def __getitem__(self, idx: int):
+        return self.sample_input(1)[0], self.sample_target(1)[0]
+
+    def __getitems__(self, indices):
+        input_batch = self.sample_input(len(indices))
+        target_batch = self.sample_target(len(indices))
+        return list(zip(input_batch, target_batch))
+
+    def __len__(self) -> int:
+        return self.length
 
 def optimize_coupling(x: torch.Tensor, y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Permutes batches of data to optimize the coupling between them using Euclidian distance."""

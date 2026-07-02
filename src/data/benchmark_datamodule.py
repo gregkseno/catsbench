@@ -4,7 +4,7 @@ from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 
 from ..utils.ranked_logger import RankedLogger
-from ..utils import CoupleDataset, InfiniteCoupleDataset
+from ..utils import CoupleDataset, SampledCoupleDataset
 from catsbench import BenchmarkHD
 
 
@@ -18,6 +18,7 @@ class BenchmarkDataModule(LightningDataModule):
         num_categories: int,
         batch_size: int,
         val_batch_size: int,
+        num_train_batches: int,
         benchmark: Callable, # from_pretrained method of Benchmark classes
         num_timesteps: Optional[int] = None,
         num_workers: int = 0,
@@ -39,7 +40,6 @@ class BenchmarkDataModule(LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data by seting variables: `self.data_train`, `self.data_val`, `self.data_test`."""
-        assert self.trainer.limit_train_batches > 1, '`self.trainer.limit_train_batches` must be set since the dataloaders are infinite!'
         # dividing here because the `trainer` is not available in the constructor
         if self.trainer is not None:
             if self.hparams.batch_size % self.trainer.world_size != 0:
@@ -63,10 +63,10 @@ class BenchmarkDataModule(LightningDataModule):
             )
 
             ###################### TRAINING DATASET ######################
-            self.data_train = InfiniteCoupleDataset(
-                self.batch_size_per_device,
+            self.data_train = SampledCoupleDataset(
+                length=self.hparams.num_train_batches * self.hparams.batch_size,
                 sample_input=self.benchmark.sample_input,
-                sample_target=self.benchmark.sample_target
+                sample_target=self.benchmark.sample_target,
             )
 
             ####################### VALIDATION/TEST DATASET ######################
@@ -79,7 +79,11 @@ class BenchmarkDataModule(LightningDataModule):
         """Create and return the train dataloader."""
         return DataLoader(
             dataset=self.data_train,
-            batch_size=None,
+            batch_size=self.batch_size_per_device,
+            num_workers=self.hparams.num_workers,
+            pin_memory=self.hparams.pin_memory,
+            shuffle=True,
+            drop_last=True,
         )
 
     def val_dataloader(self) -> DataLoader[Any]:

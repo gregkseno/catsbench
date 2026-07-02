@@ -1,6 +1,7 @@
 _target_: src.methods.alpha_csbm.AlphaCSBM
 
-model: ${model}
+model_forward: ${model}
+model_backward: ${model}
 
 optimizer:
   _target_: torch.optim.AdamW

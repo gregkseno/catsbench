@@ -6,7 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from lightning import LightningDataModule
 from ..utils.ranked_logger import RankedLogger
-from ..utils import CoupleDataset, make_infinite_dataloader, continuous_to_discrete
+from ..utils import CoupleDataset, RepeatedDataset, continuous_to_discrete
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -75,6 +75,7 @@ class ToyDataModule(LightningDataModule):
         train_test_split: Tuple[float, float],
         batch_size: int,
         val_batch_size: int,
+        num_train_batches: int,
         num_workers: int = 0,
         pin_memory: bool = False,
     ) -> None:
@@ -97,7 +98,6 @@ class ToyDataModule(LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data by seting variables: `self.data_train`, `self.data_val`, `self.data_test`."""
-        assert self.trainer.limit_train_batches > 1, '`self.trainer.limit_train_batches` must be set since the dataloaders are infinite!'
         # dividing here because the `trainer` is not available in the constructor
         if self.trainer is not None:
             if self.hparams.batch_size % self.trainer.world_size != 0:
@@ -114,9 +114,13 @@ class ToyDataModule(LightningDataModule):
         if not self.data_train and not self.data_val and not self.data_test:
             ###################### TRAINING DATASET ######################
             size_train = int(self.hparams.num_samples * self.hparams.train_test_split[0])
-            self.data_train = CoupleDataset(
-                input_dataset=self.hparams.input_dataset(num_samples=size_train), 
-                target_dataset=self.hparams.target_dataset(num_samples=size_train)
+            coupled_train = CoupleDataset(
+                input_dataset=self.hparams.input_dataset(num_samples=size_train),
+                target_dataset=self.hparams.target_dataset(num_samples=size_train),
+            )
+            self.data_train = RepeatedDataset(
+                coupled_train,
+                length=self.hparams.num_train_batches * self.hparams.batch_size,
             )
 
             ####################### VALIDATION DATASET ######################
@@ -128,13 +132,14 @@ class ToyDataModule(LightningDataModule):
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader."""
-        return make_infinite_dataloader(DataLoader(
+        return DataLoader(
             dataset=self.data_train,
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=True,
-        ))
+            drop_last=True,
+        )
 
     def val_dataloader(self) -> DataLoader[Any]:
         """Create and return the validation dataloader."""

@@ -6,7 +6,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 
-from ..utils import CoupleDataset, make_infinite_dataloader
+from ..utils import CoupleDataset, RepeatedDataset
 from ..utils.ranked_logger import RankedLogger
 
 
@@ -83,6 +83,7 @@ class ImageDataModule(LightningDataModule):
         codec: nn.Module,
         batch_size: int,
         val_batch_size: int,
+        num_train_batches: int,
         train_data_mode: Literal["raw", "encoded"] = "raw",
         eval_data_mode: Literal["raw", "encoded"] = "raw",
         num_workers: int = 0,
@@ -99,26 +100,21 @@ class ImageDataModule(LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data by setting `self.data_train`, `self.data_val`, and `self.data_test`."""
-        assert self.trainer.limit_train_batches > 1, (
-            '`self.trainer.limit_train_batches` must be set since the dataloaders are infinite!'
-        )
-        # Divide here because the trainer is not available in the constructor.
         if self.trainer is not None:
-            if self.hparams.batch_size % self.trainer.world_size != 0:
-                raise RuntimeError(
-                    f"Batch size ({self.hparams.batch_size}) is not divisible by "
-                    f"the number of devices ({self.trainer.world_size})."
-                )
-            self.batch_size_per_device = self.hparams.batch_size // self.trainer.world_size
-            self.val_batch_size_per_device = self.hparams.val_batch_size // self.trainer.world_size
+            self.batch_size_per_device = self.hparams.batch_size
+            self.val_batch_size_per_device = self.hparams.val_batch_size
             log.info(f"batch_size per device: {self.batch_size_per_device}")
             log.info(f"val_batch_size per device: {self.val_batch_size_per_device}")
 
         # setup is called multiple times for fit, validate, and test.
         if not self.data_train and not self.data_val and not self.data_test:
-            self.data_train = CoupleDataset(
+            coupled_train = CoupleDataset(
                 input_dataset=self.hparams.input_dataset(),
                 target_dataset=self.hparams.target_dataset(),
+            )
+            self.data_train = RepeatedDataset(
+                coupled_train,
+                length=self.hparams.num_train_batches * self.hparams.batch_size,
             )
             self.data_val = CoupleDataset(
                 input_dataset=self.hparams.input_dataset(train=False),
@@ -134,10 +130,11 @@ class ImageDataModule(LightningDataModule):
         return self.codec.encode_to_cats(x), self.codec.encode_to_cats(y)
     
     def train_dataloader(self) -> DataLoader[Any]:
-        return make_infinite_dataloader(DataLoader(
+        return DataLoader(
             self.data_train, batch_size=self.batch_size_per_device, shuffle=True,
             num_workers=self.hparams.num_workers, pin_memory=self.hparams.pin_memory,
-        ))
+            drop_last=True,
+        )
 
     def val_dataloader(self) -> DataLoader[Any]:
         return DataLoader(
