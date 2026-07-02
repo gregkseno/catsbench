@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
@@ -28,7 +27,8 @@ class AlphaCSBM(LightningModule):
         self,
         num_timesteps: int,
         prior: Prior,
-        model: nn.Module,
+        model_forward: nn.Module,
+        model_backward: nn.Module,
         ema: ExponentialMovingAverage, # partially initialized
         optimizer: Optimizer, # partially initialized 
         num_first_iterations: int,
@@ -51,8 +51,8 @@ class AlphaCSBM(LightningModule):
         self.prior = prior
         
         # models explicitly stated to be able log parameters
-        self.model_forward = model
-        self.model_backward = deepcopy(model)
+        self.model_forward = model_forward
+        self.model_backward = model_backward
         self.models = {
             'forward': self.model_forward,
             'backward': self.model_backward,
