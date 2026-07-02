@@ -6,7 +6,7 @@ defaults:
   - callbacks: 
     - model_summary
     - toy_metrics
-  - logger: comet
+  - logger: wandb
   - trainer: gpu
   - experiment: ???
   - hydra: default

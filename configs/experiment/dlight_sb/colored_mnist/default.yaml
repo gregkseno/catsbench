@@ -1,0 +1,31 @@
+# @package _global_
+
+defaults:
+  - override /data: colored_mnist
+  - override /model: null
+  - override /method: dlight_sb
+  - override /callbacks:
+    - model_checkpoint
+    - model_summary
+    - image_plotter
+  - override /trainer: gpu
+  - _self_
+
+prior:
+  alpha: 0.01
+  prior_type: gaussian
+  num_timesteps: 50
+  num_skip_steps: 2
+
+method:
+  dim: 3072
+  num_potentials: 10
+  distr_init: uniform
+
+trainer:
+  devices: 2
+  max_epochs: 10
+  limit_train_batches: 20000
+  val_check_interval: 1000
+  accumulate_grad_batches: 1
+  gradient_clip_val: null
