@@ -1,0 +1,34 @@
+_target_: src.data.ImageDataModule
+dim: 128
+latent_dim: 16
+num_categories: 1024
+batch_size: 32 # per device; Lightning shards the dataset across devices
+val_batch_size: 25 # per device
+num_train_batches: 20000
+num_workers: 8
+pin_memory: true
+train_data_mode: encoded
+eval_data_mode: raw
+
+codec:
+  _target_: src.data.codec.vqgan.VQGANCodec
+  config_path: ${paths.root_dir}/configs/vqgan_celeba_f8_1024.yaml
+  ckpt_path: ${paths.root_dir}/checkpoints/vqgan_celeba_f8_1024.ckpt
+
+input_dataset:
+  _target_: src.data.image_datamodule.CelebaDataset
+  _partial_: true
+  sex: male
+  data_dir: ${paths.data_dir}
+  size: ${data.dim}
+  split: 0.9
+  use_quantized: true
+
+target_dataset:
+  _target_: src.data.image_datamodule.CelebaDataset
+  _partial_: true
+  sex: female
+  data_dir: ${paths.data_dir}
+  size: ${data.dim}
+  split: 0.9
+  use_quantized: true

@@ -10,7 +10,7 @@ train_data_mode: encoded
 eval_data_mode: encoded
 
 codec:
-  _target_: src.data.image_datamodule.RawImageCodec
+  _target_: src.data.codec.raw.RawImageCodec
   num_categories: ${data.num_categories}
 
 input_dataset:
