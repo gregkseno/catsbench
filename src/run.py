@@ -17,7 +17,11 @@ from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 
 from .utils.ranked_logger import RankedLogger
-from .utils import instantiate_callbacks, instantiate_loggers
+from .utils import (
+    get_run_directory_from_checkpoint, 
+    instantiate_callbacks, 
+    instantiate_loggers
+)
 
 
 if torch.cuda.is_available():
@@ -26,6 +30,13 @@ if torch.cuda.is_available():
         torch.set_float32_matmul_precision("high")
 
 log = RankedLogger(__name__, rank_zero_only=True)
+
+OmegaConf.register_new_resolver(
+    "get_run_directory_from_checkpoint", 
+    get_run_directory_from_checkpoint, 
+    replace=True
+)
+
 
 @hydra.main(version_base='1.1', config_path='../configs', config_name='config.yaml')
 def main(config: DictConfig):
@@ -58,37 +69,21 @@ def main(config: DictConfig):
 
     log.info(f'Instantiating trainer <{config.trainer._target_}>...')
     trainer: Trainer = instantiate(config.trainer, callbacks=callbacks, logger=loggers)
+
+    ckpt_path = config.get('ckpt_path')
+    if ckpt_path == 'auto':
+        ckpt_path = os.path.join(config.paths.output_dir, 'checkpoints', 'last.ckpt')
+        if not os.path.isfile(ckpt_path):
+            raise FileNotFoundError(
+                f'No last checkpoint found for this experiment at {ckpt_path}. '
+                'Pass ckpt_path=/path/to/checkpoint.ckpt explicitly.'
+            )
     
     if config.task_name == 'train':
         log.info('Starting training!')
-        trainer.fit(model=method, datamodule=datamodule, ckpt_path=config.get('ckpt_path'))
+        trainer.fit(model=method, datamodule=datamodule, ckpt_path=ckpt_path)
     elif config.task_name == 'test':
-        assert config.get('ckpt_path') is not None, 'The `ckpt_path` must be provided for testing!'
-        ckpt_path = config.get('ckpt_path')
-        if ckpt_path == 'auto':
-            log.info('Auto-detecting the latest checkpoint path...')
-            log_dir = config.paths.log_dir
-            hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
-            data_choice = hydra_cfg.runtime.choices.data
-            method_choice = hydra_cfg.runtime.choices.method
-            experiment_choice = hydra_cfg.runtime.choices.experiment
-            exp_dir = os.path.join(
-                log_dir, 'runs', data_choice, method_choice, experiment_choice, str(config.seed)
-            )
-            log.info(f'data_choice: {data_choice}')
-            log.info(f'method_choice: {method_choice}')
-            log.info(f'experiment_choice: {experiment_choice}')
-            log.info(f'config.seed: {config.seed}')
-            # select the latest subdir by folder name of format 'YYYY-MM-DD_HH-MM-SS'
-            # and if this folder contains train.log file
-            subdirs = [os.path.join(exp_dir, subdir) for subdir in os.listdir(exp_dir)]
-            subdirs = [subdir for subdir in subdirs if 'train.log' in os.listdir(subdir)]
-            latest_subdir = max(subdirs, key=lambda x: os.path.basename(x))
-            ckpts = os.listdir(os.path.join(latest_subdir, 'checkpoints'))
-            ckpts = [ckpt for ckpt in ckpts if ckpt.startswith('epoch_')]
-            last_ckpt = max(ckpts, key=lambda x: int(x.split('_')[1].split('.')[0]))
-            ckpt_path = os.path.join(latest_subdir, 'checkpoints', last_ckpt)       
-        
+        assert ckpt_path is not None, 'The `ckpt_path` must be provided for testing!'
         log.info(f'Starting testing with ckpt_path: {ckpt_path}.')
         trainer.test(model=method, datamodule=datamodule, ckpt_path=ckpt_path)
     else:

@@ -1,4 +1,8 @@
-from .instantiation import instantiate_callbacks, instantiate_loggers
+from .instantiation import (
+    get_run_directory_from_checkpoint, 
+    instantiate_callbacks, 
+    instantiate_loggers
+)
 from .data import (
     broadcast, 
     gumbel_sample,

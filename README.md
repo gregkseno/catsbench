@@ -136,22 +136,36 @@ python -m src.run experiment=<method_name>/benchmark_hd/<exp_name>
 
 ### 📊 Evaluation
 
-Use the same experiment config as in training and set a checkpoint:
-
-- Manual path: `logs/runs/<method_name>/benchmark_hd/<exp_name>/<seed>/<date>/epoch_<...>.ckpt`
-- Or set `ckpt_path=auto` to automatically load the latest checkpoint based on the config.
+Use the same experiment config as in training and pass the checkpoint saved by
+Lightning. Hydra automatically reuses that checkpoint's run directory, so test
+logs and artifacts are stored alongside the training run instead of in a new
+timestamped directory.
 
 ```bash
-python -m src.run task_name=test ckpt_path=auto \
+python -m src.run task_name=test \
+  ckpt_path=/path/to/run/checkpoints/last.ckpt \
   experiment=<method_name>/benchmark_hd/<exp_filename>
 ```
 
 > **Example:**
 >
 > ```bash
-> python -m src.run task_name=test ckpt_path=auto \
+> python -m src.run task_name=test \
+>   ckpt_path=logs/runs/dlight_sb/benchmark_hd/d2_g002/42/<date>/checkpoints/last.ckpt \
 >   experiment=dlight_sb/benchmark_hd/d2_g002
 > ```
+
+To resume training (including optimizer, scheduler, epoch, and callback state),
+use the same checkpoint without changing `task_name`:
+
+```bash
+python -m src.run \
+  ckpt_path=/path/to/run/checkpoints/last.ckpt \
+  experiment=<method_name>/benchmark_hd/<exp_filename>
+```
+
+For compatibility with the batch evaluation scripts, `ckpt_path=auto` selects
+the newest run for the chosen experiment and loads its `checkpoints/last.ckpt`.
 
 ### 🎓 Citation
 

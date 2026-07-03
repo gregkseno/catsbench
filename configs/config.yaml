@@ -21,4 +21,6 @@ paths:
 
 task_name: train
 seed: 42
-ckpt_path: null # for resuming the training or testing
+# A Lightning checkpoint path for resuming training or testing. When this is a
+# local <run>/checkpoints/*.ckpt file, Hydra reuses <run> as its output dir.
+ckpt_path: null

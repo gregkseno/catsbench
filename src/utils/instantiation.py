@@ -1,5 +1,6 @@
-from typing import List
+from typing import List, Optional
 
+import os
 import hydra
 from lightning import Callback
 from lightning.pytorch.loggers import Logger
@@ -54,3 +55,35 @@ def instantiate_loggers(logger_cfg: DictConfig) -> List[Logger]:
             loggers.append(hydra.utils.instantiate(lg_conf))
 
     return loggers
+
+def get_run_directory_from_checkpoint(
+    ckpt_path: Optional[str], default_dir: str, base_dir: Optional[str] = None
+) -> str:
+    """Return the checkpoint's run directory or the default Hydra directory."""
+    search_dir = os.path.join(base_dir, default_dir) if base_dir else default_dir
+
+    if ckpt_path == "auto":
+        run_parent = os.path.dirname(os.path.expanduser(search_dir))
+        if not os.path.isdir(run_parent):
+            return default_dir
+        candidates = [
+            os.path.join(run_parent, name)
+            for name in os.listdir(run_parent)
+            if os.path.isfile(
+                os.path.join(run_parent, name, "checkpoints", "last.ckpt")
+            )
+        ]
+        run_dir = max(candidates, key=os.path.basename, default=search_dir)
+        return os.path.relpath(run_dir, base_dir) if base_dir else run_dir
+    if not ckpt_path or ckpt_path in {"best", "last"} or "://" in ckpt_path:
+        return default_dir
+
+    checkpoint = os.path.expanduser(ckpt_path)
+    checkpoint_dir = os.path.dirname(checkpoint)
+    if (
+        checkpoint.endswith(".ckpt")
+        and os.path.basename(checkpoint_dir) == "checkpoints"
+    ):
+        run_dir = os.path.dirname(checkpoint_dir)
+        return os.path.relpath(run_dir, base_dir) if base_dir else run_dir
+    return default_dir

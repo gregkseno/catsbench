@@ -3,10 +3,10 @@
 job:
   chdir: false
 run:
-  dir: ${paths.log_dir}/runs/${hydra:runtime.choices.experiment}/${seed}/${now:%Y-%m-%d}_${now:%H-%M-%S}
+  dir: ${get_run_directory_from_checkpoint:${ckpt_path},${paths.log_dir}/runs/${hydra:runtime.choices.experiment}/${seed}/${now:%Y-%m-%d}_${now:%H-%M-%S}}
 sweep:
   dir: ${paths.log_dir}/runs
-  subdir: ${hydra:runtime.choices.experiment}/${seed}/${now:%Y-%m-%d}_${now:%H-%M-%S}
+  subdir: ${get_run_directory_from_checkpoint:${ckpt_path},${hydra:runtime.choices.experiment}/${seed}/${now:%Y-%m-%d}_${now:%H-%M-%S},${hydra.sweep.dir}}
 job_logging:
   handlers:
     file:
