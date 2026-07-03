@@ -43,10 +43,19 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
         self.classifier_lr = classifier_lr
         self.adjusted_tv = adjusted_tv
 
-    def _init_metrics(
+    def _setup_callback(
         self,
+        trainer: Trainer,
         pl_module: MetricModule, 
+        stage: Literal['fit', 'validate', 'test'],
     ) -> None:
+        if self.benchmark is not None and hasattr(pl_module, 'metrics'):
+            return
+
+        assert hasattr(trainer.datamodule, 'benchmark'), \
+            'Wrong datamodule! It should have `benchmark` attribute'
+        self.benchmark = trainer.datamodule.benchmark
+
         # initialize unconditional metrics
         pl_module.metrics = MetricCollection(
             {
@@ -93,6 +102,7 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
         trainer: Trainer,
         pl_module: MetricModule,
         outputs: Dict[str, Any],
+        batch: tuple[torch.Tensor, torch.Tensor],
         batch_idx: int,
         stage: Literal['train', 'val', 'test'] = 'train',
     ) -> None:
