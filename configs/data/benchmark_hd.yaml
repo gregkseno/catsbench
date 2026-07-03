@@ -3,8 +3,8 @@ dim: 16
 input_shape: [16]
 num_categories: 100
 num_timesteps: ${prior.num_timesteps} # override (optional) to match methods num_timesteps
-batch_size: 128
-val_batch_size: 32
+batch_size: 128 # per device; Lightning shards the dataset across devices
+val_batch_size: 32 # per device
 num_train_batches: 20000
 num_workers: 0
 pin_memory: false

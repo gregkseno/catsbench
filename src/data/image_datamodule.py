@@ -7,10 +7,6 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 
 from ..utils import CoupleDataset, RepeatedDataset
-from ..utils.ranked_logger import RankedLogger
-
-
-log = RankedLogger(__name__, rank_zero_only=True)
 
 
 class DiscreteColoredMNISTDataset(Dataset):
@@ -100,12 +96,6 @@ class ImageDataModule(LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data by setting `self.data_train`, `self.data_val`, and `self.data_test`."""
-        if self.trainer is not None:
-            self.batch_size_per_device = self.hparams.batch_size
-            self.val_batch_size_per_device = self.hparams.val_batch_size
-            log.info(f"batch_size per device: {self.batch_size_per_device}")
-            log.info(f"val_batch_size per device: {self.val_batch_size_per_device}")
-
         # setup is called multiple times for fit, validate, and test.
         if not self.data_train and not self.data_val and not self.data_test:
             coupled_train = CoupleDataset(
@@ -131,19 +121,19 @@ class ImageDataModule(LightningDataModule):
     
     def train_dataloader(self) -> DataLoader[Any]:
         return DataLoader(
-            self.data_train, batch_size=self.batch_size_per_device, shuffle=True,
+            self.data_train, batch_size=self.hparams.batch_size, shuffle=True,
             num_workers=self.hparams.num_workers, pin_memory=self.hparams.pin_memory,
             drop_last=True,
         )
 
     def val_dataloader(self) -> DataLoader[Any]:
         return DataLoader(
-            self.data_val, batch_size=self.val_batch_size_per_device,
+            self.data_val, batch_size=self.hparams.val_batch_size,
             num_workers=self.hparams.num_workers, pin_memory=self.hparams.pin_memory,
         )
 
     def test_dataloader(self) -> DataLoader[Any]:
         return DataLoader(
-            self.data_val, batch_size=self.val_batch_size_per_device,
+            self.data_val, batch_size=self.hparams.val_batch_size,
             num_workers=self.hparams.num_workers, pin_memory=self.hparams.pin_memory,
         )

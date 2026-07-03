@@ -5,11 +5,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 from lightning import LightningDataModule
-from ..utils.ranked_logger import RankedLogger
 from ..utils import CoupleDataset, RepeatedDataset, continuous_to_discrete
-
-
-log = RankedLogger(__name__, rank_zero_only=True)
 
 class DiscreteUniformDataset(Dataset):
     def __init__(
@@ -98,17 +94,6 @@ class ToyDataModule(LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data by seting variables: `self.data_train`, `self.data_val`, `self.data_test`."""
-        # dividing here because the `trainer` is not available in the constructor
-        if self.trainer is not None:
-            if self.hparams.batch_size % self.trainer.world_size != 0:
-                raise RuntimeError(
-                    f"Batch size ({self.hparams.batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."
-                )
-            self.batch_size_per_device = self.hparams.batch_size // self.trainer.world_size
-            self.val_batch_size_per_device = self.hparams.val_batch_size // self.trainer.world_size
-            log.info(f"batch_size per device: {self.batch_size_per_device}")
-            log.info(f"val_batch_size per device: {self.val_batch_size_per_device}")
-
         # here is an `if` because the `setup` method is called multiple times 
         # for trainer.fit, trainer.validate, trainer.test, etc.
         if not self.data_train and not self.data_val and not self.data_test:
@@ -134,7 +119,7 @@ class ToyDataModule(LightningDataModule):
         """Create and return the train dataloader."""
         return DataLoader(
             dataset=self.data_train,
-            batch_size=self.batch_size_per_device,
+            batch_size=self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=True,
@@ -145,7 +130,7 @@ class ToyDataModule(LightningDataModule):
         """Create and return the validation dataloader."""
         return DataLoader(
             dataset=self.data_val,
-            batch_size=self.val_batch_size_per_device,
+            batch_size=self.hparams.val_batch_size,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
         )
@@ -154,7 +139,7 @@ class ToyDataModule(LightningDataModule):
         """Create and return the test dataloader."""
         return DataLoader(
             dataset=self.data_val,
-            batch_size=self.val_batch_size_per_device,
+            batch_size=self.hparams.val_batch_size,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
         )
