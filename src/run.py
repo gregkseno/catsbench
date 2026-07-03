@@ -7,8 +7,8 @@ from hydra.utils import instantiate
 
 import torch
 try:
-    import torch_npu
-    from torch_npu.contrib import transfer_to_npu
+    import torch_npu # type: ignore
+    from torch_npu.contrib import transfer_to_npu # type: ignore
     torch.cuda.get_device_capability = lambda x: (7, None)
 except ImportError:
     pass
