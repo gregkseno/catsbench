@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 import os
+import uuid
 import hydra
 from lightning import Callback
 from lightning.pytorch.loggers import Logger
@@ -34,7 +35,9 @@ def instantiate_callbacks(callbacks_cfg: DictConfig) -> List[Callback]:
     return callbacks
 
 
-def instantiate_loggers(logger_cfg: DictConfig) -> List[Logger]:
+def instantiate_loggers(
+    logger_cfg: DictConfig, output_dir: Optional[str] = None
+) -> List[Logger]:
     """Instantiates loggers from config.
 
     :param logger_cfg: A DictConfig object containing logger configurations.
@@ -49,10 +52,30 @@ def instantiate_loggers(logger_cfg: DictConfig) -> List[Logger]:
     if not isinstance(logger_cfg, DictConfig):
         raise TypeError("Logger config must be a DictConfig!")
 
+    logger_id = None
+    if output_dir:
+        run_dir = os.path.abspath(os.path.expanduser(output_dir))
+        os.makedirs(run_dir, exist_ok=True)
+        logger_id_path = os.path.join(run_dir, "logger_id")
+        try:
+            with open(logger_id_path, "x", encoding="utf-8") as file:
+                file.write(uuid.uuid4().hex)
+        except FileExistsError:
+            pass
+        with open(logger_id_path, encoding="utf-8") as file:
+            logger_id = file.read().strip()
+        if not logger_id:
+            raise RuntimeError(f"Logger ID file is empty: {logger_id_path}")
+
     for _, lg_conf in logger_cfg.items():
         if isinstance(lg_conf, DictConfig) and "_target_" in lg_conf:
             logger.info(f"Instantiating logger <{lg_conf._target_}>")
-            loggers.append(hydra.utils.instantiate(lg_conf))
+            kwargs = {}
+            if logger_id and lg_conf._target_.endswith("WandbLogger"):
+                kwargs["id"] = logger_id
+            elif logger_id and lg_conf._target_.endswith("CometLogger"):
+                kwargs.update(experiment_key=logger_id, mode="get_or_create")
+            loggers.append(hydra.utils.instantiate(lg_conf, **kwargs))
 
     return loggers
 

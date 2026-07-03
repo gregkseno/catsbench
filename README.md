@@ -166,6 +166,9 @@ python -m src.run \
 
 For compatibility with the batch evaluation scripts, `ckpt_path=auto` selects
 the newest run for the chosen experiment and loads its `checkpoints/last.ckpt`.
+W&B, Comet, and TensorBoard also reuse the training run when its checkpoint is
+resumed or tested. The W&B and Comet experiment ID is stored in the run's
+`logger_id` file, so it remains stable if the run directory is moved.
 
 ### 🎓 Citation
 

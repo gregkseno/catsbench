@@ -63,7 +63,9 @@ def main(config: DictConfig):
     callbacks: List[Callback] = instantiate_callbacks(config.get('callbacks'))
 
     log.info('Instantiating loggers...')
-    loggers: List[Logger] = instantiate_loggers(config.get('logger'))
+    loggers: List[Logger] = instantiate_loggers(
+        config.get('logger'), config.paths.output_dir
+    )
     for logger in loggers:
         logger.log_hyperparams(OmegaConf.to_container(config))
 
