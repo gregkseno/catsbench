@@ -302,7 +302,7 @@ class DLightSB(BaseMethod):
 
     def training_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:
+    ) -> Dict[str, Any]:
         x_start, x_end = batch
         loss, info = self.loss(x_start, x_end)
 
@@ -310,14 +310,14 @@ class DLightSB(BaseMethod):
         info = {f"train/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('train/iteration', self.iteration, prog_bar=True)
-        return loss
+        return {'loss': loss, 'batch': batch}
 
     def on_train_epoch_end(self) -> None:
         self.iteration += 1
 
     def validation_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:
+    ) -> Dict[str, Any]:
         x_start, x_end = batch
         loss, info = self.loss(x_start, x_end)
 
@@ -325,11 +325,11 @@ class DLightSB(BaseMethod):
         info = {f"val/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('val/iteration', self.iteration, prog_bar=True)
-        return loss
+        return {'loss': loss, 'batch': batch}
 
     def test_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:
+    ) -> Dict[str, Any]:
         x_start, x_end = batch
         loss, info = self.loss(x_start, x_end)
 
@@ -337,7 +337,7 @@ class DLightSB(BaseMethod):
         info = {f"test/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('test/iteration', self.iteration, prog_bar=True)
-        return loss
+        return {'loss': loss, 'batch': batch}
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer = self.hparams.optimizer(

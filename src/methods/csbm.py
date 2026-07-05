@@ -161,20 +161,27 @@ class CSBM(BaseMethod):
 
     def training_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:
+    ) -> Dict[str, Any]:
         self.models[self.fb].train()
         self.models[self.bf].eval()
         
         # DataLoader have the x_0, x_1 order so we need to swap
-        if self.fb == 'forward': x_end, x_start = batch
-        else: x_start, x_end = batch
+        if self.fb == 'forward':
+            x_end, x_start = batch
+            raw_x_end, raw_x_start = batch.raw
+        else:
+            x_start, x_end = batch
+            raw_x_start, raw_x_end = batch.raw
 
-        # if first iteration apply optional mini-batch sampling
-        if self.iteration == 1 and self.hparams.use_mini_batch:
-            x_start, x_end = optimize_coupling(x_start, x_end)
-        # otherwise generate samples from reverse model
         if self.iteration > 1:
-            x_start, x_end = x_start, self.sample(x_start, fb=self.bf) 
+            x_end = self.sample(x_start, fb=self.bf)
+            output_raw = (None, raw_x_start)
+        elif self.hparams.use_mini_batch:
+            x_start, x_end = optimize_coupling(x_start, x_end)
+            output_raw = (None, None)
+        else:
+            output_raw = (raw_x_end, raw_x_start)
+        output_batch = Batch(encoded=(x_end, x_start), raw=output_raw)
         optimizers = {
             'forward': self.optimizers()[0],
             'backward': self.optimizers()[1],
@@ -206,7 +213,7 @@ class CSBM(BaseMethod):
                     schedulers[self.fb].step(loss.detach()) 
                 optimizers[self.fb].zero_grad()
                 self.emas[self.fb].update()
-        return step_loss
+        return {'loss': step_loss, 'batch': output_batch}
 
     def on_train_epoch_end(self) -> None:
         # increment iteration count after a full cycle (forward + backward)
@@ -215,10 +222,18 @@ class CSBM(BaseMethod):
 
     def validation_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:        
+    ) -> Dict[str, Any]:
         # DataLoader have the x_0, x_1 order so we need to swap
-        if self.fb == 'forward': x_end, x_start = batch
-        else: x_start, x_end = batch
+        if self.fb == 'forward':
+            x_end, x_start = batch
+            raw_x_end, raw_x_start = batch.raw
+        else:
+            x_start, x_end = batch
+            raw_x_start, raw_x_end = batch.raw
+        output_batch = Batch(
+            encoded=(x_end, x_start),
+            raw=(raw_x_end, raw_x_start),
+        )
         # if first iteration apply optional mini-batch sampling
         if self.iteration == 1 and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
@@ -230,14 +245,22 @@ class CSBM(BaseMethod):
         info = {f"val/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('val/iteration', self.iteration, prog_bar=True)
-        return loss
+        return {'loss': loss, 'batch': output_batch}
     
     def test_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:      
+    ) -> Dict[str, Any]:
         # DataLoader have the x_0, x_1 order so we need to swap
-        if self.fb == 'forward': x_end, x_start = batch
-        else: x_start, x_end = batch
+        if self.fb == 'forward':
+            x_end, x_start = batch
+            raw_x_end, raw_x_start = batch.raw
+        else:
+            x_start, x_end = batch
+            raw_x_start, raw_x_end = batch.raw
+        output_batch = Batch(
+            encoded=(x_end, x_start),
+            raw=(raw_x_end, raw_x_start),
+        )
         # if first iteration apply optional mini-batch sampling
         if self.iteration == 1 and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
@@ -249,7 +272,7 @@ class CSBM(BaseMethod):
         info = {f"test/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('test/iteration', self.iteration, prog_bar=True)
-        return loss
+        return {'loss': loss, 'batch': output_batch}
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer_forward  = self.hparams.optimizer(params=self.models['forward'].parameters())

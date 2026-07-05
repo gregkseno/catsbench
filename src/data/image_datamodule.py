@@ -191,7 +191,7 @@ class ImageDataModule(LightningDataModule):
     def on_after_batch_transfer(self, batch: Any, dataloader_idx: int) -> Any:
         mode = self.hparams.train_data_mode if self.trainer.training else self.hparams.eval_data_mode
         if mode == "encoded":
-            return Batch(encoded=tuple(batch), raw=tuple(batch))
+            return Batch(encoded=tuple(batch), raw=(None, None))
         x, y = batch
         self.codec.to(x.device)
         return Batch(

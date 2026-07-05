@@ -9,10 +9,10 @@ class BaseCodec(nn.Module, ABC):
 
     @abstractmethod
     def encode_to_cats(self, images: torch.Tensor) -> torch.Tensor:
-        """Encode images into categorical model states."""
+        """Encode floating-point images in [0, 1] into categorical states."""
         raise NotImplementedError
 
     @abstractmethod
     def decode_to_image(self, cats: torch.Tensor) -> torch.Tensor:
-        """Decode categorical model states into displayable images."""
+        """Decode categorical states into floating-point images in [0, 1]."""
         raise NotImplementedError

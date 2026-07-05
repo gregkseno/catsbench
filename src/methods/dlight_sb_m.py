@@ -320,25 +320,31 @@ class DLightSB_M(BaseMethod):
 
     def training_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:
+    ) -> Dict[str, Any]:
         x_start, x_end = batch
 
         # if first iteration apply optional mini-batch sampling
         if self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
+            output_batch = Batch(
+                encoded=(x_start, x_end),
+                raw=(None, None),
+            )
+        else:
+            output_batch = batch
         loss, info = self.optimal_projection(x_start, x_end)
 
         info = {f"train/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('train/iteration', self.iteration, prog_bar=True)
-        return loss
+        return {'loss': loss, 'batch': output_batch}
 
     def on_train_epoch_end(self) -> None:
         self.iteration += 1
 
     def validation_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:
+    ) -> Dict[str, Any]:
         x_start, x_end = batch
         # if first iteration apply optional mini-batch sampling
         if self.hparams.use_mini_batch:
@@ -348,11 +354,11 @@ class DLightSB_M(BaseMethod):
         info = {f"val/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('val/iteration', self.iteration, prog_bar=True)
-        return loss
+        return {'loss': loss, 'batch': batch}
     
     def test_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:
+    ) -> Dict[str, Any]:
         x_start, x_end = batch
         # if first iteration apply optional mini-batch sampling
         if self.hparams.use_mini_batch:
@@ -362,7 +368,7 @@ class DLightSB_M(BaseMethod):
         info = {f"test/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('test/iteration', self.iteration, prog_bar=True)
-        return loss
+        return {'loss': loss, 'batch': batch}
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer = self.hparams.optimizer(

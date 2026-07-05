@@ -32,8 +32,8 @@ class BasePlotterCallback(Callback):
         stage: Literal['train', 'val', 'test'],
         x_start: torch.Tensor, 
         x_end: torch.Tensor,
-        raw_x_start: torch.Tensor,
-        raw_x_end: torch.Tensor,
+        raw_x_start: torch.Tensor | None,
+        raw_x_end: torch.Tensor | None,
     ) -> None:
         buf = self._buffers[stage]
         have = sum(t.shape[0] for t in buf['x_start'])
@@ -43,8 +43,12 @@ class BasePlotterCallback(Callback):
         take = min(remain, x_start.shape[0])
         buf['x_start'].append(x_start[:take].detach())
         buf['x_end'].append(x_end[:take].detach())
-        buf['raw_x_start'].append(raw_x_start[:take].detach())
-        buf['raw_x_end'].append(raw_x_end[:take].detach())
+        buf['raw_x_start'].append(
+            None if raw_x_start is None else raw_x_start[:take].detach()
+        )
+        buf['raw_x_end'].append(
+            None if raw_x_end is None else raw_x_end[:take].detach()
+        )
 
     def _log_buf(self, stage: Literal['train', 'val', 'test'], pl_module: BaseMethod) -> None:
         buf = self._buffers[stage]
@@ -52,8 +56,17 @@ class BasePlotterCallback(Callback):
             return
         x_start = torch.cat(buf['x_start'], dim=0)[:self.num_samples]
         x_end = torch.cat(buf['x_end'], dim=0)[:self.num_samples]
-        raw_x_start = torch.cat(buf['raw_x_start'], dim=0)[:self.num_samples]
-        raw_x_end = torch.cat(buf['raw_x_end'], dim=0)[:self.num_samples]
+        raw_x_start = None
+        if all(value is not None for value in buf['raw_x_start']):
+            raw_x_start = torch.cat(
+                [value for value in buf['raw_x_start'] if value is not None], dim=0
+            )[:self.num_samples]
+
+        raw_x_end = None
+        if all(value is not None for value in buf['raw_x_end']):
+            raw_x_end = torch.cat(
+                [value for value in buf['raw_x_end'] if value is not None], dim=0
+            )[:self.num_samples]
         self._log_samples(
             x_start, x_end, pl_module, stage,
             raw_x_start=raw_x_start,
@@ -70,13 +83,9 @@ class BasePlotterCallback(Callback):
         self,
         stage: Literal['train', 'val', 'test'],
         batch: Batch,
-        pl_module: BaseMethod,
     ) -> None:
         x_start, x_end = batch.encoded
         raw_x_start, raw_x_end = batch.raw
-        if getattr(pl_module, 'fb', None) == 'backward':
-            x_start, x_end = x_end, x_start
-            raw_x_start, raw_x_end = raw_x_end, raw_x_start
         self._accumulate_buf(
             stage, x_start, x_end, raw_x_start, raw_x_end
         )
@@ -88,11 +97,11 @@ class BasePlotterCallback(Callback):
         self,
         trainer: Trainer,
         pl_module: BaseMethod,
-        outputs: Any,
+        outputs: dict[str, Any],
         batch: Batch,
         batch_idx: int,
     ) -> None:
-        self._accumulate_batch('train', batch, pl_module)
+        self._accumulate_batch('train', outputs['batch'])
 
     def on_train_epoch_end(self, trainer: Trainer, pl_module: BaseMethod) -> None:
         self._log_buf('train', pl_module)
@@ -104,11 +113,11 @@ class BasePlotterCallback(Callback):
         self,
         trainer: Trainer,
         pl_module: BaseMethod,
-        outputs: Any,
+        outputs: dict[str, Any],
         batch: Batch,
         batch_idx: int,
     ) -> None:
-        self._accumulate_batch('val', batch, pl_module)
+        self._accumulate_batch('val', outputs['batch'])
 
     def on_validation_epoch_end(self, trainer: Trainer, pl_module: BaseMethod):
         self._log_buf('val', pl_module)
@@ -120,11 +129,11 @@ class BasePlotterCallback(Callback):
         self,
         trainer: Trainer,
         pl_module: BaseMethod,
-        outputs: Any,
+        outputs: dict[str, Any],
         batch: Batch,
         batch_idx: int,
     ) -> None:
-        self._accumulate_batch('test', batch, pl_module)
+        self._accumulate_batch('test', outputs['batch'])
 
     def on_test_epoch_end(self, trainer: Trainer, pl_module: BaseMethod):
         self._log_buf('test', pl_module)

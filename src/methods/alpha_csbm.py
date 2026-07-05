@@ -150,12 +150,23 @@ class AlphaCSBM(BaseMethod):
 
     def training_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:
+    ) -> Dict[str, Any]:
         b = batch[0].shape[0] // 2
         x_end, x_start = batch
+        raw_x_end, raw_x_start = batch.raw
+        output_batch = Batch(
+            encoded=(x_end, x_start),
+            raw=(raw_x_end, raw_x_start),
+        )
+
         # if first iteration apply optional mini-batch sampling
         if self.iteration == 1 and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
+            output_batch = Batch(
+                encoded=(x_end, x_start),
+                raw=(None, None),
+            )
+
         if self.iteration == 1:
             loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], x_end[:b])
             loss_backward, info_backward = self.markovian_projection('backward', x_end[b:], x_start[b:])
@@ -164,6 +175,10 @@ class AlphaCSBM(BaseMethod):
             pred_x_start = self.sample(x_end[:b], fb='forward')
             loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], pred_x_end)
             loss_backward, info_backward = self.markovian_projection('backward', x_end[:b], pred_x_start)
+            output_batch = Batch(
+                encoded=(pred_x_end, x_start[:b]),
+                raw=(None, None if raw_x_start is None else raw_x_start[:b]),
+            )
         loss = (loss_forward + loss_backward) / 2
         
         # logs step-wise loss, `add_dataloader_idx=False` is used to have custom fb prefix
@@ -171,7 +186,7 @@ class AlphaCSBM(BaseMethod):
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('train/iteration', self.iteration, prog_bar=True)
 
-        return loss
+        return {'loss': loss, 'batch': output_batch}
         
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure=None):
         optimizer.step(closure=optimizer_closure)
@@ -184,12 +199,19 @@ class AlphaCSBM(BaseMethod):
 
     def validation_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:
+    ) -> Dict[str, Any]:
         b = batch[0].shape[0] // 2
         x_end, x_start = batch
+        output_batch = batch
+
         # if first iteration apply optional mini-batch sampling
         if self.iteration == 1 and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
+            output_batch = Batch(
+                encoded=(x_end, x_start),
+                raw=(None, None),
+            )
+
         if self.iteration == 1:
             loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], x_end[:b])
             loss_backward, info_backward = self.markovian_projection('backward', x_end[b:], x_start[b:])
@@ -204,16 +226,24 @@ class AlphaCSBM(BaseMethod):
         info = {f"val/{k}": v for k, v in {**info_forward, **info_backward}.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('val/iteration', self.iteration, prog_bar=True)
-        return (loss_forward + loss_backward) / 2
+        loss = (loss_forward + loss_backward) / 2
+        return {'loss': loss, 'batch': output_batch}
 
     def test_step(
         self, batch: Batch, batch_idx: int
-    ) -> torch.Tensor:
+    ) -> Dict[str, Any]:
         b = batch[0].shape[0] // 2
         x_end, x_start = batch
+        output_batch = batch
+
         # if first iteration apply optional mini-batch sampling
         if self.iteration == 1 and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
+            output_batch = Batch(
+                encoded=(x_end, x_start),
+                raw=(None, None),
+            )
+
         if self.iteration == 1:
             loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], x_end[:b])
             loss_backward, info_backward = self.markovian_projection('backward', x_end[b:], x_start[b:])
@@ -228,7 +258,8 @@ class AlphaCSBM(BaseMethod):
         info = {f"test/{k}": v for k, v in {**info_forward, **info_backward}.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('test/iteration', self.iteration, prog_bar=True)
-        return (loss_forward + loss_backward) / 2
+        loss = (loss_forward + loss_backward) / 2
+        return {'loss': loss, 'batch': output_batch}
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer  = self.hparams.optimizer(

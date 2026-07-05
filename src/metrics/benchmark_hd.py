@@ -113,8 +113,6 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
         assert isinstance(self.benchmark, BenchmarkHD)
 
         x_start, x_end = batch.encoded
-        if getattr(pl_module, 'fb', None) == 'backward':
-            x_start, x_end = x_end, x_start
 
         # update unconditional metrics
         pred_x_end = pl_module.sample(x_start)

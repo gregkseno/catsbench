@@ -165,7 +165,7 @@ class ImageMetricsCallback(BaseMetricsCallback):
 
         if not self.metrics:
             self.metrics = {
-                "fid": FID(),
+                "fid": FID(normalize=True),
                 "lpips": LearnedPerceptualImagePatchSimilarity(normalize=True),
                 "mse": MeanSquaredError(),
             }
@@ -190,6 +190,10 @@ class ImageMetricsCallback(BaseMetricsCallback):
         x_start_image, x_end_image = batch.raw
 
         self.codec.to(x_start.device)
+        if x_start_image is None:
+            x_start_image = self.codec.decode_to_image(x_start)
+        if x_end_image is None:
+            x_end_image = self.codec.decode_to_image(x_end)
         pred_x_end = pl_module.sample(x_start)
         pred_x_end_image = self.codec.decode_to_image(pred_x_end).detach()
 

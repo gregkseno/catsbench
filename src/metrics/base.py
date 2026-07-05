@@ -49,14 +49,14 @@ class BaseMetricsCallback(Callback):
         self,
         trainer: Trainer,
         pl_module: BaseMethod,
-        outputs: Any,
+        outputs: dict[str, Any],
         batch: Batch,
         batch_idx: int,
     ) -> None:
         was_training = pl_module.training
         pl_module.eval()
         self._update_metrics(
-            trainer, pl_module, batch, batch_idx, stage='val'
+            trainer, pl_module, outputs['batch'], batch_idx, stage='val'
         )
         if was_training:
             pl_module.train()
@@ -74,14 +74,14 @@ class BaseMetricsCallback(Callback):
         self,
         trainer: Trainer,
         pl_module: BaseMethod,
-        outputs: Any,
+        outputs: dict[str, Any],
         batch: Batch,
         batch_idx: int,
     ) -> None:
         was_training = pl_module.training
         pl_module.eval()
         self._update_metrics(
-            trainer, pl_module, batch, batch_idx, stage='test'
+            trainer, pl_module, outputs['batch'], batch_idx, stage='test'
         )
         if was_training:
             pl_module.train()
