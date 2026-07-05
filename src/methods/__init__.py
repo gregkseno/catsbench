@@ -1,3 +1,4 @@
+from .base import BaseMethod
 from .dlight_sb import DLightSB
 from .dlight_sb_m import DLightSB_M
 from .csbm import CSBM

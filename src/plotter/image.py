@@ -1,20 +1,22 @@
-from typing import Any, Literal, Optional, Tuple
+from typing import Literal, Optional, Tuple, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-
-from lightning import LightningModule, Trainer
-from lightning.pytorch.loggers import WandbLogger, CometLogger, TensorBoardLogger
-from lightning.pytorch.utilities import rank_zero_only
 from torchvision.utils import make_grid
 
+from lightning import Trainer
+from lightning.pytorch.loggers import WandbLogger, CometLogger, TensorBoardLogger
+from lightning.pytorch.utilities import rank_zero_only
+
 from .base import BasePlotterCallback
+from ..data.codec import BaseCodec
+from ..methods import BaseMethod
 from ..utils import fig2img
 
 
 class ImagePlotterCallback(BasePlotterCallback):
-    codec: Optional[Any] = None
+    codec: Optional[BaseCodec] = None
 
     def __init__(
         self,
@@ -48,26 +50,28 @@ class ImagePlotterCallback(BasePlotterCallback):
     def setup(
         self,
         trainer: Trainer,
-        pl_module: LightningModule,
+        pl_module: BaseMethod,
         stage: Literal['fit', 'validate', 'test'],
     ) -> None:
-        if self.codec is not None:
-            return
-        assert hasattr(trainer.datamodule, 'codec'), \
-            'Wrong datamodule! It should have `codec` attribute'
-        self.codec = trainer.datamodule.codec
+        if self.codec is None:
+            assert hasattr(trainer.datamodule, 'codec'), \
+                'Wrong datamodule! It should have `codec` attribute'
+            self.codec = cast(BaseCodec, trainer.datamodule.codec)
+        assert self.codec is not None
 
     @rank_zero_only
     def _log_samples(
         self,
         x_start: torch.Tensor | np.ndarray,
         x_end: torch.Tensor | np.ndarray,
-        pl_module: LightningModule,
+        pl_module: BaseMethod,
         stage: Literal['train', 'val', 'test'] = 'train',
+        raw_x_start: torch.Tensor | np.ndarray | None = None,
+        raw_x_end: torch.Tensor | np.ndarray | None = None,
+        fb: Literal['forward', 'backward'] = 'forward',
     ):
         assert isinstance(x_start, torch.Tensor) and isinstance(x_end, torch.Tensor)
         assert self.codec is not None
-
         fb = getattr(pl_module, 'fb', None) or 'forward'
         pred_x_end = pl_module.sample(x_start)
 
@@ -85,8 +89,14 @@ class ImagePlotterCallback(BasePlotterCallback):
 
         self.codec.to(x_start.device)
         pred_x_end = self.codec.decode_to_image(pred_x_end).detach().cpu().clamp(0, 1)
-        x_start = self.codec.decode_to_image(x_start).detach().cpu().clamp(0, 1)
-        x_end = self.codec.decode_to_image(x_end).detach().cpu().clamp(0, 1)
+        if isinstance(raw_x_start, torch.Tensor) and raw_x_start.is_floating_point():
+            x_start = raw_x_start.detach().cpu().clamp(0, 1)
+        else:
+            x_start = self.codec.decode_to_image(x_start).detach().cpu().clamp(0, 1)
+        if isinstance(raw_x_end, torch.Tensor) and raw_x_end.is_floating_point():
+            x_end = raw_x_end.detach().cpu().clamp(0, 1)
+        else:
+            x_end = self.codec.decode_to_image(x_end).detach().cpu().clamp(0, 1)
 
         nrow = max(1, int(x_start.shape[0] ** 0.5))
         pred_x_end = make_grid(pred_x_end, nrow=nrow).permute(1, 2, 0).numpy()
@@ -155,8 +165,11 @@ class ImagePlotterCallback(BasePlotterCallback):
         self,
         x_start: torch.Tensor | np.ndarray,
         x_end: torch.Tensor | np.ndarray,
-        pl_module: LightningModule,
+        pl_module: BaseMethod,
         stage: Literal['train', 'val', 'test'] = 'train',
+        raw_x_start: torch.Tensor | np.ndarray | None = None,
+        raw_x_end: torch.Tensor | np.ndarray | None = None,
+        fb: Literal['forward', 'backward'] = 'forward',
     ):
         assert isinstance(x_start, torch.Tensor)
         assert self.codec is not None
@@ -193,7 +206,15 @@ class ImagePlotterCallback(BasePlotterCallback):
         trajectories = self.codec.decode_to_image(
             trajectories.reshape(-1, *trajectories.shape[2:])
         )
-        trajectories = trajectories.detach().cpu().clamp(0, 1)
+        trajectories = trajectories.reshape(
+            5, traj_start.shape[0], *trajectories.shape[1:]
+        )
+        if isinstance(raw_x_start, torch.Tensor) and raw_x_start.is_floating_point():
+            raw_traj_start = raw_x_start[:self.num_trajectories]
+            repeats = [self.num_translations] + [1] * raw_traj_start.dim()
+            raw_traj_start = raw_traj_start.unsqueeze(0).repeat(*repeats)
+            trajectories[0] = raw_traj_start.reshape_as(trajectories[0])
+        trajectories = trajectories.flatten(end_dim=1).detach().cpu().clamp(0, 1)
         trajectories = make_grid(
             trajectories, nrow=traj_start.shape[0]
         ).permute(1, 2, 0).numpy()

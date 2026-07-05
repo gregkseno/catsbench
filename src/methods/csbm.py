@@ -6,8 +6,9 @@ from torch.nn import functional as F
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch_ema import ExponentialMovingAverage 
-from lightning import LightningModule
 
+from .base import BaseMethod
+from ..data.batch import Batch
 from ..data.prior import Prior
 from ..utils import optimize_coupling, gumbel_sample
 from ..utils.ranked_logger import RankedLogger
@@ -22,7 +23,7 @@ log = RankedLogger(__name__, rank_zero_only=True)
 
 # NOTE: start and end is swapped because CSBM uses 
 # reverse diffusion notation
-class CSBM(LightningModule):
+class CSBM(BaseMethod):
     def __init__(
         self,
         num_timesteps: int,
@@ -76,7 +77,7 @@ class CSBM(LightningModule):
     def load_state_dict(self, state_dict, strict: bool = True):
         ignored = {"c2st.weight", "c2st.bias", "cond_c2st.weight", "cond_c2st.bias"}
         filtered = {k: v for k, v in state_dict.items() if k not in ignored}
-        missing, unexpected = LightningModule.load_state_dict(self, filtered, strict=False)
+        missing, unexpected = BaseMethod.load_state_dict(self, filtered, strict=False)
 
         filtered_out = [k for k in state_dict if k in ignored]
         if filtered_out:
@@ -159,7 +160,7 @@ class CSBM(LightningModule):
         return loss, info
 
     def training_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Batch, batch_idx: int
     ) -> torch.Tensor:
         self.models[self.fb].train()
         self.models[self.bf].eval()
@@ -174,8 +175,6 @@ class CSBM(LightningModule):
         # otherwise generate samples from reverse model
         if self.iteration > 1:
             x_start, x_end = x_start, self.sample(x_start, fb=self.bf) 
-        outputs = {'x_start': x_end, 'x_end': x_start} # For Logger
-
         optimizers = {
             'forward': self.optimizers()[0],
             'backward': self.optimizers()[1],
@@ -192,6 +191,7 @@ class CSBM(LightningModule):
             self.log_dict(info, prog_bar=True, sync_dist=True) 
             self.log('train/iteration', self.iteration, prog_bar=True)
 
+            step_loss = loss.detach()
             loss = loss / self.hparams.accumulate_grad_batches
             self.manual_backward(loss)
 
@@ -206,7 +206,7 @@ class CSBM(LightningModule):
                     schedulers[self.fb].step(loss.detach()) 
                 optimizers[self.fb].zero_grad()
                 self.emas[self.fb].update()
-        return outputs
+        return step_loss
 
     def on_train_epoch_end(self) -> None:
         # increment iteration count after a full cycle (forward + backward)
@@ -214,13 +214,11 @@ class CSBM(LightningModule):
             self.iteration += 1
 
     def validation_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Batch, batch_idx: int
     ) -> torch.Tensor:        
         # DataLoader have the x_0, x_1 order so we need to swap
         if self.fb == 'forward': x_end, x_start = batch
         else: x_start, x_end = batch
-        outputs = {'x_start': x_end, 'x_end': x_start} # For logger
-
         # if first iteration apply optional mini-batch sampling
         if self.iteration == 1 and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
@@ -228,20 +226,18 @@ class CSBM(LightningModule):
         if self.iteration > 1:
             x_start, x_end = x_start, self.sample(x_start, fb=self.bf)
 
-        _, info = self.markovian_projection(self.fb, x_start, x_end)
+        loss, info = self.markovian_projection(self.fb, x_start, x_end)
         info = {f"val/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('val/iteration', self.iteration, prog_bar=True)
-        return outputs
+        return loss
     
     def test_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Batch, batch_idx: int
     ) -> torch.Tensor:      
         # DataLoader have the x_0, x_1 order so we need to swap
         if self.fb == 'forward': x_end, x_start = batch
         else: x_start, x_end = batch
-        outputs = {'x_start': x_end, 'x_end': x_start} # For logger
-
         # if first iteration apply optional mini-batch sampling
         if self.iteration == 1 and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
@@ -249,11 +245,11 @@ class CSBM(LightningModule):
         if self.iteration > 1:
             x_start, x_end = x_start, self.sample(x_start, fb=self.bf)
 
-        _, info = self.markovian_projection(self.fb, x_start, x_end)
+        loss, info = self.markovian_projection(self.fb, x_start, x_end)
         info = {f"test/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('test/iteration', self.iteration, prog_bar=True)
-        return outputs
+        return loss
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer_forward  = self.hparams.optimizer(params=self.models['forward'].parameters())

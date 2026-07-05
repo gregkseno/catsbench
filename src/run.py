@@ -13,10 +13,11 @@ try:
 except ImportError:
     pass
 import lightning as L
-from lightning import Callback, LightningDataModule, LightningModule, Trainer
+from lightning import Callback, LightningDataModule, Trainer
 from lightning.pytorch.loggers import Logger
 
 from .utils.ranked_logger import RankedLogger
+from .methods import BaseMethod
 from .utils import (
     get_run_directory_from_checkpoint, 
     instantiate_callbacks, 
@@ -57,7 +58,7 @@ def main(config: DictConfig):
     
     log.info(f'Instantiating method <{config.method._target_}>...')
     #print(config)
-    method: LightningModule = instantiate(config.method)
+    method: BaseMethod = instantiate(config.method)
 
     log.info('Instantiating callbacks...')
     callbacks: List[Callback] = instantiate_callbacks(config.get('callbacks'))

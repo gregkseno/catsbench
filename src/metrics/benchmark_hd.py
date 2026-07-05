@@ -1,4 +1,4 @@
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Literal, Optional
 import torch
 
 from torchmetrics import MetricCollection
@@ -13,12 +13,13 @@ from catsbench.metrics import (
 )
 
 from .base import BaseMetricsCallback
-from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM, FSBM, FSBMReg
+from ..data.batch import Batch
+from ..methods import BaseMethod, CSBM, AlphaCSBM
 from ..utils.ranked_logger import RankedLogger
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
-MetricModule = Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM, FSBM, FSBMReg]
+
 
 class BenchmarkHDMetricsCallback(BaseMetricsCallback):
     benchmark: Optional[BenchmarkHD] = None
@@ -46,67 +47,74 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
     def _setup_callback(
         self,
         trainer: Trainer,
-        pl_module: MetricModule, 
+        pl_module: BaseMethod,
         stage: Literal['fit', 'validate', 'test'],
     ) -> None:
-        if self.benchmark is not None and hasattr(pl_module, 'metrics'):
-            return
-
-        assert hasattr(trainer.datamodule, 'benchmark'), \
-            'Wrong datamodule! It should have `benchmark` attribute'
-        self.benchmark = trainer.datamodule.benchmark
+        if self.benchmark is None:
+            assert hasattr(trainer.datamodule, 'benchmark'), \
+                'Wrong datamodule! It should have `benchmark` attribute'
+            self.benchmark: BenchmarkHD = trainer.datamodule.benchmark
+        assert isinstance(self.benchmark, BenchmarkHD)
 
         # initialize unconditional metrics
-        pl_module.metrics = MetricCollection(
-            {
-                'shape_score': ShapeScore(
-                    self.dim, self.num_categories, conditional=False, adjusted=self.adjusted_tv
-                ),
-                'trend_score': TrendScore(
-                    self.dim, self.num_categories, conditional=False, adjusted=self.adjusted_tv
-                ),
-            },
-        )
-
-        # initialize conditional metrics
-        if self.benchmark.reverse: 
-            pl_module.c2st = ClassifierTwoSampleTest(
-                dim=2*self.dim, num_categories=self.num_categories, lr=self.classifier_lr
-            )
-        else:
-            pl_module.cond_metrics = MetricCollection(
+        if not hasattr(pl_module, 'metrics'):
+            pl_module.metrics = MetricCollection(
                 {
-                    'cond_shape_score': ShapeScore(
-                        self.dim, self.num_categories, conditional=True, adjusted=self.adjusted_tv
+                    'shape_score': ShapeScore(
+                        self.dim, self.num_categories, conditional=False, adjusted=self.adjusted_tv
                     ),
-                    'cond_trend_score': TrendScore(
-                        self.dim, self.num_categories, conditional=True, adjusted=self.adjusted_tv
+                    'trend_score': TrendScore(
+                        self.dim, self.num_categories, conditional=False, adjusted=self.adjusted_tv
                     ),
                 },
             )
+
+        # initialize conditional metrics
+        if self.benchmark.reverse:
+            if not hasattr(pl_module, 'c2st'):
+                pl_module.c2st = ClassifierTwoSampleTest(
+                    dim=2*self.dim, num_categories=self.num_categories, lr=self.classifier_lr
+                )
+        else:
+            if not hasattr(pl_module, 'cond_metrics'):
+                pl_module.cond_metrics = MetricCollection(
+                    {
+                        'cond_shape_score': ShapeScore(
+                            self.dim, self.num_categories, conditional=True, adjusted=self.adjusted_tv
+                        ),
+                        'cond_trend_score': TrendScore(
+                            self.dim, self.num_categories, conditional=True, adjusted=self.adjusted_tv
+                        ),
+                    },
+                )
             if not hasattr(pl_module, 'get_transition_logits'):
                 return
-            pl_module.forward_kl_div = TrajectoryKLDivergence(
-                dim=self.dim,
-                num_timesteps=self.num_timesteps,
-                logits=True,
-            )
-            pl_module.reverse_kl_div = TrajectoryKLDivergence(
-                dim=self.dim,
-                num_timesteps=self.num_timesteps,
-                logits=True,
-            )
+            if not hasattr(pl_module, 'forward_kl_div'):
+                pl_module.forward_kl_div = TrajectoryKLDivergence(
+                    dim=self.dim,
+                    num_timesteps=self.num_timesteps,
+                    logits=True,
+                )
+            if not hasattr(pl_module, 'reverse_kl_div'):
+                pl_module.reverse_kl_div = TrajectoryKLDivergence(
+                    dim=self.dim,
+                    num_timesteps=self.num_timesteps,
+                    logits=True,
+                )
 
     def _update_metrics(
         self,
         trainer: Trainer,
-        pl_module: MetricModule,
-        outputs: Dict[str, Any],
-        batch: tuple[torch.Tensor, torch.Tensor],
+        pl_module: BaseMethod,
+        batch: Batch,
         batch_idx: int,
         stage: Literal['train', 'val', 'test'] = 'train',
     ) -> None:
-        x_start, x_end = outputs['x_start'], outputs['x_end']
+        assert isinstance(self.benchmark, BenchmarkHD)
+
+        x_start, x_end = batch.encoded
+        if getattr(pl_module, 'fb', None) == 'backward':
+            x_start, x_end = x_end, x_start
 
         # update unconditional metrics
         pred_x_end = pl_module.sample(x_start)
@@ -156,7 +164,7 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
                 p=pred_transition_logits, 
                 q=self.benchmark.get_transition_logits(pred_trajectory, timesteps)
             )
-            if isinstance(pl_module, (CSBM, AlphaCSBM, FSBM, FSBMReg)):
+            if isinstance(pl_module, (CSBM, AlphaCSBM)):
                 timesteps = (pl_module.prior.num_timesteps + 1) - timesteps
             
             with torch.no_grad(): # remove grads from transitions of DLightSB methods
@@ -168,9 +176,11 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
     def _compute_and_log_metrics(
         self,
         trainer: Trainer,
-        pl_module: MetricModule,
+        pl_module: BaseMethod,
         stage: Literal['train', 'val', 'test'] = 'train',
     ) -> None:
+        assert isinstance(self.benchmark, BenchmarkHD)
+
         fb = getattr(pl_module, 'fb', None) or 'forward' 
         
         # compute and log unconditional metrics

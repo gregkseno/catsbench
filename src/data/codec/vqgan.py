@@ -1,13 +1,11 @@
-from typing import Sequence
-
 import torch
 from omegaconf import OmegaConf
-from torch import nn
 
 from ...vq_diffusion.taming.models.vqgan import VQModel
+from .base import BaseCodec
 
 
-class VQGANCodec(nn.Module):
+class VQGANCodec(BaseCodec):
     def __init__(
         self,
         config_path: str,

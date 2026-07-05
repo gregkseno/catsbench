@@ -6,8 +6,9 @@ from torch.nn import functional as F
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch_ema import ExponentialMovingAverage 
-from lightning import LightningModule
+from .base import BaseMethod
 
+from ..data.batch import Batch
 from ..data.prior import Prior
 from ..utils import optimize_coupling, gumbel_sample
 from ..utils.ranked_logger import RankedLogger
@@ -22,7 +23,7 @@ log = RankedLogger(__name__, rank_zero_only=True)
 
 # NOTE: start and end is swapped because alpha-CSBM uses 
 # reverse diffusion notation
-class AlphaCSBM(LightningModule):
+class AlphaCSBM(BaseMethod):
     def __init__(
         self,
         num_timesteps: int,
@@ -65,7 +66,7 @@ class AlphaCSBM(LightningModule):
     def load_state_dict(self, state_dict, strict: bool = True):
         ignored = {"c2st.weight", "c2st.bias", "cond_c2st.weight", "cond_c2st.bias"}
         filtered = {k: v for k, v in state_dict.items() if k not in ignored}
-        missing, unexpected = LightningModule.load_state_dict(self, filtered, strict=False)
+        missing, unexpected = BaseMethod.load_state_dict(self, filtered, strict=False)
 
         filtered_out = [k for k in state_dict if k in ignored]
         if filtered_out:
@@ -148,33 +149,29 @@ class AlphaCSBM(LightningModule):
         return loss, info
 
     def training_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Batch, batch_idx: int
     ) -> torch.Tensor:
         b = batch[0].shape[0] // 2
         x_end, x_start = batch
         # if first iteration apply optional mini-batch sampling
         if self.iteration == 1 and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
-        outputs = {'x_start': x_end, 'x_end': x_start} # For logger
-
         if self.iteration == 1:
             loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], x_end[:b])
             loss_backward, info_backward = self.markovian_projection('backward', x_end[b:], x_start[b:])
         else:
             pred_x_end = self.sample(x_start[:b], fb='backward')
             pred_x_start = self.sample(x_end[:b], fb='forward')
-            outputs['x_start'] = pred_x_end # for visualization forward training paris
-
             loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], pred_x_end)
             loss_backward, info_backward = self.markovian_projection('backward', x_end[:b], pred_x_start)
-        outputs['loss'] = (loss_forward + loss_backward) / 2
+        loss = (loss_forward + loss_backward) / 2
         
         # logs step-wise loss, `add_dataloader_idx=False` is used to have custom fb prefix
         info = {f"train/{k}": v for k, v in {**info_forward, **info_backward}.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('train/iteration', self.iteration, prog_bar=True)
 
-        return outputs
+        return loss
         
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure=None):
         optimizer.step(closure=optimizer_closure)
@@ -186,56 +183,52 @@ class AlphaCSBM(LightningModule):
             self.iteration += 1
 
     def validation_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Batch, batch_idx: int
     ) -> torch.Tensor:
         b = batch[0].shape[0] // 2
         x_end, x_start = batch
         # if first iteration apply optional mini-batch sampling
         if self.iteration == 1 and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
-        outputs = {'x_start': x_end, 'x_end': x_start} # For logger
-
         if self.iteration == 1:
-            _, info_forward = self.markovian_projection('forward', x_start[:b], x_end[:b])
-            _, info_backward = self.markovian_projection('backward', x_end[b:], x_start[b:])
+            loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], x_end[:b])
+            loss_backward, info_backward = self.markovian_projection('backward', x_end[b:], x_start[b:])
         else:
             pred_x_end = self.sample(x_start[:b], fb='backward')
             pred_x_start = self.sample(x_end[:b], fb='forward')
 
-            _, info_forward = self.markovian_projection('forward', x_start[:b], pred_x_end)
-            _, info_backward = self.markovian_projection('backward', x_end[:b], pred_x_start)
+            loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], pred_x_end)
+            loss_backward, info_backward = self.markovian_projection('backward', x_end[:b], pred_x_start)
         
         # logs step-wise loss, `add_dataloader_idx=False` is used to have custom fb prefix
         info = {f"val/{k}": v for k, v in {**info_forward, **info_backward}.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('val/iteration', self.iteration, prog_bar=True)
-        return outputs
+        return (loss_forward + loss_backward) / 2
 
     def test_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Batch, batch_idx: int
     ) -> torch.Tensor:
         b = batch[0].shape[0] // 2
         x_end, x_start = batch
         # if first iteration apply optional mini-batch sampling
         if self.iteration == 1 and self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
-        outputs = {'x_start': x_end, 'x_end': x_start} # For logger
-
         if self.iteration == 1:
-            _, info_forward = self.markovian_projection('forward', x_start[:b], x_end[:b])
-            _, info_backward = self.markovian_projection('backward', x_end[b:], x_start[b:])
+            loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], x_end[:b])
+            loss_backward, info_backward = self.markovian_projection('backward', x_end[b:], x_start[b:])
         else:
             pred_x_end = self.sample(x_start[:b], fb='backward')
             pred_x_start = self.sample(x_end[:b], fb='forward')
 
-            _, info_forward = self.markovian_projection('forward', x_start[:b], pred_x_end)
-            _, info_backward = self.markovian_projection('backward', x_end[:b], pred_x_start)
+            loss_forward, info_forward = self.markovian_projection('forward', x_start[:b], pred_x_end)
+            loss_backward, info_backward = self.markovian_projection('backward', x_end[:b], pred_x_start)
         
         # logs step-wise loss, `add_dataloader_idx=False` is used to have custom fb prefix
         info = {f"test/{k}": v for k, v in {**info_forward, **info_backward}.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('test/iteration', self.iteration, prog_bar=True)
-        return outputs
+        return (loss_forward + loss_backward) / 2
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer  = self.hparams.optimizer(

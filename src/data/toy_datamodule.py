@@ -6,6 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from lightning import LightningDataModule
 from ..utils import CoupleDataset, RepeatedDataset, continuous_to_discrete
+from .batch import Batch
 
 class DiscreteUniformDataset(Dataset):
     def __init__(
@@ -114,6 +115,9 @@ class ToyDataModule(LightningDataModule):
                 input_dataset=self.hparams.input_dataset(num_samples=size_val, train=False), 
                 target_dataset=self.hparams.target_dataset(num_samples=size_val, train=False)
             )
+
+    def on_after_batch_transfer(self, batch: Any, dataloader_idx: int) -> Any:
+        return Batch(encoded=tuple(batch), raw=tuple(batch))
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader."""

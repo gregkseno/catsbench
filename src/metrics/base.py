@@ -1,9 +1,9 @@
-from typing import Any, Dict, Literal, Tuple
-import torch
+from typing import Any, Literal
 
-from lightning.pytorch import Callback, LightningModule, Trainer
+from lightning.pytorch import Callback, Trainer
 
-MetricModule = LightningModule
+from ..data.batch import Batch
+from ..methods import BaseMethod
 
 
 class BaseMetricsCallback(Callback):
@@ -14,7 +14,7 @@ class BaseMetricsCallback(Callback):
     def _setup_callback(
         self,
         trainer: Trainer,
-        pl_module: MetricModule,
+        pl_module: BaseMethod,
         stage: Literal['fit', 'validate', 'test'],
     ) -> None:
         raise NotImplementedError
@@ -22,7 +22,7 @@ class BaseMetricsCallback(Callback):
     def setup(
         self,
         trainer: Trainer, 
-        pl_module: MetricModule, 
+        pl_module: BaseMethod,
         stage: Literal['fit', 'validate', 'test']
     ) -> None:
         self._setup_callback(trainer, pl_module, stage)
@@ -30,9 +30,8 @@ class BaseMetricsCallback(Callback):
     def _update_metrics(
         self,
         trainer: Trainer,
-        pl_module: MetricModule,
-        outputs: Dict[str, Any],
-        batch: Tuple[torch.Tensor, torch.Tensor],
+        pl_module: BaseMethod,
+        batch: Batch,
         batch_idx: int,
         stage: Literal['train', 'val', 'test'] = 'train',
     ) -> None:
@@ -41,7 +40,7 @@ class BaseMetricsCallback(Callback):
     def _compute_and_log_metrics(
         self,
         trainer: Trainer,
-        pl_module: MetricModule,
+        pl_module: BaseMethod,
         stage: Literal['train', 'val', 'test'] = 'train',
     ) -> None:
         raise NotImplementedError
@@ -49,15 +48,15 @@ class BaseMetricsCallback(Callback):
     def on_validation_batch_end(
         self,
         trainer: Trainer,
-        pl_module: MetricModule,
-        outputs: Dict[str, Any],
-        batch: Tuple[torch.Tensor, torch.Tensor],
+        pl_module: BaseMethod,
+        outputs: Any,
+        batch: Batch,
         batch_idx: int,
     ) -> None:
         was_training = pl_module.training
         pl_module.eval()
         self._update_metrics(
-            trainer, pl_module, outputs, batch, batch_idx, stage='val'
+            trainer, pl_module, batch, batch_idx, stage='val'
         )
         if was_training:
             pl_module.train()
@@ -65,7 +64,7 @@ class BaseMetricsCallback(Callback):
     def on_validation_epoch_end(
         self, 
         trainer: Trainer, 
-        pl_module: MetricModule
+        pl_module: BaseMethod
     ):
         self._compute_and_log_metrics(
             trainer, pl_module, stage='val'
@@ -74,15 +73,15 @@ class BaseMetricsCallback(Callback):
     def on_test_batch_end(
         self,
         trainer: Trainer,
-        pl_module: MetricModule,
-        outputs: Dict[str, Any],
-        batch: Tuple[torch.Tensor, torch.Tensor],
+        pl_module: BaseMethod,
+        outputs: Any,
+        batch: Batch,
         batch_idx: int,
     ) -> None:
         was_training = pl_module.training
         pl_module.eval()
         self._update_metrics(
-            trainer, pl_module, outputs, batch, batch_idx, stage='test'
+            trainer, pl_module, batch, batch_idx, stage='test'
         )
         if was_training:
             pl_module.train()
@@ -90,7 +89,7 @@ class BaseMetricsCallback(Callback):
     def on_test_epoch_end(
         self, 
         trainer: Trainer, 
-        pl_module: MetricModule
+        pl_module: BaseMethod
     ):
         self._compute_and_log_metrics(
             trainer, pl_module, stage='test'

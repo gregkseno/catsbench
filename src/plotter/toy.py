@@ -3,11 +3,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from lightning.pytorch import LightningModule
 from lightning.pytorch.loggers import WandbLogger, CometLogger, TensorBoardLogger
 from lightning.pytorch.utilities import rank_zero_only
 
 from .base import BasePlotterCallback
+from ..methods import BaseMethod
 from ..utils import convert_to_numpy, fig2img
 
 
@@ -67,8 +67,9 @@ class ToyPlotterCallback(BasePlotterCallback):
         self,
         x_start: torch.Tensor | np.ndarray, 
         x_end: torch.Tensor | np.ndarray, 
-        pl_module: LightningModule,
+        pl_module: BaseMethod,
         stage: Literal['train', 'val', 'test'] = 'train',
+        **kwargs,
     ):
         fb = getattr(pl_module, 'fb', None) or 'forward' 
         pred_x_end = convert_to_numpy(pl_module.sample(x_start))
@@ -121,8 +122,9 @@ class ToyPlotterCallback(BasePlotterCallback):
         self,
         x_start: torch.Tensor | np.ndarray, 
         x_end: torch.Tensor | np.ndarray,
-        pl_module: LightningModule,
+        pl_module: BaseMethod,
         stage: Literal['train', 'val', 'test'] = 'train',
+        **kwargs,
     ):
         fb = getattr(pl_module, 'fb', None) or 'forward' 
         fig, ax = plt.subplots(1, 1, **self.trajectories_fig_config)

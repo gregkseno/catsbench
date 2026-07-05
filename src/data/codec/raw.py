@@ -1,8 +1,9 @@
 import torch
-from torch import nn
+
+from .base import BaseCodec
 
 
-class RawImageCodec(nn.Module):
+class RawImageCodec(BaseCodec):
     """Identity categorical codec for integer-valued raw images."""
 
     def __init__(self, num_categories: int = 256) -> None:

@@ -5,10 +5,11 @@ import torch
 from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
-from lightning import LightningModule
 
 from catsbench.utils import lse_matmul
 
+from .base import BaseMethod
+from ..data.batch import Batch
 from ..utils import gumbel_sample
 from ..utils.ranked_logger import RankedLogger
 from ..data.prior import Prior
@@ -21,7 +22,7 @@ HPARAMS = (
     'entropy_warmup_steps', 'distr_init', 'tau', 'sample_prob', 'optimizer', 'scheduler'
 )
 
-class DLightSB(LightningModule):
+class DLightSB(BaseMethod):
     def __init__(
         self, 
         prior: Prior,
@@ -107,7 +108,7 @@ class DLightSB(LightningModule):
     def load_state_dict(self, state_dict, strict: bool = True):
         ignored = {"c2st.weight", "c2st.bias", "cond_c2st.weight", "cond_c2st.bias"}
         filtered = {k: v for k, v in state_dict.items() if k not in ignored}
-        missing, unexpected = LightningModule.load_state_dict(self, filtered, strict=False)
+        missing, unexpected = BaseMethod.load_state_dict(self, filtered, strict=False)
 
         filtered_out = [k for k in state_dict if k in ignored]
         if filtered_out:
@@ -300,52 +301,43 @@ class DLightSB(LightningModule):
         return loss, info
 
     def training_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Batch, batch_idx: int
     ) -> torch.Tensor:
         x_start, x_end = batch
-        outputs = {'x_start': x_start, 'x_end': x_end} # For logger
-
         loss, info = self.loss(x_start, x_end)
-        outputs['loss'] = loss
 
         # logs step-wise loss
         info = {f"train/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('train/iteration', self.iteration, prog_bar=True)
-        return outputs
+        return loss
 
     def on_train_epoch_end(self) -> None:
         self.iteration += 1
 
     def validation_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Batch, batch_idx: int
     ) -> torch.Tensor:
         x_start, x_end = batch
-        outputs = {'x_start': x_start, 'x_end': x_end} # For logger
-
         loss, info = self.loss(x_start, x_end)
-        outputs['loss'] = loss
 
         # logs step-wise loss
         info = {f"val/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('val/iteration', self.iteration, prog_bar=True)
-        return outputs
+        return loss
 
     def test_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: Batch, batch_idx: int
     ) -> torch.Tensor:
         x_start, x_end = batch
-        outputs = {'x_start': x_start, 'x_end': x_end} # For logger
-
         loss, info = self.loss(x_start, x_end)
-        outputs['loss'] = loss
 
         # logs step-wise loss
         info = {f"test/{k}": v for k, v in info.items()}
         self.log_dict(info, prog_bar=True, sync_dist=True) 
         self.log('test/iteration', self.iteration, prog_bar=True)
-        return outputs
+        return loss
 
     def configure_optimizers(self) -> List[Dict[str, Any]]:
         optimizer = self.hparams.optimizer(

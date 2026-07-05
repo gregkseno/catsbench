@@ -6,6 +6,7 @@ from lightning import LightningDataModule
 from ..utils.ranked_logger import RankedLogger
 from ..utils import CoupleDataset, SampledCoupleDataset
 from catsbench import BenchmarkHD
+from .batch import Batch
 
 
 log = RankedLogger(__name__, rank_zero_only=True)
@@ -63,6 +64,9 @@ class BenchmarkDataModule(LightningDataModule):
                 input_dataset=self.benchmark.input_dataset,
                 target_dataset=self.benchmark.target_dataset,
             )
+
+    def on_after_batch_transfer(self, batch: Any, dataloader_idx: int) -> Any:
+        return Batch(encoded=tuple(batch), raw=tuple(batch))
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader."""

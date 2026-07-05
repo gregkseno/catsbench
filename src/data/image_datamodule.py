@@ -6,11 +6,12 @@ import pandas as pd
 from PIL import Image
 import torch
 from lightning import LightningDataModule
-from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 
 from ..utils import CoupleDataset, RepeatedDataset
+from .batch import Batch
+from .codec import BaseCodec
 
 
 class DiscreteColoredMNISTDataset(Dataset):
@@ -74,7 +75,7 @@ class CelebaDataset(Dataset):
         self.return_names = return_names
         self.data_dir= data_dir
 
-        subset = pd.read_csv(os.path.join(data_dir, 'celeba', 'list_attr_celeba.csv'))
+        subset = pd.read_csv(os.path.join(data_dir, 'list_attr_celeba.csv'))
 
         if isinstance(split, int): 
             # this logic mathches setup of previously trained models
@@ -109,7 +110,10 @@ class CelebaDataset(Dataset):
             sub_folder = 'raw'
 
         self.image_names = subset['image_id']
-        self.dataset = [os.path.join(data_dir, 'celeba', 'img_align_celeba', sub_folder, image) for image in self.image_names.tolist()]
+        self.dataset = [
+            os.path.join(data_dir, 'img_align_celeba', sub_folder, image)
+            for image in self.image_names.tolist()
+        ]
 
     def __getitem__(self, index):
         if self.use_quantized:
@@ -135,7 +139,9 @@ class CelebaDataset(Dataset):
                 transforms.Resize((self.size, self.size)),
                 transforms.ToTensor(),
         ])
-        image = Image.open(os.path.join(self.data_dir, 'celeba', 'img_align_celeba', 'raw', index))
+        image = Image.open(
+            os.path.join(self.data_dir, 'img_align_celeba', 'raw', index)
+        )
         image = image.convert('RGB')
         image = transform(image)
         return image
@@ -147,7 +153,7 @@ class ImageDataModule(LightningDataModule):
         self,
         input_dataset: Callable[..., Dataset],
         target_dataset: Callable[..., Dataset],
-        codec: nn.Module,
+        codec: BaseCodec,
         batch_size: int,
         val_batch_size: int,
         num_train_batches: int,
@@ -185,10 +191,13 @@ class ImageDataModule(LightningDataModule):
     def on_after_batch_transfer(self, batch: Any, dataloader_idx: int) -> Any:
         mode = self.hparams.train_data_mode if self.trainer.training else self.hparams.eval_data_mode
         if mode == "encoded":
-            return batch
+            return Batch(encoded=tuple(batch), raw=tuple(batch))
         x, y = batch
         self.codec.to(x.device)
-        return self.codec.encode_to_cats(x), self.codec.encode_to_cats(y)
+        return Batch(
+            encoded=(self.codec.encode_to_cats(x), self.codec.encode_to_cats(y)),
+            raw=(x, y),
+        )
     
     def train_dataloader(self) -> DataLoader[Any]:
         return DataLoader(

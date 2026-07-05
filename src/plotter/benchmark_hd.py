@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, cast
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -9,10 +9,9 @@ from lightning.pytorch.loggers import WandbLogger, CometLogger
 from lightning.pytorch.utilities import rank_zero_only
 
 from .base import BasePlotterCallback
-from ..methods import DLightSB, DLightSB_M, CSBM, AlphaCSBM
+from ..catsbench.benchmarks.hd import BenchmarkHD
+from ..methods import BaseMethod
 from ..utils import convert_to_numpy, fig2img
-
-from catsbench import BenchmarkHD
 
 
 class BenchmarkHDPlotterCallback(BasePlotterCallback):
@@ -76,16 +75,16 @@ class BenchmarkHDPlotterCallback(BasePlotterCallback):
     def setup(
         self,
         trainer: Trainer, 
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM], 
+        pl_module: BaseMethod,
         stage: Literal['fit', 'validate', 'test']
     ) -> None:
-        if self.benchmark is not None:
-            return
-        assert hasattr(trainer.datamodule, 'benchmark'), \
-            'Wrong datamodule! It should have `benchmark` attribute'
-        self.benchmark = trainer.datamodule.benchmark
+        if self.benchmark is None:
+            assert hasattr(trainer.datamodule, 'benchmark'), \
+                'Wrong datamodule! It should have `benchmark` attribute'
+            self.benchmark = cast(BenchmarkHD, trainer.datamodule.benchmark)
+        assert isinstance(self.benchmark, BenchmarkHD)
 
-        if self.dim > 2:
+        if self.dim > 2 and not hasattr(self.pca, 'components_'):
             samples = torch.cat(
                 self.benchmark.sample_input_target(num_samples=10_000),
                 dim=0
@@ -98,10 +97,11 @@ class BenchmarkHDPlotterCallback(BasePlotterCallback):
         self,
         x_start: torch.Tensor | np.ndarray, 
         x_end: torch.Tensor | np.ndarray, 
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
+        pl_module: BaseMethod,
         stage: Literal['train', 'val', 'test'] = 'train',
+        **kwargs,
     ):
-        fb = getattr(pl_module, 'fb', None) or 'forward' 
+        fb = getattr(pl_module, 'fb', None) or 'forward'
         pred_x_end = convert_to_numpy(pl_module.sample(x_start))
         x_start = convert_to_numpy(x_start)
         x_end = convert_to_numpy(x_end)
@@ -155,9 +155,12 @@ class BenchmarkHDPlotterCallback(BasePlotterCallback):
         self,
         x_start: torch.Tensor | np.ndarray, 
         x_end: torch.Tensor | np.ndarray,
-        pl_module: Union[DLightSB, DLightSB_M, CSBM, AlphaCSBM],
+        pl_module: BaseMethod,
         stage: Literal['train', 'val', 'test'] = 'train',
+        **kwargs,
     ):
+        assert isinstance(self.benchmark, BenchmarkHD)
+
         fb = getattr(pl_module, 'fb', None) or 'forward' 
         fig, axs = plt.subplots(1, 2, **self.trajectories_fig_config)
         for i in range(2):
