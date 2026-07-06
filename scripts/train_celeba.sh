@@ -15,6 +15,14 @@ SEED=5
 EXPERIMENTS=(u0005 u001)
 EXPERIMENT="${EXPERIMENTS[$SLURM_ARRAY_TASK_ID]}"
 
+if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
+  BASE=30000
+  OFFSET=$(( SLURM_ARRAY_TASK_ID % 1000 ))
+  export MASTER_PORT=$(( BASE + OFFSET ))
+else
+  export MASTER_PORT=29500
+fi
+
 python -m src.run \
   seed=${SEED} data.num_workers=2 data.pin_memory=true \
   experiment=alpha_csbm/celeba/${EXPERIMENT}
