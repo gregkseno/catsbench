@@ -1,23 +1,48 @@
 """PyTorch backends for log-semiring matrix multiplication."""
 
+import math
+
 import torch
 from torch.autograd import Function
 
 
-def cpu_lse_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+def _validate_eps(eps: float) -> None:
+    if eps < 0:
+        raise ValueError(f"eps must be non-negative, got {eps}.")
+
+
+def cpu_lse_matmul(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    eps: float = 0.0,
+) -> torch.Tensor:
     """Reference CPU implementation using an explicitly broadcast reduction."""
     if a.is_cuda or b.is_cuda:
         raise ValueError("The 'cpu' LSE backend only accepts CPU tensors.")
-    return torch.logsumexp(a.unsqueeze(-1) + b.unsqueeze(-3), dim=-2)
+    _validate_eps(eps)
+    terms = a.unsqueeze(-1) + b.unsqueeze(-3)
+    if eps == 0:
+        return torch.logsumexp(terms, dim=-2)
+
+    # Include epsilon as an additional finite log-domain term. Unlike applying
+    # logaddexp after the reduction, this keeps the all--inf backward finite.
+    log_eps = terms.new_full((*terms.shape[:-2], 1, terms.shape[-1]), math.log(eps))
+    return torch.logsumexp(torch.cat((terms, log_eps), dim=-2), dim=-2)
 
 
-def normalized_lse_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+def normalized_lse_matmul(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    eps: float = 0.0,
+) -> torch.Tensor:
     """Fast path for normalized log-probabilities.
 
     Both operands must be log-probabilities, so their exponentials are bounded
     by one. No normalization checks are performed in this hot path.
     """
-    return torch.log(torch.matmul(a.float().exp(), b.float().exp()))
+    _validate_eps(eps)
+    product = torch.matmul(a.float().exp(), b.float().exp())
+    return torch.log(product + eps)
 
 
 def _scaled_operands(
@@ -44,14 +69,24 @@ class _AnyLogitsLSEMatmul(Function):
     """Memory-aware autograd for stabilized, GEMM-backed LSE matmul."""
 
     @staticmethod
-    def forward(ctx, a: torch.Tensor, b: torch.Tensor):
+    def forward(ctx, a: torch.Tensor, b: torch.Tensor, eps: float):
+        _validate_eps(eps)
         a = a.float()
         b = b.float()
         scaled_a, scaled_b, a_max, b_max = _scaled_operands(a, b)
-        output = torch.log(torch.matmul(scaled_a, scaled_b)) + a_max + b_max
+        product = torch.matmul(scaled_a, scaled_b)
+        shift = a_max + b_max
+        if eps == 0:
+            output = torch.log(product) + shift
+        else:
+            output = torch.logaddexp(
+                torch.log(product) + shift,
+                shift.new_full((), math.log(eps)),
+            )
 
         ctx.a_shape = a.shape
         ctx.b_shape = b.shape
+        ctx.eps = eps
         ctx.save_for_backward(a, b)
         return output
 
@@ -60,8 +95,13 @@ class _AnyLogitsLSEMatmul(Function):
         a, b = ctx.saved_tensors
         scaled_a, scaled_b, _, _ = _scaled_operands(a, b)
         product = torch.matmul(scaled_a, scaled_b)
+        if ctx.eps == 0:
+            denominator = product
+        else:
+            _, _, a_max, b_max = _scaled_operands(a, b)
+            denominator = product + ctx.eps * torch.exp(-(a_max + b_max))
         normalized_grad = torch.where(
-            product > 0, grad_out.float() / product, 0.0
+            denominator > 0, grad_out.float() / denominator, 0.0
         )
 
         d_a = None
@@ -77,10 +117,14 @@ class _AnyLogitsLSEMatmul(Function):
                 scaled_a.transpose(-2, -1), normalized_grad
             )
             d_b = d_b.sum_to_size(ctx.b_shape)
-        return d_a, d_b
+        return d_a, d_b, None
 
 
-def any_logits_lse_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+def any_logits_lse_matmul(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    eps: float = 0.0,
+) -> torch.Tensor:
     """Stable implementation for arbitrary normalized or raw logits.
 
     CUDA uses shifted GEMM for throughput. CPU uses the exact reference
@@ -88,5 +132,5 @@ def any_logits_lse_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     GPU fast path.
     """
     if not a.is_cuda and not b.is_cuda:
-        return cpu_lse_matmul(a, b)
-    return _AnyLogitsLSEMatmul.apply(a, b)
+        return cpu_lse_matmul(a, b, eps=eps)
+    return _AnyLogitsLSEMatmul.apply(a, b, eps)

@@ -27,8 +27,13 @@ def lse_matmul(
     b: torch.Tensor,
     use_exp2: bool = True,
     implementation: LSEImplementation | None = None,
+    eps: float = 0.0,
 ) -> torch.Tensor:
     """Compute ``logsumexp_k(a[..., i, k] + b[..., k, j])``.
+
+    With ``eps > 0``, compute ``log(sum_k(exp(a + b)) + eps)``. The epsilon
+    participates inside every backend's reduction so exact-zero outputs and
+    their gradients remain finite.
 
     The default ``triton`` backend provides strict log-domain CUDA arithmetic.
     Use ``normalized`` only for normalized log-probabilities, ``any`` for
@@ -49,18 +54,18 @@ def lse_matmul(
     backend = cast(LSEImplementation, selected)
 
     if backend == "cpu":
-        return cpu_lse_matmul(a, b)
+        return cpu_lse_matmul(a, b, eps=eps)
     if backend == "normalized":
-        return normalized_lse_matmul(a, b)
+        return normalized_lse_matmul(a, b, eps=eps)
     if backend == "any":
-        return any_logits_lse_matmul(a, b)
+        return any_logits_lse_matmul(a, b, eps=eps)
     if not (a.is_cuda and b.is_cuda):
         raise ValueError("The 'triton' LSE backend requires CUDA tensors.")
 
     # Triton autotuning requires an active CUDA driver, so import it lazily.
     from .triton import triton_lse_matmul
 
-    return triton_lse_matmul(a, b, use_exp2=use_exp2)
+    return triton_lse_matmul(a, b, use_exp2=use_exp2, eps=eps)
 
 __all__ = [
     "DEFAULT_IMPLEMENTATION",

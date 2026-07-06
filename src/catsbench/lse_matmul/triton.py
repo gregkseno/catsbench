@@ -13,13 +13,21 @@ MAX_BATCH_DIMS = 6
 
 class TritonLSEMatmul(Function):
     @staticmethod
-    def forward(ctx, a: torch.Tensor, b: torch.Tensor, use_exp2: bool = True):
+    def forward(
+        ctx,
+        a: torch.Tensor,
+        b: torch.Tensor,
+        use_exp2: bool = True,
+        eps: float = 0.0,
+    ):
         if a.shape[-1] != b.shape[-2]:
             raise ValueError(f"Inner dim mismatch: a[..., M, K]={a.shape}, b[..., K, N]={b.shape}")
 
         ctx.a_shape = a.shape
         ctx.b_shape = b.shape
         ctx.use_exp2 = bool(use_exp2)
+        if eps < 0:
+            raise ValueError(f"eps must be non-negative, got {eps}.")
 
         a = a.float()
         b = b.float()
@@ -61,6 +69,10 @@ class TritonLSEMatmul(Function):
             BATCH_DIMS=len(c_batch_dims),
             USE_EXP2=use_exp2,
         )
+        if eps != 0:
+            # This runs inside custom autograd forward. Save and return the
+            # safeguarded normalization so backward never forms -inf - -inf.
+            c = torch.logaddexp(c, c.new_full((), math.log(eps)))
         ctx.save_for_backward(a_view, b_view, c)
         return c
 
@@ -146,12 +158,13 @@ class TritonLSEMatmul(Function):
 
         dA = dA_full.sum_to_size(ctx.a_shape)
         dB = dB_full.sum_to_size(ctx.b_shape)
-        return dA, dB, None
+        return dA, dB, None, None
 
 def triton_lse_matmul(
     a: torch.Tensor,
     b: torch.Tensor,
     use_exp2: bool = True,
+    eps: float = 0.0,
 ) -> torch.Tensor:
     if a.shape[-1] != b.shape[-2]:
         raise ValueError(
@@ -159,4 +172,4 @@ def triton_lse_matmul(
         )
     if not (a.is_cuda and b.is_cuda):
         raise ValueError("The 'triton' LSE backend requires CUDA tensors.")
-    return TritonLSEMatmul.apply(a, b, use_exp2)
+    return TritonLSEMatmul.apply(a, b, use_exp2, eps)

@@ -19,13 +19,17 @@ def logits_prod(
     log_matrix1: torch.Tensor,
     log_matrix2: torch.Tensor,
     implementation: Optional[LSEImplementation] = None,
+    eps: float = 0.0,
 ) -> torch.Tensor:
     extra = log_matrix1.ndim - 3
     if extra < 0:
         raise ValueError(f"logits must have at least 1 dim for batch and 1 dim for S, got shape {log_matrix1.shape}")
     log_matrix2 = broadcast(log_matrix2, num_add_dims=extra, dim=1) # [batchsize, ..., num_categories, num_categories]
     return lse_matmul(
-        log_matrix1, log_matrix2, implementation=implementation
+        log_matrix1,
+        log_matrix2,
+        implementation=implementation,
+        eps=eps,
     )
 
 def stable_clamp(
