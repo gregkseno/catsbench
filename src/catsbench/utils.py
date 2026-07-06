@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 
-from .lse_matmul.lse_matmul import lse_matmul
+from .lse_matmul import LSEImplementation, lse_matmul
 
 
 def broadcast(tensor: torch.Tensor, num_add_dims: int, dim: int = -1) -> torch.Tensor:
@@ -15,12 +15,18 @@ def broadcast(tensor: torch.Tensor, num_add_dims: int, dim: int = -1) -> torch.T
     shape = [*tensor.shape[:dim], *([1] * num_add_dims), *tensor.shape[dim:]]
     return tensor.reshape(*shape)
 
-def logits_prod(log_matrix1: torch.Tensor, log_matrix2: torch.Tensor) -> torch.Tensor: 
+def logits_prod(
+    log_matrix1: torch.Tensor,
+    log_matrix2: torch.Tensor,
+    implementation: Optional[LSEImplementation] = None,
+) -> torch.Tensor:
     extra = log_matrix1.ndim - 3
     if extra < 0:
         raise ValueError(f"logits must have at least 1 dim for batch and 1 dim for S, got shape {log_matrix1.shape}")
     log_matrix2 = broadcast(log_matrix2, num_add_dims=extra, dim=1) # [batchsize, ..., num_categories, num_categories]
-    return lse_matmul(log_matrix1, log_matrix2)
+    return lse_matmul(
+        log_matrix1, log_matrix2, implementation=implementation
+    )
 
 def stable_clamp(
     tensor: torch.FloatTensor, type: Literal['logs', 'probs'] = 'probs'

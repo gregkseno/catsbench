@@ -74,6 +74,14 @@ x_end = bench.sample(x_start)    # [B=32, D=2]
 
 > [!NOTE]
 > See the end-to-end benchmark workflow (initialization, evaluation, metrics, plotting) in `notebooks/benchmark_usage.ipynb`
+>
+
+### LSE matmul backends
+
+`lse_matmul` supports `cpu` (exact reference), `normalized` (fast normalized
+log-probabilities), `any` (stable arbitrary logits), and `triton`
+(strict CUDA log-domain; default). Select one with `implementation=` or the
+`LSE_BACKEND` environment variable.
 
 -----
 

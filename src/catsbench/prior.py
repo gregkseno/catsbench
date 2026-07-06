@@ -41,7 +41,8 @@ def get_cum_matrices(
         else: # use log space matrix multiplication
             log_cum_matrices[timestep] = lse_matmul(
                 log_cum_matrices[timestep-1], 
-                log_onestep_matrix
+                log_onestep_matrix,
+                implementation="normalized",
             )
     return log_cum_matrices
     
@@ -118,7 +119,11 @@ def gaussian_onestep(
     
     log_p_onestep_mat_orig = log_p_onestep_mat.clone()
     for _ in range(num_skip_steps - 1):
-        log_p_onestep_mat = lse_matmul(log_p_onestep_mat, log_p_onestep_mat_orig)
+        log_p_onestep_mat = lse_matmul(
+            log_p_onestep_mat,
+            log_p_onestep_mat_orig,
+            implementation="normalized",
+        )
     return log_p_onestep_mat
 
 # Cumulative returns with following pattern
@@ -274,7 +279,11 @@ class Prior(nn.Module):
 
         # fact2 is 'guess of x_{t-1}' from x_{0}
         x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
-        log_fact2 = self.add_eps(logits_prod(x_start_logits, self.log_p_cum[t-1]))
+        log_fact2 = self.add_eps(logits_prod(
+            x_start_logits,
+            self.log_p_cum[t-1],
+            implementation="normalized",
+        ))
 
         p_posterior_logits = log_fact1 + log_fact2
 
@@ -305,7 +314,9 @@ class Prior(nn.Module):
 
         x_end_logits = x_end_logits.log_softmax(dim=-1)
         log_fact2 = self.add_eps(logits_prod(
-            x_end_logits, self.log_p_cum[self.num_timesteps - t] #.transpose(-2, -1)
+            x_end_logits,
+            self.log_p_cum[self.num_timesteps - t], #.transpose(-2, -1)
+            implementation="normalized",
         ))
 
         p_posterior_logits = log_fact1 + log_fact2

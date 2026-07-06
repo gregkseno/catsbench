@@ -1,15 +1,17 @@
+"""Triton implementation of log-semiring matrix multiplication."""
+
 import math
 import torch
 from torch.autograd import Function
 import triton
 
-from .forward_kernel import _lse_fwd_kernel
-from .backward_kernel import _lse_bwd_dA_kernel, _lse_bwd_dB_kernel
+from .triton_forward import _lse_fwd_kernel
+from .triton_backward import _lse_bwd_dA_kernel, _lse_bwd_dB_kernel
 
 
 MAX_BATCH_DIMS = 6
 
-class LSEMatmul(Function):
+class TritonLSEMatmul(Function):
     @staticmethod
     def forward(ctx, a: torch.Tensor, b: torch.Tensor, use_exp2: bool = True):
         if a.shape[-1] != b.shape[-2]:
@@ -61,7 +63,7 @@ class LSEMatmul(Function):
         )
         ctx.save_for_backward(a_view, b_view, c)
         return c
-    
+
     @staticmethod
     def backward(ctx, grad_out: torch.Tensor):
         a_view, b_view, c = ctx.saved_tensors
@@ -146,17 +148,15 @@ class LSEMatmul(Function):
         dB = dB_full.sum_to_size(ctx.b_shape)
         return dA, dB, None
 
-def lse_matmul(
-    a: torch.Tensor, 
+def triton_lse_matmul(
+    a: torch.Tensor,
     b: torch.Tensor,
-    use_exp2: bool = True
+    use_exp2: bool = True,
 ) -> torch.Tensor:
-    
-    if a.is_cuda and b.is_cuda:
-        return LSEMatmul.apply(a, b, use_exp2)
-
-    # CPU fallback
-    return torch.logsumexp(
-        a.unsqueeze(-1) + b.unsqueeze(-3), dim=-2
-    )
-    
+    if a.shape[-1] != b.shape[-2]:
+        raise ValueError(
+            f"Inner dimension mismatch: {a.shape[-1]} != {b.shape[-2]}"
+        )
+    if not (a.is_cuda and b.is_cuda):
+        raise ValueError("The 'triton' LSE backend requires CUDA tensors.")
+    return TritonLSEMatmul.apply(a, b, use_exp2)
