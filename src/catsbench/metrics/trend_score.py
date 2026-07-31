@@ -21,7 +21,7 @@ class TrendScore(Metric):
         num_categories: int,
         conditional: bool = False,
         reduction: Literal['mean', 'none'] = 'mean',
-        adjusted: bool = True,
+        adjusted: bool = False,
     ) -> None:
         super().__init__()
         if dim < 2:

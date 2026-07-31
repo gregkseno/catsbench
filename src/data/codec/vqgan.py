@@ -14,7 +14,7 @@ class VQGANCodec(BaseCodec):
         super().__init__()
         self.config = OmegaConf.load(config_path).model.params
         self.model = VQModel(**self.config).eval()
-        state_dict = torch.load(ckpt_path, map_location="cpu")["state_dict"]
+        state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=False)["state_dict"]
         self.model.load_state_dict(state_dict, strict=False)
         self.centroids = self.model.quantize.embedding.weight.data
 

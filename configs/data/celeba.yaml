@@ -1,12 +1,12 @@
 _target_: src.data.ImageDataModule
 dim: 128
-latent_dim: 16
 num_categories: 1024
 batch_size: 32 # per device; Lightning shards the dataset across devices
 val_batch_size: 25 # per device
 num_train_batches: 20000
-num_workers: 8
+num_workers: 2
 pin_memory: true
+persistent_workers: true
 train_data_mode: encoded
 eval_data_mode: raw
 

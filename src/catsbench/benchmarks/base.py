@@ -19,7 +19,7 @@ from ..utils import (
 log = Logger('catsbench', rank_zero_only=True)
 STDS = {2:2, 16:2, 64:2, 3072:15, 4096:15}
 
-@dataclass
+@dataclass(kw_only=True)
 class BenchmarkBaseConfig:
     dim: int
     input_shape: Tuple[int, ...]
@@ -36,6 +36,7 @@ class BenchmarkBaseConfig:
     reverse: bool
     tau: float
     params_dtype: str
+    eps: float = 1e-20
 
 class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
 
@@ -59,6 +60,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
         self.reverse = config.reverse
         self.tau = config.tau
         self.params_dtype = getattr(torch, config.params_dtype)
+        self.eps = config.eps
 
         if num_timesteps is not None:
             # check that num_timesteps is compatible config's num_timesteps and num_skip_steps
@@ -102,6 +104,7 @@ class BenchmarkBase(nn.Module, BenchmarkModelHubMixin):
             num_timesteps=self.num_timesteps,
             num_skip_steps=self.num_skip_steps,
             tau=self.tau,
+            eps=self.eps,
             prior_type=self.prior_type,
             dtype=self.params_dtype,
             device=device

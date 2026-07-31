@@ -8,8 +8,9 @@ from lightning import Trainer
 from lightning.pytorch.loggers import WandbLogger, CometLogger
 from lightning.pytorch.utilities import rank_zero_only
 
+from catsbench import BenchmarkHD
+
 from .base import BasePlotterCallback
-from ..catsbench.benchmarks.hd import BenchmarkHD
 from ..methods import BaseMethod
 from ..utils import convert_to_numpy, fig2img
 

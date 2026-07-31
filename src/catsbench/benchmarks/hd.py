@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal, Optional, Tuple
 
 import numpy as np
 import torch
@@ -14,9 +14,10 @@ from ..utils import Logger
 
 log = Logger(__name__, rank_zero_only=True)
 
-@dataclass 
+@dataclass(kw_only=True)
 class BenchmarkHDConfig(BenchmarkBaseConfig):
     input_distribution: Literal['gaussian', 'uniform']
+    sample_quantize_range: Tuple[float, float] = (-3, 3)
 
 class BenchmarkHD(BenchmarkBase):
     def __init__(
@@ -28,6 +29,7 @@ class BenchmarkHD(BenchmarkBase):
         device: str = 'cpu'
     ):
         self.input_distribution = config.input_distribution
+        self.sample_quantize_range = tuple(config.sample_quantize_range)
         super().__init__(config, num_timesteps)
         self.register_buffers(init_benchmark, device)
             
@@ -41,12 +43,12 @@ class BenchmarkHD(BenchmarkBase):
         if self.input_distribution == 'gaussian':
             samples = continuous_to_discrete(
                 torch.randn(size=[num_samples, self.dim], device=self.device), 
-                self.num_categories, quantize_range=(-7, 7)
+                self.num_categories, quantize_range=self.sample_quantize_range
             )
         elif self.input_distribution == 'uniform':
             samples = continuous_to_discrete(
                 6 * torch.rand(size=(num_samples, self.dim), device=self.device) - 3,
-                self.num_categories, quantize_range=(-7, 7)
+                self.num_categories, quantize_range=self.sample_quantize_range
             )
         else:
             raise ValueError(f'Unknown input distribution: {self.input_distribution}')

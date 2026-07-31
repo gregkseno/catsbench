@@ -35,7 +35,8 @@ def lse_matmul(
     participates inside every backend's reduction so exact-zero outputs and
     their gradients remain finite.
 
-    The default ``triton`` backend provides strict log-domain CUDA arithmetic.
+    The default ``triton`` backend provides strict log-domain CUDA arithmetic
+    and automatically falls back to the exact reference reduction on CPU.
     Use ``normalized`` only for normalized log-probabilities, ``any`` for
     stabilized arbitrary logits, or ``cpu`` as an exact CPU reference.
     """
@@ -59,8 +60,12 @@ def lse_matmul(
         return normalized_lse_matmul(a, b, eps=eps)
     if backend == "any":
         return any_logits_lse_matmul(a, b, eps=eps)
+    if not a.is_cuda and not b.is_cuda:
+        return cpu_lse_matmul(a, b, eps=eps)
     if not (a.is_cuda and b.is_cuda):
-        raise ValueError("The 'triton' LSE backend requires CUDA tensors.")
+        raise ValueError(
+            "LSE operands must be on the same device; got one CPU and one CUDA tensor."
+        )
 
     # Triton autotuning requires an active CUDA driver, so import it lazily.
     from .triton import triton_lse_matmul

@@ -32,7 +32,7 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
         num_timesteps: int,
         train_test_split: Optional[float] = 0.8,
         classifier_lr: Optional[float] = 1e-2,
-        adjusted_tv: bool = True,
+        adjusted_tv: bool = False,
     ):
         super().__init__()
         self.dim = dim

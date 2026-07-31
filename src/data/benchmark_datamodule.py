@@ -3,9 +3,10 @@ from typing import Any, Callable, Optional, Tuple, Union
 from torch.utils.data import Dataset, DataLoader
 from lightning import LightningDataModule
 
+from catsbench import BenchmarkHD
+
 from ..utils.ranked_logger import RankedLogger
 from ..utils import CoupleDataset, SampledCoupleDataset
-from catsbench import BenchmarkHD
 from .batch import Batch
 
 
@@ -22,6 +23,7 @@ class BenchmarkDataModule(LightningDataModule):
         num_train_batches: int,
         benchmark: Callable, # from_pretrained method of Benchmark classes
         num_timesteps: Optional[int] = None,
+        num_skip_steps: Optional[int] = None,
         num_workers: int = 0,
         pin_memory: bool = False,
     ) -> None:
@@ -37,7 +39,11 @@ class BenchmarkDataModule(LightningDataModule):
 
     def prepare_data(self) -> None:
         # cache the benchmark initialization
-        self.hparams.benchmark(init_benchmark=False, device='cpu')
+        self.hparams.benchmark(
+            num_timesteps=self.hparams.num_timesteps,
+            init_benchmark=False,
+            device='cpu',
+        )
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data by seting variables: `self.data_train`, `self.data_val`, `self.data_test`."""
@@ -51,6 +57,7 @@ class BenchmarkDataModule(LightningDataModule):
                 init_benchmark=False, 
                 device=device
             )
+            self._validate_loaded_benchmark_metadata()
 
             ###################### TRAINING DATASET ######################
             self.data_train = SampledCoupleDataset(
@@ -63,6 +70,35 @@ class BenchmarkDataModule(LightningDataModule):
             self.data_val = CoupleDataset(
                 input_dataset=self.benchmark.input_dataset,
                 target_dataset=self.benchmark.target_dataset,
+            )
+
+    def _validate_loaded_benchmark_metadata(self) -> None:
+        assert self.benchmark is not None
+        expected = {
+            'dim': self.benchmark.dim,
+            'input_shape': tuple(self.benchmark.input_shape),
+            'num_categories': self.benchmark.num_categories,
+        }
+        actual = {
+            'dim': self.hparams.dim,
+            'input_shape': tuple(self.hparams.input_shape),
+            'num_categories': self.hparams.num_categories,
+        }
+        mismatches = [
+            f'{key}: config={actual[key]!r}, benchmark={expected[key]!r}'
+            for key in expected
+            if actual[key] != expected[key]
+        ]
+        if self.hparams.num_skip_steps is not None and self.hparams.num_skip_steps != self.benchmark.num_skip_steps:
+            mismatches.append(
+                f'num_skip_steps: config={self.hparams.num_skip_steps!r}, '
+                f'benchmark={self.benchmark.num_skip_steps!r}'
+            )
+        if mismatches:
+            raise ValueError(
+                'Loaded benchmark metadata does not match the local data config. '
+                'The Hugging Face benchmark config is authoritative; update the local '
+                'config or choose the matching benchmark. Mismatches: ' + '; '.join(mismatches)
             )
 
     def on_after_batch_transfer(self, batch: Any, dataloader_idx: int) -> Any:

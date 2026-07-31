@@ -254,6 +254,13 @@ class BenchmarkModelHubMixin(PyTorchModelHubMixin):
             with open(config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
 
+            if 'config' in model_kwargs:
+                raise ValueError(
+                    'Cannot override benchmark config while loading a saved benchmark. '
+                    f'The saved {constants.CONFIG_NAME} is authoritative; pass only supported '
+                    'runtime overrides such as num_timesteps.'
+                )
+
             # Decode custom types in config
             for key, value in config.items():
                 if key in cls._hub_mixin_init_parameters:
@@ -324,7 +331,7 @@ class BenchmarkModelHubMixin(PyTorchModelHubMixin):
         local_files_only: bool,
         token: Union[str, bool, None],
         map_location: str = 'cpu',
-        strict: bool = False,
+        strict: bool = True,
         **model_kwargs,
     ):
         '''Load Pytorch pretrained weights and return the loaded model.'''

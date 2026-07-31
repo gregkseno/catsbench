@@ -1,9 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=test-hd-matching
-#SBATCH --partition=ais-gpu
-#SBATCH --reservation=HPC-2743
+#SBATCH --partition=gpu_devel
 #SBATCH --gpus=1
-#SBATCH --array=0-47%1
+#SBATCH --array=0-47%2
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=10GB
 #SBATCH --ntasks=1
@@ -13,7 +12,7 @@
 sleep $((SLURM_ARRAY_TASK_ID * 5))
 source activate dot_bench
 SEED=2
-METHOD=dlight_sb_m # (dlight_sb_m csbm alpha_csbm)
+METHOD=csbm # (dlight_sb_m csbm alpha_csbm)
 
 case "${SLURM_ARRAY_TASK_ID}" in
   0)

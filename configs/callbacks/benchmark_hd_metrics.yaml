@@ -12,6 +12,6 @@ plotter_callback:
   _target_: src.plotter.BenchmarkHDPlotterCallback
   dim: ${data.dim}
   num_categories: ${data.num_categories}
-  num_samples: 1536 # number of samples to visualizeZ
+  num_samples: 1536 # number of samples to visualize
   num_trajectories: 4
   num_translations: 3

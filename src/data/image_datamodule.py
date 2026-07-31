@@ -161,6 +161,7 @@ class ImageDataModule(LightningDataModule):
         eval_data_mode: Literal["raw", "encoded"] = "raw",
         num_workers: int = 0,
         pin_memory: bool = False,
+        persistent_workers: bool = False,
         num_categories: int = 256,
         dim: int = 32,
     ) -> None:
@@ -203,6 +204,9 @@ class ImageDataModule(LightningDataModule):
         return DataLoader(
             self.data_train, batch_size=self.hparams.batch_size, shuffle=True,
             num_workers=self.hparams.num_workers, pin_memory=self.hparams.pin_memory,
+            persistent_workers=(
+                self.hparams.persistent_workers and self.hparams.num_workers > 0
+            ),
             drop_last=True,
         )
 
@@ -210,10 +214,16 @@ class ImageDataModule(LightningDataModule):
         return DataLoader(
             self.data_val, batch_size=self.hparams.val_batch_size,
             num_workers=self.hparams.num_workers, pin_memory=self.hparams.pin_memory,
+            persistent_workers=(
+                self.hparams.persistent_workers and self.hparams.num_workers > 0
+            ),
         )
 
     def test_dataloader(self) -> DataLoader[Any]:
         return DataLoader(
             self.data_val, batch_size=self.hparams.val_batch_size,
             num_workers=self.hparams.num_workers, pin_memory=self.hparams.pin_memory,
+            persistent_workers=(
+                self.hparams.persistent_workers and self.hparams.num_workers > 0
+            ),
         )

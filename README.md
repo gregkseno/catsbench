@@ -44,7 +44,7 @@ from catsbench import BenchmarkHD
 
 bench = BenchmarkHD.from_pretrained(
     "gregkseno/catsbench",
-    "hd_d2_s50_gaussian_a0.02_gaussian",
+    "hd_d2_s50_prior_gaussian_a0.02",
     init_benchmark=False,  # skip heavy initialization at load time
 )
 ```

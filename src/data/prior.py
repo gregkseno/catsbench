@@ -42,7 +42,7 @@ def get_cum_matrices(
             log_cum_matrices[timestep] = lse_matmul(
                 log_cum_matrices[timestep-1], 
                 log_onestep_matrix,
-                implementation="normalized",
+                implementation="triton",
             )
     return log_cum_matrices
     
@@ -122,7 +122,7 @@ def gaussian_onestep(
         log_p_onestep_mat = lse_matmul(
             log_p_onestep_mat,
             log_p_onestep_mat_orig,
-            implementation="normalized",
+            implementation="triton",
         )
     return log_p_onestep_mat
 
@@ -244,7 +244,7 @@ class Prior(nn.Module):
         is_final_step = broadcast(t, x_start.dim() - 1) == self.num_timesteps + 1
         x_t = torch.where(is_final_step, x_end, x_t)
 
-        is_first_step = broadcast(t, x_start.dim() - 1) == 1
+        is_first_step = broadcast(t, x_start.dim() - 1) == 0
         x_t = torch.where(is_first_step, x_start, x_t)
 
         return x_t

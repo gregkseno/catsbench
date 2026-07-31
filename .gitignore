@@ -13,3 +13,4 @@ images
 build
 **/*.egg-info
 dist
+checkpoints

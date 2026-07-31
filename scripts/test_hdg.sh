@@ -1,9 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=test-hd
 #SBATCH --partition=ais-gpu
-#SBATCH --reservation=HPC-2743
 #SBATCH --gpus=1
-#SBATCH --array=0-11%1
+#SBATCH --array=7-11%2
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=10GB
 #SBATCH --ntasks=1

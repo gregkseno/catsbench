@@ -1,5 +1,5 @@
 _target_: src.methods.models.latent_transformer.LatentTransformer
-input_dim: ${data.latent_dim}
+input_dim: 16
 num_categories: ${data.num_categories}
 num_timesteps: ${prior.num_timesteps}
 hidden_dim: 256

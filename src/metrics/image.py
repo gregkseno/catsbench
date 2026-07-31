@@ -173,6 +173,9 @@ class ImageMetricsCallback(BaseMetricsCallback):
         if stage == "test" and not self.test_metrics:
             self.test_metrics = {"cmmd": CMMD()}
 
+        for metric in (*self.metrics.values(), *self.test_metrics.values()):
+            metric.to(pl_module.device)
+
     @torch.no_grad()
     def _update_metrics(
         self,
