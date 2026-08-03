@@ -7,6 +7,7 @@ defaults:
   - override /callbacks:
     - model_checkpoint
     - model_summary
+    - progress_bar
     - benchmark_hd_metrics
   - override /trainer: gpu
   - _self_

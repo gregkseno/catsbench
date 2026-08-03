@@ -44,6 +44,12 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
         self.classifier_lr = classifier_lr
         self.adjusted_tv = adjusted_tv
 
+        self.metrics: Optional[MetricCollection] = None
+        self.cond_metrics: Optional[MetricCollection] = None
+        self.c2st: Optional[ClassifierTwoSampleTest] = None
+        self.forward_kl_div: Optional[TrajectoryKLDivergence] = None
+        self.reverse_kl_div: Optional[TrajectoryKLDivergence] = None
+
     def _setup_callback(
         self,
         trainer: Trainer,
@@ -56,9 +62,10 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
             self.benchmark: BenchmarkHD = trainer.datamodule.benchmark
         assert isinstance(self.benchmark, BenchmarkHD)
 
-        # initialize unconditional metrics
-        if not hasattr(pl_module, 'metrics'):
-            pl_module.metrics = MetricCollection(
+        # Keep metrics on the callback so their modules and state are not included
+        # in the benchmark method's checkpoints.
+        if self.metrics is None:
+            self.metrics = MetricCollection(
                 {
                     'shape_score': ShapeScore(
                         self.dim, self.num_categories, conditional=False, adjusted=self.adjusted_tv
@@ -71,13 +78,13 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
 
         # initialize conditional metrics
         if self.benchmark.reverse:
-            if not hasattr(pl_module, 'c2st'):
-                pl_module.c2st = ClassifierTwoSampleTest(
+            if self.c2st is None:
+                self.c2st = ClassifierTwoSampleTest(
                     dim=2*self.dim, num_categories=self.num_categories, lr=self.classifier_lr
                 )
         else:
-            if not hasattr(pl_module, 'cond_metrics'):
-                pl_module.cond_metrics = MetricCollection(
+            if self.cond_metrics is None:
+                self.cond_metrics = MetricCollection(
                     {
                         'cond_shape_score': ShapeScore(
                             self.dim, self.num_categories, conditional=True, adjusted=self.adjusted_tv
@@ -87,20 +94,30 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
                         ),
                     },
                 )
-            if not hasattr(pl_module, 'get_transition_logits'):
-                return
-            if not hasattr(pl_module, 'forward_kl_div'):
-                pl_module.forward_kl_div = TrajectoryKLDivergence(
-                    dim=self.dim,
-                    num_timesteps=self.num_timesteps,
-                    logits=True,
-                )
-            if not hasattr(pl_module, 'reverse_kl_div'):
-                pl_module.reverse_kl_div = TrajectoryKLDivergence(
-                    dim=self.dim,
-                    num_timesteps=self.num_timesteps,
-                    logits=True,
-                )
+            if hasattr(pl_module, 'get_transition_logits'):
+                if self.forward_kl_div is None:
+                    self.forward_kl_div = TrajectoryKLDivergence(
+                        dim=self.dim,
+                        num_timesteps=self.num_timesteps,
+                        logits=True,
+                    )
+                if self.reverse_kl_div is None:
+                    self.reverse_kl_div = TrajectoryKLDivergence(
+                        dim=self.dim,
+                        num_timesteps=self.num_timesteps,
+                        logits=True,
+                    )
+
+        callback_metrics = (
+            self.metrics,
+            self.c2st,
+            self.cond_metrics,
+            self.forward_kl_div,
+            self.reverse_kl_div,
+        )
+        for metric in callback_metrics:
+            if metric is not None:
+                metric.to(pl_module.device)
 
     def _update_metrics(
         self,
@@ -111,34 +128,39 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
         stage: Literal['train', 'val', 'test'] = 'train',
     ) -> None:
         assert isinstance(self.benchmark, BenchmarkHD)
+        assert self.metrics is not None
 
         x_start, x_end = batch.encoded
 
         # update unconditional metrics
         pred_x_end = pl_module.sample(x_start)
-        pl_module.metrics.update(x_end, pred_x_end)
+        self.metrics.update(x_end, pred_x_end)
 
         # update conditional metrics
         if self.benchmark.reverse:
+            assert self.c2st is not None
             loader_attr = "train_dataloader" if stage == "train" else f"{stage}_dataloaders"
             limit = getattr(trainer, f"limit_{stage}_batches")
             loader = getattr(trainer, loader_attr)
             num_batches = limit if limit is not None else len(loader)
             train_mode = batch_idx < int(num_batches * self.train_test_split)
 
-            pl_module.c2st.update(
+            self.c2st.update(
                 real_data=torch.cat([x_start, x_end], dim=-1),
                 pred_data=torch.cat([x_start, pred_x_end], dim=-1),
                 train=train_mode
             )
         else:
+            assert self.cond_metrics is not None
             repeated_x_start = x_start[0].unsqueeze(0).expand(self.num_cond_samples, -1)
             cond_x_end = self.benchmark.sample(repeated_x_start)
             cond_pred_x_end = pl_module.sample(repeated_x_start)
-            pl_module.cond_metrics.update(cond_x_end, cond_pred_x_end)
+            self.cond_metrics.update(cond_x_end, cond_pred_x_end)
 
             if not hasattr(pl_module, 'get_transition_logits'):
                 return
+            assert self.forward_kl_div is not None
+            assert self.reverse_kl_div is not None
 
             true_trajectory, true_transition_logits = self.benchmark.sample_trajectory(x_start, return_transitions=True)
             pred_trajectory, pred_transition_logits = pl_module.sample_trajectory(x_start, return_transitions=True)
@@ -158,7 +180,7 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
             # the KL div must be computed in cross fashion:
             # forward KL is KL with respect to true trajectory
             # reverse KL is KL with respect to predicted trajectory
-            pl_module.reverse_kl_div.update(
+            self.reverse_kl_div.update(
                 p=pred_transition_logits, 
                 q=self.benchmark.get_transition_logits(pred_trajectory, timesteps)
             )
@@ -166,7 +188,7 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
                 timesteps = (pl_module.prior.num_timesteps + 1) - timesteps
             
             with torch.no_grad(): # remove grads from transitions of DLightSB methods
-                pl_module.forward_kl_div.update(
+                self.forward_kl_div.update(
                     p=true_transition_logits, 
                     q=pl_module.get_transition_logits(true_trajectory, timesteps)
                 )
@@ -178,33 +200,38 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
         stage: Literal['train', 'val', 'test'] = 'train',
     ) -> None:
         assert isinstance(self.benchmark, BenchmarkHD)
+        assert self.metrics is not None
 
         fb = getattr(pl_module, 'fb', None) or 'forward' 
         
         # compute and log unconditional metrics
-        metrics = pl_module.metrics.compute()
+        metrics = self.metrics.compute()
         metrics = {f'{stage}/{k}_{fb}': v for k, v in metrics.items()}
         pl_module.log_dict(metrics)
-        pl_module.metrics.reset()
+        self.metrics.reset()
 
         # compute and log conditional metrics
         if self.benchmark.reverse:
-            c2st = pl_module.c2st.compute()
+            assert self.c2st is not None
+            c2st = self.c2st.compute()
             pl_module.log(f'{stage}/c2st_{fb}', c2st)
-            pl_module.c2st.reset()
+            self.c2st.reset()
         else:
-            cond_metrics = pl_module.cond_metrics.compute()
+            assert self.cond_metrics is not None
+            cond_metrics = self.cond_metrics.compute()
             cond_metrics = {f'{stage}/{k}_{fb}': v for k, v in cond_metrics.items()}
             pl_module.log_dict(cond_metrics)
-            pl_module.cond_metrics.reset()
+            self.cond_metrics.reset()
 
             if not hasattr(pl_module, 'get_transition_logits'):
                 return
-            
-            forward_kl_div = pl_module.forward_kl_div.compute()
-            pl_module.log(f'{stage}/forward_kl_div_{fb}', forward_kl_div)
-            pl_module.forward_kl_div.reset()
+            assert self.forward_kl_div is not None
+            assert self.reverse_kl_div is not None
 
-            reverse_kl_div = pl_module.reverse_kl_div.compute()
+            forward_kl_div = self.forward_kl_div.compute()
+            pl_module.log(f'{stage}/forward_kl_div_{fb}', forward_kl_div)
+            self.forward_kl_div.reset()
+
+            reverse_kl_div = self.reverse_kl_div.compute()
             pl_module.log(f'{stage}/reverse_kl_div_{fb}', reverse_kl_div)
-            pl_module.reverse_kl_div.reset()
+            self.reverse_kl_div.reset()

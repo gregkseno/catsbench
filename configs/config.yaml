@@ -5,6 +5,7 @@ defaults:
   - method: csbm
   - callbacks: 
     - model_summary
+    - progress_bar
     - toy_metrics
   - logger: wandb
   - trainer: gpu

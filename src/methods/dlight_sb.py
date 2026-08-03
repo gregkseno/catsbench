@@ -105,20 +105,6 @@ class DLightSB(BaseMethod):
 
         self._did_weight_init = True
 
-    def load_state_dict(self, state_dict, strict: bool = True):
-        ignored = {"c2st.weight", "c2st.bias", "cond_c2st.weight", "cond_c2st.bias"}
-        filtered = {k: v for k, v in state_dict.items() if k not in ignored}
-        missing, unexpected = BaseMethod.load_state_dict(self, filtered, strict=False)
-
-        filtered_out = [k for k in state_dict if k in ignored]
-        if filtered_out:
-            log.info(f"Ignored keys during load_state_dict: {filtered_out}")
-        if missing:
-            log.info(f"Missing keys after load (expected): {missing}")
-        if unexpected:
-            log.info(f"Unexpected keys (ignored by strict=False): {unexpected}")
-        return missing, unexpected
-    
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         checkpoint['iteration'] = self.iteration
 
@@ -278,8 +264,9 @@ class DLightSB(BaseMethod):
         log_c = self.get_log_c(true_x_start).mean()
         loss = log_c - log_v
 
-        posterior_eff_k, prior_eff_k = 0, 0
-        if self._ent_lambda() > 0:
+        ent_lambda = self._ent_lambda()
+        track_entropy_grad = torch.is_grad_enabled() and ent_lambda > 0
+        with torch.set_grad_enabled(track_entropy_grad):
             last_timestep = torch.full(
                 size=(true_x_start.shape[0],), 
                 fill_value=self.hparams.num_timesteps + 1, 
@@ -287,11 +274,12 @@ class DLightSB(BaseMethod):
             )
             log_z = self._log_u_t(true_x_start, last_timestep).sum(dim=1) # [B, K]
             ent = self.entropy_loss(self.log_alpha[None, :] + log_z, dim=-1)
-            loss = loss - self._ent_lambda() * ent.mean()
 
-            with torch.no_grad():
-                posterior_eff_k = ent.exp().mean()
-                prior_eff_k = self.entropy_loss(self.log_alpha, dim=0).exp()
+        if ent_lambda > 0:
+            loss = loss - ent_lambda * ent.mean()
+
+        posterior_eff_k = ent.detach().exp().mean()
+        prior_eff_k = self.entropy_loss(self.log_alpha.detach(), dim=0).exp()
 
         info = {
             f'log_v': log_v, f'log_c': log_c,
