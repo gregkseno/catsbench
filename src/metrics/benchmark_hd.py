@@ -14,7 +14,7 @@ from catsbench.metrics import (
 
 from .base import BaseMetricsCallback
 from ..data.batch import Batch
-from ..methods import BaseMethod, CSBM, AlphaCSBM
+from ..methods import ARCSBM, BaseMethod, CSBM, AlphaCSBM
 from ..utils.ranked_logger import RankedLogger
 
 
@@ -166,6 +166,7 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
             pred_trajectory, pred_transition_logits = pl_module.sample_trajectory(x_start, return_transitions=True)
             
             # we need only num_steps + 1 points to compute transitions
+            true_next = true_trajectory[1:]
             true_trajectory = true_trajectory[:-1]
             pred_trajectory = pred_trajectory[:-1]
             
@@ -173,6 +174,7 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
             timesteps = timesteps.repeat_interleave(true_trajectory.shape[1])
             
             true_trajectory = true_trajectory.flatten(end_dim=1)
+            true_next = true_next.flatten(end_dim=1)
             pred_trajectory = pred_trajectory.flatten(end_dim=1)
             true_transition_logits = true_transition_logits.flatten(end_dim=1)
             pred_transition_logits = pred_transition_logits.flatten(end_dim=1)
@@ -188,9 +190,16 @@ class BenchmarkHDMetricsCallback(BaseMetricsCallback):
                 timesteps = (pl_module.prior.num_timesteps + 1) - timesteps
             
             with torch.no_grad(): # remove grads from transitions of DLightSB methods
+                transition_kwargs = {}
+                if isinstance(pl_module, ARCSBM):
+                    # AR transition logits are conditionals along a prefix.  A
+                    # forward-KL path must use the prefixes from that true path.
+                    transition_kwargs["x_prev"] = true_next
                 self.forward_kl_div.update(
                     p=true_transition_logits, 
-                    q=pl_module.get_transition_logits(true_trajectory, timesteps)
+                    q=pl_module.get_transition_logits(
+                        true_trajectory, timesteps, **transition_kwargs
+                    )
                 )
             
     def _compute_and_log_metrics(
