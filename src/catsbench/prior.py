@@ -192,7 +192,7 @@ class Prior(nn.Module):
             return log_probs
         log_eps = log_probs.new_tensor(self.eps).log()
         return torch.logaddexp(log_probs, log_eps)
-        
+    
     def extract(
         self, 
         mat_type: Literal['onestep', 'cumulative'], 
@@ -267,7 +267,8 @@ class Prior(nn.Module):
         If logits is True, the output is summed over x_0 and transition matrix returned.''' 
         if not logits:
             x_start_logits = torch.log(
-                torch.nn.functional.one_hot(x_start, self.num_categories) + self.eps
+                torch.nn.functional.one_hot(x_start, self.num_categories)
+                + (torch.finfo(self.dtype).tiny if self.eps == 0 else self.eps)
             )
         else:
             x_start_logits = x_start.clone()
@@ -304,7 +305,8 @@ class Prior(nn.Module):
         If logits is True, the output is summed over x_1 and transition matrix returned.''' 
         if not logits:
             x_end_logits = torch.log(
-                torch.nn.functional.one_hot(x_end, self.num_categories) + self.eps
+                torch.nn.functional.one_hot(x_end, self.num_categories)
+                + (torch.finfo(self.dtype).tiny if self.eps == 0 else self.eps)
             )
         else:
             x_end_logits = x_end.clone()
