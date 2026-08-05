@@ -37,7 +37,7 @@ prior:
   num_skip_steps: 8
 
 method:
-  num_potentials: 1000
+  num_potentials: 16
   kl_loss_coeff: 1.0
   mse_loss_coeff: 0.0
   use_mini_batch: false

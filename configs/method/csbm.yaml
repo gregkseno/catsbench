@@ -4,7 +4,7 @@ model_forward: ${model}
 model_backward: ${model}
 
 optimizer:
-  _target_: torch.optim.AdamW
+  _target_: torch.optim.Adam
   _partial_: true
   lr: 1e-4
   betas: [0.95, 0.99]
