@@ -55,7 +55,7 @@ class C2SBM(CSBM):
         )
 
         true_x_prev = gumbel_sample(true_logits, tau=1.0, dim=-1)
-        pred_logits = self.models[fb](x_t, t, true_x_prev)
+        pred_logits = self.models[fb](x_t, t, x_prev=true_x_prev)
 
         loss = true_logits.new_zeros(())
         kl = true_logits.new_zeros(())
@@ -94,7 +94,7 @@ class C2SBM(CSBM):
 
         transition_logits = []
         for index in range(event_size):
-            logits = model(x_t, t, samples.clone())
+            logits = model(x_t, t, x_prev=samples.clone())
             logits = logits.reshape(batch_size, event_size, -1)[:, index]
             transition_logits.append(logits)
 

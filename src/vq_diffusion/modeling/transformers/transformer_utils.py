@@ -45,6 +45,14 @@ class FullAttention(nn.Module):
         v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1))) # (B, nh, T, T)
 
+        if mask is not None:
+            mask = mask.to(device=att.device, dtype=torch.bool)
+            if mask.dim() == 2:
+                mask = mask[None, None]
+            elif mask.dim() == 3:
+                mask = mask[:, None]
+            att = att.masked_fill(~mask, torch.finfo(att.dtype).min)
+
         att = F.softmax(att, dim=-1) # (B, nh, T, T)
         att = self.attn_drop(att)
         y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
@@ -264,13 +272,21 @@ class Block(nn.Module):
         elif self.attn_type == "selfcondition":
             a, att = self.attn(self.ln1(x, timestep), encoder_output, mask=mask)
             x = x + a
-            x = x + self.mlp(self.ln2(x, encoder_output.long()))   # only one really use encoder_output
+            mlp_input = self.ln2(x, encoder_output.long())
+            if isinstance(self.mlp, Conv_MLP):
+                x = x + self.mlp(mlp_input, causal=mask is not None)
+            else:
+                x = x + self.mlp(mlp_input)
             return x, att
         else:  # 'self'
             a, att = self.attn(self.ln1(x, timestep), encoder_output, mask=mask)
             x = x + a 
 
-        x = x + self.mlp(self.ln2(x))
+        mlp_input = self.ln2(x)
+        if isinstance(self.mlp, Conv_MLP):
+            x = x + self.mlp(mlp_input, causal=mask is not None)
+        else:
+            x = x + self.mlp(mlp_input)
 
         return x, att
 
@@ -281,11 +297,30 @@ class Conv_MLP(nn.Module):
         self.act = act
         self.conv2 = nn.Conv2d(in_channels=int(mlp_hidden_times * n_embd), out_channels=n_embd, kernel_size=3, stride=1, padding=1)
         self.dropout = nn.Dropout(resid_pdrop)
+        causal_mask = torch.tensor(
+            [[1, 1, 1], [1, 1, 0], [0, 0, 0]], dtype=torch.float32
+        ).view(1, 1, 3, 3)
+        self.register_buffer("causal_mask", causal_mask, persistent=False)
 
-    def forward(self, x):
+    def forward(self, x, causal=False):
         n =  x.size()[1]
         x = rearrange(x, 'b (h w) c -> b c h w', h=int(math.sqrt(n)))
-        x = self.conv2(self.act(self.conv1(x)))
+        if causal:
+            x = F.conv2d(
+                x,
+                self.conv1.weight * self.causal_mask,
+                self.conv1.bias,
+                padding=1,
+            )
+            x = self.act(x)
+            x = F.conv2d(
+                x,
+                self.conv2.weight * self.causal_mask,
+                self.conv2.bias,
+                padding=1,
+            )
+        else:
+            x = self.conv2(self.act(self.conv1(x)))
         x = rearrange(x, 'b c h w -> b (h w) c')
         return self.dropout(x)
 
@@ -704,11 +739,18 @@ class UnCondition2ImageTransformer(nn.Module):
             ]
             return optim_groups
 
-    def forward(self, input, t):
+    def forward(self, input, t, context=None, mask=None):
         emb = self.content_emb(input) # type: ignore
+        if context is not None:
+            if context.shape != emb.shape:
+                raise ValueError(
+                    f"context shape {tuple(context.shape)} must match "
+                    f"embedding shape {tuple(emb.shape)}"
+                )
+            emb = emb + context
 
-        for block_idx in range(len(self.blocks)):   
-            emb, _ = self.blocks[block_idx](emb, None, t) # B x (Ld+Lt) x D, B x (Ld+Lt) x (Ld+Lt)
+        for block_idx in range(len(self.blocks)):
+            emb, _ = self.blocks[block_idx](emb, None, t, mask=mask) # B x (Ld+Lt) x D, B x (Ld+Lt) x (Ld+Lt)
         logits = self.to_logits(emb) # B x (Ld+Lt) x n
         # out = rearrange(logits, 'b l c -> b c l')
         return logits

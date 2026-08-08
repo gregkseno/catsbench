@@ -63,12 +63,12 @@ class CausalDenoiserTransformer(nn.Module):
         self.register_buffer("causal_mask", causal_mask, persistent=False)
 
     def _validate_inputs(
-        self, x_t: torch.Tensor, t: torch.Tensor, x_prefix: torch.Tensor
+        self, x_t: torch.Tensor, t: torch.Tensor, x_prev: torch.Tensor
     ) -> None:
-        if x_t.shape != x_prefix.shape:
+        if x_t.shape != x_prev.shape:
             raise ValueError(
-                f"x_t and x_prefix must have equal shapes, got "
-                f"{tuple(x_t.shape)} and {tuple(x_prefix.shape)}"
+                f"x_t and x_prev must have equal shapes, got "
+                f"{tuple(x_t.shape)} and {tuple(x_prev.shape)}"
             )
         if x_t.ndim < 2 or x_t[0].numel() != self.input_dim:
             raise ValueError(
@@ -84,14 +84,14 @@ class CausalDenoiserTransformer(nn.Module):
         self,
         x_t: torch.Tensor,
         t: torch.Tensor,
-        x_prefix: torch.Tensor,
+        x_prev: torch.Tensor,
     ) -> torch.Tensor:
         """Return all conditional logits using a shifted causal prefix."""
-        self._validate_inputs(x_t, t, x_prefix)
+        self._validate_inputs(x_t, t, x_prev)
         batch_size = x_t.shape[0]
         event_shape = x_t.shape[1:]
         x_flat = x_t.reshape(batch_size, self.input_dim).long()
-        prefix_flat = x_prefix.reshape(batch_size, self.input_dim).long()
+        prefix_flat = x_prev.reshape(batch_size, self.input_dim).long()
 
         shifted = torch.full_like(prefix_flat, self.bos_token_id)
         if self.input_dim > 1:
