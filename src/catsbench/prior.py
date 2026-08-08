@@ -158,6 +158,8 @@ class Prior(nn.Module):
         self.tau = tau
         self.eps = eps
         self.prior_type = prior_type
+        if eps < 0:
+            raise ValueError(f'eps must be non-negative, got {eps}.')
         if isinstance(dtype, str):
             dtype = getattr(torch, dtype, torch.float32)
 
@@ -167,12 +169,19 @@ class Prior(nn.Module):
                 dtype=dtype, device=device
             )
         elif prior_type == 'uniform':
+            if eps > 0:
+                retention = 1 - (alpha * num_categories) / (num_categories - 1)
+                retention /= (1 + num_categories * eps) ** (1 / num_skip_steps)
+                alpha = (1 - retention) * (num_categories - 1) / num_categories
             log_p_onestep = uniform_onestep(
                 alpha, num_categories, num_skip_steps, 
                 dtype=dtype, device=device
             )
         else:
             raise NotImplementedError(f'Got unknown prior: {prior_type}!')
+        if prior_type == 'gaussian' and eps > 0:
+            log_p_onestep = self.add_eps(log_p_onestep)
+            log_p_onestep -= log_p_onestep.logsumexp(dim=-1, keepdim=True)
         log_p_cum = get_cum_matrices(
             prior_type, alpha, num_timesteps, 
             num_skip_steps, log_p_onestep
@@ -253,7 +262,7 @@ class Prior(nn.Module):
         r'Calculates log probability of $p(x_{t} | x_{0}, x_{1})$.'
         log_p_start_t = self.extract('cumulative', t, row_id=x_start)
         log_p_t_end = self.extract('cumulative', self.num_timesteps + 1 - t, column_id=x_end)
-        log_probs = self.add_eps(log_p_start_t) + self.add_eps(log_p_t_end)
+        log_probs = log_p_start_t + log_p_t_end
         return log_probs - log_probs.logsumexp(dim=-1, keepdim=True)
 
     def posterior_logits(
@@ -268,7 +277,7 @@ class Prior(nn.Module):
         if not logits:
             x_start_logits = torch.log(
                 torch.nn.functional.one_hot(x_start, self.num_categories)
-                + (torch.finfo(self.dtype).tiny if self.eps == 0 else self.eps)
+                + torch.finfo(self.dtype).tiny
             )
         else:
             x_start_logits = x_start.clone()
@@ -276,7 +285,7 @@ class Prior(nn.Module):
             f'x_start_logits.shape: {x_start_logits.shape}, x_t.shape: {x_t.shape}'
         x_start_logits = x_start_logits.to(self.dtype)
         # fact1 is 'guess of x_{t}' from x_{t-1}
-        log_fact1 = self.add_eps(self.extract('onestep', t, row_id=x_t))
+        log_fact1 = self.extract('onestep', t, row_id=x_t)
 
         # fact2 is 'guess of x_{t-1}' from x_{0}
         x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
@@ -284,7 +293,6 @@ class Prior(nn.Module):
             x_start_logits,
             self.log_p_cum[t-1],
             implementation="normalized",
-            eps=self.eps,
         )
 
         p_posterior_logits = log_fact1 + log_fact2
@@ -306,21 +314,20 @@ class Prior(nn.Module):
         if not logits:
             x_end_logits = torch.log(
                 torch.nn.functional.one_hot(x_end, self.num_categories)
-                + (torch.finfo(self.dtype).tiny if self.eps == 0 else self.eps)
+                + torch.finfo(self.dtype).tiny
             )
         else:
             x_end_logits = x_end.clone()
         assert x_end_logits.shape == x_t.shape + (self.num_categories,), \
             f'x_end_logits.shape: {x_end_logits.shape}, x_t.shape: {x_t.shape}'
 
-        log_fact1 = self.add_eps(self.extract('onestep', t+1, row_id=x_t))
+        log_fact1 = self.extract('onestep', t+1, row_id=x_t)
 
         x_end_logits = x_end_logits.log_softmax(dim=-1)
         log_fact2 = logits_prod(
             x_end_logits,
             self.log_p_cum[self.num_timesteps - t], #.transpose(-2, -1)
             implementation="normalized",
-            eps=self.eps,
         )
 
         p_posterior_logits = log_fact1 + log_fact2
