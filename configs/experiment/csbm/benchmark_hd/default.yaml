@@ -29,6 +29,7 @@ model:
 prior:
   alpha: ???
   prior_type: ???
+  eps: 0
   num_timesteps: ???
   num_skip_steps: ???
 

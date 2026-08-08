@@ -21,7 +21,7 @@ prior:
 
 method:
   dim: 3072
-  num_potentials: 16
+  num_potentials: 1000
   distr_init: uniform
 
 trainer:
