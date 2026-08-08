@@ -1,7 +1,0 @@
-_target_: src.methods.models.ar_mlp.AutoregressiveDenoiserMLP
-input_dim: ${data.dim}
-num_categories: ${data.num_categories}
-num_timesteps: ${prior.num_timesteps}
-category_dim: 16
-timestep_dim: 8
-layers: [256, 256, 256]
