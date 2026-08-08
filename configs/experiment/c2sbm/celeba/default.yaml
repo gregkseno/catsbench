@@ -48,3 +48,7 @@ callbacks:
   image_plotter:
     input_label: Male
     target_label: Female
+
+logger:
+  wandb:
+    project: c2sbm
