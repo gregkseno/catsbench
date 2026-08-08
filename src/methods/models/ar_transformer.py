@@ -1,23 +1,8 @@
-"""Compact causal Transformer denoiser for autoregressive CSBM."""
-
 import torch
 from torch import nn
 
 
 class AutoregressiveDenoiserTransformer(nn.Module):
-    """Predict every AR reverse-transition conditional in one training pass.
-
-    The complete noisy state ``x_t`` is projected to one global conditioning
-    vector, so every output position can use all of ``x_t``.  Reverse-state
-    tokens are shifted right and processed with causal self-attention::
-
-        input:  [BOS, x_{t-1}^1, ..., x_{t-1}^{D-1}]
-        output: [p(x_{t-1}^1), ..., p(x_{t-1}^D)]
-
-    This is intentionally a small decoder-only architecture rather than the
-    larger image Transformer used elsewhere in the repository.
-    """
-
     def __init__(
         self,
         input_dim: int,
@@ -50,8 +35,6 @@ class AutoregressiveDenoiserTransformer(nn.Module):
         self.position_embedding = nn.Embedding(input_dim, hidden_dim)
         self.timestep_embedding = nn.Embedding(num_timesteps + 2, hidden_dim)
 
-        # A single projection gives every causal token unrestricted access to
-        # the complete noisy state without the cost of a cross-attention stack.
         self.state_projection = nn.Linear(input_dim * hidden_dim, hidden_dim)
         layer = nn.TransformerEncoderLayer(
             d_model=hidden_dim,
@@ -67,10 +50,6 @@ class AutoregressiveDenoiserTransformer(nn.Module):
         )
         self.output_norm = nn.LayerNorm(hidden_dim)
 
-        # The baseline MLP's final Linear has a separate categorical head for
-        # each coordinate.  Keep the same simple structure here so parameter
-        # counts remain comparable instead of gaining an advantage from a much
-        # larger shared Transformer backbone.
         self.output_weight = nn.Parameter(
             torch.empty(input_dim, hidden_dim, num_categories)
         )
@@ -134,12 +113,3 @@ class AutoregressiveDenoiserTransformer(nn.Module):
         return logits.reshape(
             batch_size, *event_shape, self.num_categories
         )
-
-    def teacher_forced_logits(
-        self,
-        x_t: torch.Tensor,
-        t: torch.Tensor,
-        x_prev: torch.Tensor,
-    ) -> torch.Tensor:
-        """Compute all teacher-forced AR conditionals in one forward pass."""
-        return self.forward(x_t, t, x_prev)
