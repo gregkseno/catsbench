@@ -48,4 +48,4 @@ trainer:
 
 logger:
   wandb:
-    project: c2sbm
+    project: catsbench
