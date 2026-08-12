@@ -13,6 +13,7 @@ defaults:
   - _self_
 
 prior:
+  implementation: normalized
   alpha: 0.01
   eps: 1e-6
   prior_type: gaussian

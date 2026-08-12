@@ -27,6 +27,7 @@ model:
  layers: [128, 128, 128]
 
 prior:
+  implementation: triton
   alpha: ???
   prior_type: ???
   eps: 0

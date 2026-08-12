@@ -23,6 +23,7 @@ data:
   pin_memory: false
 
 prior:
+  implementation: triton
   alpha: ???
   prior_type: ???
   eps: 0
