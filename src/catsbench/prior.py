@@ -3,6 +3,7 @@ from typing import Literal, Optional, Union
 import torch
 from torch import nn
 
+from .lse_matmul import LSEImplementation
 from .utils import lse_matmul, logits_prod 
 from .utils import broadcast, gumbel_sample
 
@@ -147,6 +148,7 @@ class Prior(nn.Module):
             'uniform', 
             'gaussian',
         ] = 'uniform',
+        implementation: LSEImplementation = "normalized",
         dtype: Union[str, torch.dtype] = torch.float32,
         device: Union[str, torch.device] = 'cpu'
     ) -> None:
@@ -158,6 +160,7 @@ class Prior(nn.Module):
         self.tau = tau
         self.eps = eps
         self.prior_type = prior_type
+        self.implementation = implementation
         if eps < 0:
             raise ValueError(f'eps must be non-negative, got {eps}.')
         if isinstance(dtype, str):
@@ -190,6 +193,16 @@ class Prior(nn.Module):
         # register as non-persistent buffer to avoid saving in checkpoints
         self.register_buffer('log_p_onestep', log_p_onestep, persistent=False)
         self.register_buffer('log_p_cum', log_p_cum, persistent=False)
+
+    def _reduction_eps(
+        self,
+        tensor1: torch.Tensor,
+        tensor2: torch.Tensor,
+    ) -> float:
+        if self.implementation != "normalized" or self.eps != 0:
+            return 0.0
+        dtype = torch.promote_types(tensor1.dtype, tensor2.dtype)
+        return torch.finfo(dtype).tiny
 
     @property
     def dtype(self) -> torch.dtype:
@@ -289,19 +302,19 @@ class Prior(nn.Module):
 
         # fact2 is 'guess of x_{t-1}' from x_{0}
         x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
+        is_first_step = broadcast(t, x_t.dim()) == 1
+        cumulative_t = torch.where(t == 1, torch.ones_like(t), t - 1)
+        log_p_cum = self.log_p_cum[cumulative_t]
         log_fact2 = logits_prod(
             x_start_logits,
-            self.log_p_cum[t-1],
-            implementation="normalized",
-            eps=torch.finfo(torch.promote_types(
-                x_start_logits.dtype, self.log_p_cum.dtype
-            )).tiny,
+            log_p_cum,
+            implementation=self.implementation,
+            eps=self._reduction_eps(x_start_logits, log_p_cum),
         )
 
         p_posterior_logits = log_fact1 + log_fact2
 
         # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already
-        is_first_step = broadcast(t, x_t.dim()) == 1
         p_posterior_logits = torch.where(is_first_step, x_start_logits, p_posterior_logits)
         return p_posterior_logits
     
@@ -327,18 +340,22 @@ class Prior(nn.Module):
         log_fact1 = self.extract('onestep', t+1, row_id=x_t)
 
         x_end_logits = x_end_logits.log_softmax(dim=-1)
+        is_last_step = broadcast(t, x_t.dim()) == self.num_timesteps
+        cumulative_t = torch.where(
+            t == self.num_timesteps,
+            torch.ones_like(t),
+            self.num_timesteps - t,
+        )
+        log_p_cum = self.log_p_cum[cumulative_t]
         log_fact2 = logits_prod(
             x_end_logits,
-            self.log_p_cum[self.num_timesteps - t], #.transpose(-2, -1)
-            implementation="normalized",
-            eps=torch.finfo(torch.promote_types(
-                x_end_logits.dtype, self.log_p_cum.dtype
-            )).tiny,
+            log_p_cum,
+            implementation=self.implementation,
+            eps=self._reduction_eps(x_end_logits, log_p_cum),
         )
 
         p_posterior_logits = log_fact1 + log_fact2
 
         # Use `torch.where` because when `t == 1` x_start_logits are actually x_0 already
-        is_last_step = broadcast(t, x_t.dim()) == self.num_timesteps
         p_posterior_logits = torch.where(is_last_step, x_end_logits, p_posterior_logits)
         return p_posterior_logits
