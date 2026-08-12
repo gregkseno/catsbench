@@ -293,6 +293,9 @@ class Prior(nn.Module):
             x_start_logits,
             self.log_p_cum[t-1],
             implementation="normalized",
+            eps=torch.finfo(torch.promote_types(
+                x_start_logits.dtype, self.log_p_cum.dtype
+            )).tiny,
         )
 
         p_posterior_logits = log_fact1 + log_fact2
@@ -328,6 +331,9 @@ class Prior(nn.Module):
             x_end_logits,
             self.log_p_cum[self.num_timesteps - t], #.transpose(-2, -1)
             implementation="normalized",
+            eps=torch.finfo(torch.promote_types(
+                x_end_logits.dtype, self.log_p_cum.dtype
+            )).tiny,
         )
 
         p_posterior_logits = log_fact1 + log_fact2
