@@ -14,6 +14,7 @@ defaults:
   - _self_
 
 prior:
+  implementation: normalized
   alpha: ???
   # these vaules are calculated to match 
   # num_timesteps=100 and num_skip_steps=1
