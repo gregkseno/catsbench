@@ -40,10 +40,19 @@ class FullAttention(nn.Module):
 
     def forward(self, x, encoder_output, mask=None):
         B, T, C = x.size()
-        k = self.key(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
+        key_value = x
+        if encoder_output is not None:
+            if encoder_output.shape[0] != B or encoder_output.shape[2] != C:
+                raise ValueError(
+                    f"encoder_output shape {tuple(encoder_output.shape)} is "
+                    f"incompatible with input shape {tuple(x.shape)}"
+                )
+            key_value = torch.cat((encoder_output, x), dim=1)
+        T_KV = key_value.shape[1]
+        k = self.key(key_value).view(B, T_KV, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T_KV, hs)
         q = self.query(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1))) # (B, nh, T, T)
+        v = self.value(key_value).view(B, T_KV, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T_KV, hs)
+        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1))) # (B, nh, T, T_KV)
 
         if mask is not None:
             mask = mask.to(device=att.device, dtype=torch.bool)
@@ -51,13 +60,18 @@ class FullAttention(nn.Module):
                 mask = mask[None, None]
             elif mask.dim() == 3:
                 mask = mask[:, None]
+            if mask.shape[-2:] != att.shape[-2:]:
+                raise ValueError(
+                    f"attention mask shape {tuple(mask.shape[-2:])} must match "
+                    f"attention shape {tuple(att.shape[-2:])}"
+                )
             att = att.masked_fill(~mask, torch.finfo(att.dtype).min)
 
-        att = F.softmax(att, dim=-1) # (B, nh, T, T)
+        att = F.softmax(att, dim=-1) # (B, nh, T, T_KV)
         att = self.attn_drop(att)
-        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        y = att @ v # (B, nh, T, T_KV) x (B, nh, T_KV, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side, (B, T, C)
-        att = att.mean(dim=1, keepdim=False) # (B, T, T)
+        att = att.mean(dim=1, keepdim=False) # (B, T, T_KV)
 
         # output projection
         y = self.resid_drop(self.proj(y))
@@ -265,12 +279,12 @@ class Block(nn.Module):
 
     def forward(self, x, encoder_output, timestep, mask=None):    
         if self.attn_type == "selfcross":
-            a, att = self.attn1(self.ln1(x, timestep), encoder_output, mask=mask)
+            a, att = self.attn1(self.ln1(x, timestep), None, mask=mask)
             x = x + a
             a, att = self.attn2(self.ln1_1(x, timestep), encoder_output, mask=mask)
             x = x + a
         elif self.attn_type == "selfcondition":
-            a, att = self.attn(self.ln1(x, timestep), encoder_output, mask=mask)
+            a, att = self.attn(self.ln1(x, timestep), None, mask=mask)
             x = x + a
             mlp_input = self.ln2(x, encoder_output.long())
             if isinstance(self.mlp, Conv_MLP):
@@ -747,10 +761,9 @@ class UnCondition2ImageTransformer(nn.Module):
                     f"context shape {tuple(context.shape)} must match "
                     f"embedding shape {tuple(emb.shape)}"
                 )
-            emb = emb + context
 
         for block_idx in range(len(self.blocks)):
-            emb, _ = self.blocks[block_idx](emb, None, t, mask=mask) # B x (Ld+Lt) x D, B x (Ld+Lt) x (Ld+Lt)
+            emb, _ = self.blocks[block_idx](emb, context, t, mask=mask) # B x L x D, B x L x (L_context + L)
         logits = self.to_logits(emb) # B x (Ld+Lt) x n
         # out = rearrange(logits, 'b l c -> b c l')
         return logits

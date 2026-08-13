@@ -18,10 +18,10 @@ prior:
   alpha: ???
   # these vaules are calculated to match 
   # num_timesteps=100 and num_skip_steps=1
-  eps: 3.4235887298830845e-05
+  eps: 5.180131997141631e-05
   prior_type: uniform
-  num_timesteps: 2
-  num_skip_steps: 33.666666666666664
+  num_timesteps: 1
+  num_skip_steps: 50.5
 
 method:
   optimizer:

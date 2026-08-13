@@ -44,9 +44,11 @@ class LatentTransformer(nn.Module):
             content_emb_config=content_emb_config,
             mlp_type="conv_mlp",
         )
-        causal_mask = torch.tril(
+        prefix_mask = torch.tril(
             torch.ones(self.content_seq_len, self.content_seq_len, dtype=torch.bool)
         )
+        state_mask = torch.ones_like(prefix_mask)
+        causal_mask = torch.cat((state_mask, prefix_mask), dim=-1)
         self.register_buffer("causal_mask", causal_mask, persistent=False)
 
     def forward(
@@ -70,12 +72,8 @@ class LatentTransformer(nn.Module):
         shifted = torch.full_like(x_prev, self.mask_token_id)
         shifted[:, 1:] = x_prev[:, :-1]
 
-        state_embedding = self.model.content_emb(x.clone())
-        global_context = torch.nn.functional.silu(state_embedding).mean(
-            dim=1, keepdim=True
-        )
-        local_context = self.model.content_emb.emb(x)
-        context = local_context + global_context
+        state_type = self.model.content_emb.emb.weight[self.mask_token_id]
+        context = self.model.content_emb(x.clone()) + state_type[None, None]
         return self.model(
             shifted,
             t,
