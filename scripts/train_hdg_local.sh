@@ -10,6 +10,17 @@ case "${METHOD}" in
     ;;
 esac
 
+if [[ -x /kernel/bin/python ]]; then
+  PYTHON_BIN=/kernel/bin/python
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN=python
+elif command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN=python3
+else
+  echo "Python interpreter not found" >&2
+  exit 127
+fi
+
 SEED=5
 DIMS=(2 16 64)
 BENCHMARKS=(g002 g005 u0005 u001)
@@ -28,7 +39,7 @@ for DIM in "${DIMS[@]}"; do
         EXPERIMENTS+=${EXPERIMENTS:+,}${METHOD}/benchmark_hd/d${DIM}_${BENCHMARK}_${VARIANT}
       done
 
-      python -m src.run -m \
+      "${PYTHON_BIN}" -m src.run -m \
         hydra/launcher=submitit_local \
         hydra.launcher.timeout_min=525600 \
         hydra.launcher.gpus_per_node=1 \
@@ -42,7 +53,7 @@ for DIM in "${DIMS[@]}"; do
     continue
   fi
 
-  python -m src.run -m \
+  "${PYTHON_BIN}" -m src.run -m \
       hydra/launcher=submitit_local \
       hydra.launcher.timeout_min=525600 \
       hydra.launcher.gpus_per_node=1 \
