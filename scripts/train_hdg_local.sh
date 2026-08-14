@@ -10,16 +10,7 @@ case "${METHOD}" in
     ;;
 esac
 
-if [[ -x /kernel/bin/python ]]; then
-  PYTHON_BIN=/kernel/bin/python
-elif command -v python >/dev/null 2>&1; then
-  PYTHON_BIN=python
-elif command -v python3 >/dev/null 2>&1; then
-  PYTHON_BIN=python3
-else
-  echo "Python interpreter not found" >&2
-  exit 127
-fi
+PYTHON_BIN=${PYTHON_BIN:-/usr/local/bin/python3}
 
 SEED=5
 DIMS=(2 16 64)
@@ -47,6 +38,7 @@ for DIM in "${DIMS[@]}"; do
         hydra.launcher.cpus_per_task=2 \
         hydra.launcher.mem_gb=80 \
         seed=${SEED} data.num_workers=0 data.pin_memory=false \
+        logger=csv \
         ckpt_path=null \
         experiment=${EXPERIMENTS}
     done
@@ -61,6 +53,7 @@ for DIM in "${DIMS[@]}"; do
       hydra.launcher.cpus_per_task=2 \
       hydra.launcher.mem_gb=80 \
       seed=${SEED} data.num_workers=0 data.pin_memory=false \
+      logger=csv \
       ckpt_path=null \
       experiment=${EXPERIMENTS}
 done
