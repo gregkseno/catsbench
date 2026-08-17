@@ -38,7 +38,7 @@ class FullAttention(nn.Module):
         self.n_head = n_head
         self.causal = causal
 
-    def forward(self, x, encoder_output, mask=None):
+    def forward(self, x, encoder_output, mask=None, return_attention=True):
         B, T, C = x.size()
         key_value = x
         if encoder_output is not None:
@@ -71,11 +71,11 @@ class FullAttention(nn.Module):
         att = self.attn_drop(att)
         y = att @ v # (B, nh, T, T_KV) x (B, nh, T_KV, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side, (B, T, C)
-        att = att.mean(dim=1, keepdim=False) # (B, T, T_KV)
+        att_weight = att.mean(dim=1, keepdim=False) if return_attention else None
 
         # output projection
         y = self.resid_drop(self.proj(y))
-        return y, att
+        return y, att_weight
 
 class CrossAttention(nn.Module):
     def __init__(self,
@@ -108,7 +108,7 @@ class CrossAttention(nn.Module):
             self.register_buffer("mask", torch.tril(torch.ones(seq_len, seq_len)) # type: ignore
                                         .view(1, 1, seq_len, seq_len)) # type: ignore
 
-    def forward(self, x, encoder_output, mask=None):
+    def forward(self, x, encoder_output, mask=None, return_attention=True):
         B, T, C = x.size()
         B, T_E, _ = encoder_output.size()
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
@@ -122,11 +122,11 @@ class CrossAttention(nn.Module):
         att = self.attn_drop(att)
         y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side, (B, T, C)
-        att = att.mean(dim=1, keepdim=False) # (B, T, T)
+        att_weight = att.mean(dim=1, keepdim=False) if return_attention else None
 
         # output projection
         y = self.resid_drop(self.proj(y))
-        return y, att
+        return y, att_weight
 
 class GELU2(nn.Module):
     def __init__(self):
@@ -164,11 +164,18 @@ class AdaLayerNorm(nn.Module):
         self.diff_step = diffusion_step
 
     def forward(self, x, timestep):
-        if timestep[0] >= self.diff_step:
-            _emb = self.emb.weight.mean(dim=0, keepdim=True).repeat(len(timestep), 1)
-            emb = self.linear(self.silu(_emb)).unsqueeze(1)
+        if isinstance(self.emb, nn.Embedding):
+            # Keep the original fallback for special timesteps while avoiding
+            # a Python conditional on a CUDA scalar (and its device sync).
+            in_range = timestep < self.diff_step
+            embedded_timestep = self.emb(timestep.clamp(max=self.diff_step - 1))
+            fallback = self.emb.weight.mean(dim=0, keepdim=True)
+            embedded_timestep = torch.where(
+                in_range[:, None], embedded_timestep, fallback
+            )
         else:
-            emb = self.linear(self.silu(self.emb(timestep))).unsqueeze(1)
+            embedded_timestep = self.emb(timestep)
+        emb = self.linear(self.silu(embedded_timestep)).unsqueeze(1)
         scale, shift = torch.chunk(emb, 2, dim=2)
         x = self.layernorm(x) * (1 + scale) + shift
         return x
@@ -277,14 +284,31 @@ class Block(nn.Module):
                 nn.Dropout(resid_pdrop),
             )
 
-    def forward(self, x, encoder_output, timestep, mask=None):    
+    def forward(
+        self, x, encoder_output, timestep, mask=None, return_attention=True
+    ):
         if self.attn_type == "selfcross":
-            a, att = self.attn1(self.ln1(x, timestep), None, mask=mask)
+            a, att = self.attn1(
+                self.ln1(x, timestep),
+                None,
+                mask=mask,
+                return_attention=return_attention,
+            )
             x = x + a
-            a, att = self.attn2(self.ln1_1(x, timestep), encoder_output, mask=mask)
+            a, att = self.attn2(
+                self.ln1_1(x, timestep),
+                encoder_output,
+                mask=mask,
+                return_attention=return_attention,
+            )
             x = x + a
         elif self.attn_type == "selfcondition":
-            a, att = self.attn(self.ln1(x, timestep), None, mask=mask)
+            a, att = self.attn(
+                self.ln1(x, timestep),
+                None,
+                mask=mask,
+                return_attention=return_attention,
+            )
             x = x + a
             mlp_input = self.ln2(x, encoder_output.long())
             if isinstance(self.mlp, Conv_MLP):
@@ -293,7 +317,12 @@ class Block(nn.Module):
                 x = x + self.mlp(mlp_input)
             return x, att
         else:  # 'self'
-            a, att = self.attn(self.ln1(x, timestep), encoder_output, mask=mask)
+            a, att = self.attn(
+                self.ln1(x, timestep),
+                encoder_output,
+                mask=mask,
+                return_attention=return_attention,
+            )
             x = x + a 
 
         mlp_input = self.ln2(x)
@@ -763,7 +792,13 @@ class UnCondition2ImageTransformer(nn.Module):
                 )
 
         for block_idx in range(len(self.blocks)):
-            emb, _ = self.blocks[block_idx](emb, context, t, mask=mask) # B x L x D, B x L x (L_context + L)
+            emb, _ = self.blocks[block_idx](
+                emb,
+                context,
+                t,
+                mask=mask,
+                return_attention=False,
+            ) # B x L x D
         logits = self.to_logits(emb) # B x (Ld+Lt) x n
         # out = rearrange(logits, 'b l c -> b c l')
         return logits
