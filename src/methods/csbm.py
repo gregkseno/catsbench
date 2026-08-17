@@ -8,6 +8,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch_ema import ExponentialMovingAverage 
 
 from .base import BaseMethod
+from .workflows.phase import TrainingPhase
 from ..data.batch import Batch
 from ..data.prior import Prior
 from ..utils import optimize_coupling, gumbel_sample
@@ -47,7 +48,7 @@ class CSBM(BaseMethod):
         # save only `HPARAMS` for memory efficiency (probably :))
         self.save_hyperparameters(*HPARAMS, logger=False)
         self.bidirectional = True
-        self.iteration = 1
+        self._training_phase = TrainingPhase(direction='forward', iteration=1)
         self.prior = prior
         
         # models explicitly stated to be able log parameters
@@ -66,11 +67,22 @@ class CSBM(BaseMethod):
 
     @property
     def fb(self) -> Literal['forward', 'backward']:
-        return 'forward' if self.current_epoch % 2 == 0 else 'backward'
+        return self.training_phase.direction
 
     @property
     def bf(self) -> Literal['forward', 'backward']:
-        return 'backward' if self.fb == 'forward' else 'forward'
+        return self.training_phase.opposite_direction
+
+    @property
+    def iteration(self) -> int:
+        return self.training_phase.iteration
+
+    @property
+    def training_phase(self) -> TrainingPhase:
+        return self._training_phase
+
+    def set_training_phase(self, phase: TrainingPhase) -> None:
+        self._training_phase = phase
 
     def kl_loss(
         self,
@@ -199,11 +211,6 @@ class CSBM(BaseMethod):
                 self.emas[self.fb].update()
         return {'loss': step_loss, 'batch': output_batch}
 
-    def on_train_epoch_end(self) -> None:
-        # increment iteration count after a full cycle (forward + backward)
-        if (self.current_epoch + 1) // 2 >= self.hparams.num_first_iterations and self.fb == 'backward':
-            self.iteration += 1
-
     def validation_step(
         self, batch: Batch, batch_idx: int
     ) -> Dict[str, Any]:
@@ -274,7 +281,8 @@ class CSBM(BaseMethod):
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         checkpoint['ema_forward'] = self.emas['forward'].state_dict()
         checkpoint['ema_backward'] = self.emas['backward'].state_dict()
-        checkpoint['iteration'] = self.iteration
+        checkpoint.setdefault('training_phase', self.training_phase.state_dict())
+        checkpoint.setdefault('iteration', self.iteration)
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         if 'ema_forward' in checkpoint:
@@ -283,8 +291,16 @@ class CSBM(BaseMethod):
         if 'ema_backward' in checkpoint:
             self.emas['backward'].load_state_dict(checkpoint['ema_backward'])
             self.emas['backward'].to(self.device)
-        if 'iteration' in checkpoint:
-            self.iteration = checkpoint['iteration']
+        if 'training_phase' in checkpoint:
+            self.set_training_phase(
+                TrainingPhase.from_state_dict(checkpoint['training_phase'])
+            )
+        elif 'iteration' in checkpoint:
+            # Legacy checkpoints did not store direction. Standalone test used
+            # the default forward direction, so keep that behavior here.
+            self.set_training_phase(
+                TrainingPhase(direction='forward', iteration=checkpoint['iteration'])
+            )
 
     @torch.no_grad()
     def get_transition_logits(

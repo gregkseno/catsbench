@@ -4,6 +4,7 @@ defaults:
   - override /data: benchmark_hd
   - override /model: causal_denoiser_transformer
   - override /method: c2sbm
+  - override /workflow: imf
   - override /callbacks:
     - model_checkpoint
     - model_summary

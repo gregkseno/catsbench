@@ -4,6 +4,7 @@ defaults:
   - override /data: toy
   - override /model: denoiser_mlp
   - override /method: csbm
+  - override /workflow: imf
   - override /callbacks:
     - model_checkpoint
     - model_summary

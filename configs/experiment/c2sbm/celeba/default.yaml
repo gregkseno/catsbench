@@ -4,6 +4,7 @@ defaults:
   - override /data: celeba
   - override /model: latent_transformer
   - override /method: c2sbm
+  - override /workflow: imf
   - override /callbacks:
     - model_checkpoint
     - model_summary
