@@ -2,7 +2,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal, Mapping
 
 
-Direction = Literal["forward", "backward"]
+Direction = Literal["forward", "backward", "both"]
 
 
 @dataclass(frozen=True)
@@ -13,13 +13,15 @@ class TrainingPhase:
     iteration: int
 
     def __post_init__(self) -> None:
-        if self.direction not in ("forward", "backward"):
+        if self.direction not in ("forward", "backward", "both"):
             raise ValueError(f"Unknown training direction: {self.direction}")
         if self.iteration < 1:
             raise ValueError("The IMF iteration must be positive.")
 
     @property
     def opposite_direction(self) -> Direction:
+        if self.direction == "both":
+            raise ValueError("A joint phase has no opposite direction.")
         return "backward" if self.direction == "forward" else "forward"
 
     def state_dict(self) -> dict[str, Any]:

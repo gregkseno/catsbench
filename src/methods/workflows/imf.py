@@ -19,6 +19,7 @@ class IMFWorkflow(FitWorkflow):
         logger_config: Optional[DictConfig],
         output_dir: str,
         num_first_iterations: int,
+        cache_enabled: bool = False,
     ) -> None:
         super().__init__(
             trainer_config=trainer_config,
@@ -28,7 +29,10 @@ class IMFWorkflow(FitWorkflow):
         )
         if num_first_iterations < 1:
             raise ValueError("num_first_iterations must be positive.")
+        if cache_enabled:
+            raise NotImplementedError("Endpoint cache is not implemented yet.")
         self.num_first_iterations = num_first_iterations
+        self.cache_enabled = cache_enabled
 
     def phase_for_epoch(self, epoch: int) -> TrainingPhase:
         """Return the phase used by the legacy CSBM schedule at ``epoch``."""

@@ -6,3 +6,4 @@ callbacks_config: ${callbacks}
 logger_config: ${logger}
 output_dir: ${paths.output_dir}
 num_first_iterations: ${method.num_first_iterations}
+cache_enabled: false

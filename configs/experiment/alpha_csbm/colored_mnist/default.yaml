@@ -4,6 +4,7 @@ defaults:
   - override /data: colored_mnist
   - override /model: denoiser_image
   - override /method: alpha_csbm
+  - override /workflow: alpha_imf
   - override /callbacks:
     - model_checkpoint
     - model_summary
