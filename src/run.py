@@ -18,6 +18,7 @@ from lightning.pytorch.loggers import Logger
 
 from .utils.ranked_logger import RankedLogger
 from .methods import BaseMethod
+from .methods.workflows import BaseWorkflow
 from .utils import (
     get_run_directory_from_checkpoint, 
     instantiate_callbacks, 
@@ -60,19 +61,6 @@ def main(config: DictConfig):
     #print(config)
     method: BaseMethod = instantiate(config.method)
 
-    log.info('Instantiating callbacks...')
-    callbacks: List[Callback] = instantiate_callbacks(config.get('callbacks'))
-
-    log.info('Instantiating loggers...')
-    loggers: List[Logger] = instantiate_loggers(
-        config.get('logger'), config.paths.output_dir
-    )
-    for logger in loggers:
-        logger.log_hyperparams(OmegaConf.to_container(config))
-
-    log.info(f'Instantiating trainer <{config.trainer._target_}>...')
-    trainer: Trainer = instantiate(config.trainer, callbacks=callbacks, logger=loggers)
-
     ckpt_path = config.get('ckpt_path')
     if ckpt_path == 'auto':
         ckpt_path = os.path.join(config.paths.output_dir, 'checkpoints', 'last.ckpt')
@@ -83,10 +71,35 @@ def main(config: DictConfig):
             )
     
     if config.task_name == 'train':
+        log.info(f'Instantiating workflow <{config.workflow._target_}>...')
+        workflow: BaseWorkflow = instantiate(config.workflow)
         log.info('Starting training!')
-        trainer.fit(model=method, datamodule=datamodule, ckpt_path=ckpt_path)
+        workflow.run(
+            method=method,
+            datamodule=datamodule,
+            ckpt_path=ckpt_path,
+            hparams=OmegaConf.to_container(config),
+        )
     elif config.task_name == 'test':
         assert ckpt_path is not None, 'The `ckpt_path` must be provided for testing!'
+
+        log.info('Instantiating callbacks...')
+        callbacks: List[Callback] = instantiate_callbacks(config.get('callbacks'))
+
+        log.info('Instantiating loggers...')
+        loggers: List[Logger] = instantiate_loggers(
+            config.get('logger'), config.paths.output_dir
+        )
+        for logger in loggers:
+            logger.log_hyperparams(OmegaConf.to_container(config))
+
+        log.info(f'Instantiating trainer <{config.trainer._target_}>...')
+        trainer: Trainer = instantiate(
+            config.trainer,
+            callbacks=callbacks,
+            logger=loggers,
+        )
+
         log.info(f'Starting testing with ckpt_path: {ckpt_path}.')
         trainer.test(model=method, datamodule=datamodule, ckpt_path=ckpt_path)
     else:
