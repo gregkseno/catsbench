@@ -58,7 +58,6 @@ def main(config: DictConfig):
     datamodule: LightningDataModule = instantiate(config.data)
     
     log.info(f'Instantiating method <{config.method._target_}>...')
-    #print(config)
     method: BaseMethod = instantiate(config.method)
 
     ckpt_path = config.get('ckpt_path')
