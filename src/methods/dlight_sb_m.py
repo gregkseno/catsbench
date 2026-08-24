@@ -312,10 +312,7 @@ class DLightSB_M(BaseMethod):
         # if first iteration apply optional mini-batch sampling
         if self.hparams.use_mini_batch:
             x_start, x_end = optimize_coupling(x_start, x_end)
-            output_batch = Batch(
-                encoded=(x_start, x_end),
-                raw=(None, None),
-            )
+            output_batch = Batch(encoded=(x_start, x_end))
         else:
             output_batch = batch
         loss, info = self.optimal_projection(x_start, x_end)
