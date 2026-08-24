@@ -196,7 +196,7 @@ class IMFWorkflow(BaseWorkflow):
         datamodule: LightningDataModule,
         phase: IMFPhase,
         ckpt_path: str,
-    ) -> IMFCacheWriter:
+    ) -> None:
         if self.cache_dir is None:
             raise ValueError(
                 "IMFWorkflow requires cache_dir after the first iteration."
@@ -249,7 +249,6 @@ class IMFWorkflow(BaseWorkflow):
         datamodule.data_train = RepeatedDataset(
             pairs, length=len(datamodule.data_train),
         )
-        return writer
 
     def test(
         self,
