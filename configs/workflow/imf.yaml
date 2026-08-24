@@ -4,6 +4,5 @@ _recursive_: false
 trainer_config: ${trainer}
 callbacks_config: ${callbacks}
 logger_config: ${logger}
-output_dir: ${paths.output_dir}
-num_first_iterations: ${method.num_first_iterations}
-cache_enabled: false
+num_first_iterations: 10
+cache_dir: null

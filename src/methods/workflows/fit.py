@@ -10,7 +10,7 @@ from .base import BaseWorkflow
 class FitWorkflow(BaseWorkflow):
     """Run a single standard Lightning fit."""
 
-    def run(
+    def train(
         self,
         method: BaseMethod,
         datamodule: LightningDataModule,
