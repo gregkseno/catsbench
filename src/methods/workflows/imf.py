@@ -331,9 +331,21 @@ class IMFWorkflow(BaseWorkflow):
                 backward_pairs,
                 cached=True,
             )
-        datamodule.data_train = RepeatedDataset(
-            pairs, length=len(datamodule.data_train),
-        )
+
+        # alpha-CSBM effectively uses only half of the batch size,
+        # thus we reduce it to avoid unnecessary computation  
+        train_length = len(datamodule.data_train)
+        if phase.direction == "both" and not getattr(
+            datamodule.data_train, "cached", False
+        ):
+            if datamodule.hparams.batch_size % 2 != 0:
+                raise ValueError(
+                    "Online IMF cache requires an even train batch size."
+                )
+            datamodule.hparams.batch_size //= 2
+            train_length //= 2
+
+        datamodule.data_train = RepeatedDataset(pairs, length=train_length)
 
     def test(
         self,

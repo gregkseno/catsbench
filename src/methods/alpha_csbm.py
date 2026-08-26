@@ -63,20 +63,21 @@ class AlphaCSBM(CSBM):
     def training_step(
         self, batch: Batch, batch_idx: int
     ) -> Dict[str, Any]:
+        # alpha-CSBM effectively uses only half of the batch size,
+        # so we split the batch for cached batch it is already split in workflow
         if batch.cached:
             forward_batch, backward_batch = batch
             pred_x_end, x_start = forward_batch
             x_end, pred_x_start = backward_batch
-            b = pred_x_end.shape[0] // 2
 
             loss_forward, info_forward = self.markovian_projection(
-                'forward', x_start[:b], pred_x_end[:b]
+                'forward', x_start, pred_x_end
             )
             loss_backward, info_backward = self.markovian_projection(
-                'backward', x_end[:b], pred_x_start[:b]
+                'backward', x_end, pred_x_start
             )
             output_batch = Batch(
-                encoded=(pred_x_end[:b], x_start[:b]),
+                encoded=(pred_x_end, x_start),
             )
         else:
             b = batch[0].shape[0] // 2
