@@ -42,9 +42,11 @@ prior:
   num_timesteps: 15
   num_skip_steps: 8
 
+workflow:
+  num_first_iterations: 10
+
 method:
   use_mini_batch: false
-  num_first_iterations: 10
   kl_loss_coeff: 1.0
   ce_loss_coeff: 0
   mse_loss_coeff: 0
