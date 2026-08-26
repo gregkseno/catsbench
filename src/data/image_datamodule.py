@@ -193,7 +193,19 @@ class ImageDataModule(LightningDataModule):
             )
 
     def on_after_batch_transfer(self, batch: Any, dataloader_idx: int) -> Any:
+        """Used for caching logic in predict mode."""
         if self.trainer.predicting:
+            # for Alpha-CSBM predict uses two inputs simultaneously
+            if isinstance(batch, (list, tuple)):
+                x, y = batch
+                if self.hparams.train_data_mode == "raw":
+                    self.codec.to(x.device)
+                    x = self.codec.encode_to_cats(x)
+                    y = self.codec.encode_to_cats(y)
+                return Batch(encoded=(x, y))
+            
+            # under contract with method.predict and workflow 
+            # one element batch (CSBM case) always uses first position 
             if self.hparams.train_data_mode == "raw":
                 self.codec.to(batch.device)
                 batch = self.codec.encode_to_cats(batch)

@@ -120,7 +120,13 @@ class ToyDataModule(LightningDataModule):
             )
 
     def on_after_batch_transfer(self, batch: Any, dataloader_idx: int) -> Any:
+        """Used for caching logic in predict mode."""
+        # under contract with method.predict and workflow 
+        # one element batch (CSBM case) always uses first position 
+        # for Alpha-CSBM predict uses two inputs simultaneously
         if self.trainer.predicting:
+            if isinstance(batch, (list, tuple)):
+                return Batch(encoded=tuple(batch))
             return Batch(encoded=(batch, None))
         cached = self.trainer.training and getattr(
             self.data_train, "cached", False
