@@ -45,25 +45,44 @@ class IMFCacheWriter(BasePredictionWriter):
         self,
         cache_dir,
         expected_size,
+        direction,
         storage_dtype="uint16",
     ):
         super().__init__(write_interval="batch")
         self.cache_dir = Path(cache_dir)
-        self.targets_dir = self.cache_dir / "targets"
-        self.success_path = self.cache_dir / "_SUCCESS"
+        self.directions = (
+            ("forward", "backward")
+            if direction == "both"
+            else (direction,)
+        )
+        self.targets_dirs = {
+            direction: self.cache_dir / direction / "targets"
+            for direction in self.directions
+        }
+        self.success_paths = {
+            direction: self.cache_dir / direction / "_SUCCESS"
+            for direction in self.directions
+        }
         self.expected_size = expected_size
         self.storage_dtype = getattr(torch, storage_dtype)
-        self.completed_ids = set(self._target_paths())
+        completed_ids = [
+            set(self._target_paths(direction))
+            for direction in self.directions
+        ]
+        self.completed_ids = set.intersection(*completed_ids)
         self.pending_ids = [
             index
             for index in range(expected_size)
             if index not in self.completed_ids
         ]
-        self.is_complete = self.success_path.is_file()
+        self.is_complete = all(
+            self.success_paths[direction].is_file()
+            for direction in self.directions
+        )
 
-    def _target_paths(self):
+    def _target_paths(self, direction):
         paths = {}
-        for path in sorted(self.targets_dir.glob("*.npy")):
+        for path in sorted(self.targets_dirs[direction].glob("*.npy")):
             try:
                 input_id = int(path.stem.split("-rank-")[0])
             except ValueError:
@@ -74,7 +93,8 @@ class IMFCacheWriter(BasePredictionWriter):
     def on_predict_start(self, trainer, pl_module):
         """Prepare the cache directory across all ranks."""
         if trainer.is_global_zero:
-            self.targets_dir.mkdir(parents=True, exist_ok=True)
+            for targets_dir in self.targets_dirs.values():
+                targets_dir.mkdir(parents=True, exist_ok=True)
         trainer.strategy.barrier("imf-cache-start")
 
     def write_on_batch_end(
@@ -92,40 +112,66 @@ class IMFCacheWriter(BasePredictionWriter):
             raise RuntimeError("Lightning did not provide predict batch indices.")
 
         input_ids = [self.pending_ids[index] for index in batch_indices]
-        targets = prediction.detach().cpu().to(self.storage_dtype)
-        for input_id, target in zip(input_ids, targets):
-            path = self.targets_dir / (
-                f"{input_id:08d}-rank-{trainer.global_rank}.npy"
-            )
-            if path.exists():
-                continue
-            temporary = path.with_name(f".{path.name}.tmp")
-            with temporary.open("wb") as file:
-                np.save(file, target.numpy())
-            os.replace(temporary, path)
-            self.completed_ids.add(input_id)
+        predictions = (
+            prediction
+            if len(self.directions) == 2
+            else (prediction,)
+        )
+        for direction, targets in zip(self.directions, predictions):
+            targets = targets.detach().cpu().to(self.storage_dtype)
+            for input_id, target in zip(input_ids, targets):
+                path = self.targets_dirs[direction] / (
+                    f"{input_id:08d}-rank-{trainer.global_rank}.npy"
+                )
+                if path.exists():
+                    continue
+                temporary = path.with_name(f".{path.name}.tmp")
+                with temporary.open("wb") as file:
+                    np.save(file, target.numpy())
+                os.replace(temporary, path)
+        self.completed_ids.update(input_ids)
 
     def on_predict_end(self, trainer, pl_module):
         """Finalize caching"""
         trainer.strategy.barrier("imf-cache-targets")
-        self.completed_ids = set(self._target_paths())
-        if (
-            trainer.is_global_zero
-            and self.completed_ids == set(range(self.expected_size))
-        ):
-            temporary = self.success_path.with_suffix(".tmp")
-            temporary.touch()
-            os.replace(temporary, self.success_path)
+        completed_ids = [
+            set(self._target_paths(direction))
+            for direction in self.directions
+        ]
+        self.completed_ids = set.intersection(*completed_ids)
+        if trainer.is_global_zero:
+            expected_ids = set(range(self.expected_size))
+            for direction, direction_ids in zip(
+                self.directions,
+                completed_ids,
+            ):
+                if direction_ids == expected_ids:
+                    success_path = self.success_paths[direction]
+                    temporary = success_path.with_suffix(".tmp")
+                    temporary.touch()
+                    os.replace(temporary, success_path)
         trainer.strategy.barrier("imf-cache-finish")
-        self.is_complete = self.success_path.is_file()
+        self.is_complete = all(
+            self.success_paths[direction].is_file()
+            for direction in self.directions
+        )
 
-    def get_target_dataset(self):
-        if not self.is_complete:
-            raise RuntimeError(f"IMF cache is incomplete: {self.cache_dir}")
+    def get_target_dataset(self, direction=None):
+        if direction is None:
+            if len(self.directions) != 1:
+                raise ValueError("Cache direction must be specified.")
+            direction = self.directions[0]
 
-        paths = self._target_paths()
+        if not self.success_paths[direction].is_file():
+            raise RuntimeError(
+                f"IMF cache is incomplete: {self.cache_dir / direction}"
+            )
+
+        paths = self._target_paths(direction)
         if set(paths) != set(range(self.expected_size)):
-            raise RuntimeError(f"IMF cache is incomplete: {self.cache_dir}")
+            raise RuntimeError(
+                f"IMF cache is incomplete: {self.cache_dir / direction}"
+            )
         return NumpyDataset([paths[index] for index in range(self.expected_size)])
 
 
@@ -205,24 +251,26 @@ class IMFWorkflow(BaseWorkflow):
         # since each phase the trainer objet is new
         # we need to obtain datasets that ONLY initialized in the setup method
         datamodule.setup("predict")
-        input_dataset = (
-            datamodule.initial_coupling.target_dataset
-            if phase.direction == "forward"
-            else datamodule.initial_coupling.input_dataset
-        )
+        initial_coupling = datamodule.initial_coupling
+        if phase.direction == "forward":
+            predict_dataset = initial_coupling.target_dataset
+        elif phase.direction == "backward":
+            predict_dataset = initial_coupling.input_dataset
+        else:
+            predict_dataset = initial_coupling
 
         # the writer loads completed ids and computes pending ids
         writer = IMFCacheWriter(
             self.cache_dir
-            / f"iteration_{phase.iteration:03d}"
-            / phase.direction,
-            len(input_dataset),
+            / f"iteration_{phase.iteration:03d}",
+            len(predict_dataset),
+            phase.direction,
         )
 
         if not writer.is_complete:
             # the subset therefore is used to predict only the pending ids
             datamodule.predict_dataset = Subset(
-                input_dataset,
+                predict_dataset,
                 writer.pending_ids,
             )
             predictor = instantiate(
@@ -240,12 +288,34 @@ class IMFWorkflow(BaseWorkflow):
             )
             datamodule.predict_dataset = None
 
-        targets = writer.get_target_dataset()
-        pairs = (
-            CoupleDataset(targets, input_dataset, cached=True)
-            if phase.direction == "forward"
-            else CoupleDataset(input_dataset, targets, cached=True)
-        )
+        if phase.direction == "forward":
+            pairs = CoupleDataset(
+                writer.get_target_dataset(),
+                predict_dataset,
+                cached=True,
+            )
+        elif phase.direction == "backward":
+            pairs = CoupleDataset(
+                predict_dataset,
+                writer.get_target_dataset(),
+                cached=True,
+            )
+        else:
+            forward_pairs = CoupleDataset(
+                writer.get_target_dataset("forward"),
+                initial_coupling.target_dataset,
+                cached=True,
+            )
+            backward_pairs = CoupleDataset(
+                initial_coupling.input_dataset,
+                writer.get_target_dataset("backward"),
+                cached=True,
+            )
+            pairs = CoupleDataset(
+                forward_pairs,
+                backward_pairs,
+                cached=True,
+            )
         datamodule.data_train = RepeatedDataset(
             pairs, length=len(datamodule.data_train),
         )
@@ -263,8 +333,8 @@ class IMFWorkflow(BaseWorkflow):
             weights_only=False,
             mmap=True,
         )
-        method.set_training_phase(
-            self.get_phase_by_epoch(int(checkpoint["epoch"]))
+        method.training_phase = self.get_phase_by_epoch(
+            int(checkpoint["epoch"])
         )
         del checkpoint
         return super().test(method, datamodule, ckpt_path, hparams)
@@ -302,7 +372,7 @@ class IMFWorkflow(BaseWorkflow):
 
         while current_epoch < max_epochs:
             phase = self.get_phase_by_epoch(current_epoch)
-            method.set_training_phase(phase)
+            method.training_phase = phase
 
             if self.cache_dir is not None and phase.iteration > 1:
                 self.build_cache(method, datamodule, phase, ckpt_path)
