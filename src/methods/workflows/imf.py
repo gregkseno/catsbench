@@ -24,17 +24,19 @@ from .fit import BaseWorkflow
 
 @dataclass(frozen=True)
 class IMFPhase:
-    direction: Literal["forward", "backward"]
+    direction: Literal["forward", "backward", "both"]
     iteration: int
 
     def __post_init__(self) -> None:
-        if self.direction not in ("forward", "backward"):
+        if self.direction not in ("forward", "backward", "both"):
             raise ValueError(f"Unknown IMF direction: {self.direction}")
         if self.iteration < 1:
             raise ValueError("The IMF iteration must be positive.")
 
     @property
-    def opposite_direction(self) -> Literal["forward", "backward"]:
+    def opposite_direction(self) -> Literal["forward", "backward", "both"]:
+        if self.direction == "both":
+            return "both"
         return "backward" if self.direction == "forward" else "forward"
 
 
@@ -185,6 +187,7 @@ class IMFWorkflow(BaseWorkflow):
         logger_config: Optional[DictConfig],
         num_first_iterations: int,
         cache_dir: Optional[str] = None,
+        online: bool = False,
     ) -> None:
         super().__init__(
             trainer_config=trainer_config,
@@ -195,6 +198,7 @@ class IMFWorkflow(BaseWorkflow):
             raise ValueError("num_first_iterations must be positive.")
         self.num_first_iterations = num_first_iterations
         self.cache_dir = Path(cache_dir) if cache_dir is not None else None
+        self.online = online
 
     def make_trainer(
         self,
@@ -218,6 +222,10 @@ class IMFWorkflow(BaseWorkflow):
         if epoch < 0:
             raise ValueError("epoch must be non-negative.")
 
+        if self.online:
+            iteration = max(1, epoch - self.num_first_iterations + 2)
+            return IMFPhase(direction="both", iteration=iteration)
+
         if epoch < self.num_first_iterations:
             return IMFPhase(direction="forward", iteration=1)
         if epoch < 2 * self.num_first_iterations:
@@ -230,6 +238,11 @@ class IMFWorkflow(BaseWorkflow):
 
     def get_phase_max_epoch(self, epoch: int) -> int:
         """Return the last epoch of the current phase."""
+        if self.online:
+            if epoch < self.num_first_iterations:
+                return self.num_first_iterations
+            return epoch + 1
+
         if epoch < self.num_first_iterations:
             return self.num_first_iterations
         if epoch < 2 * self.num_first_iterations:
@@ -251,6 +264,8 @@ class IMFWorkflow(BaseWorkflow):
         # since each phase the trainer objet is new
         # we need to obtain datasets that ONLY initialized in the setup method
         datamodule.setup("predict")
+        # CSBM predicts one marginal at once, while Alpha-CSBM predicts
+        # both directions from the initial coupling simultaneously.
         initial_coupling = datamodule.initial_coupling
         if phase.direction == "forward":
             predict_dataset = initial_coupling.target_dataset

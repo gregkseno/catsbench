@@ -6,3 +6,4 @@ callbacks_config: ${callbacks}
 logger_config: ${logger}
 num_first_iterations: 10
 cache_dir: null
+online: false
