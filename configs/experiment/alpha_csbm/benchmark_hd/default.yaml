@@ -23,10 +23,6 @@ data:
   num_workers: 0
   pin_memory: false
 
-model:
- timestep_dim: ${data.dim}
- layers: [128, 128, 128]
-
 prior:
   implementation: triton
   alpha: ???
