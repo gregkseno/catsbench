@@ -18,7 +18,7 @@ data:
   input_shape: 
     - ${data.dim}
   num_categories: 50
-  batch_size: 128 
+  batch_size: 1024
   val_batch_size: 128
   num_workers: 0
   pin_memory: false
