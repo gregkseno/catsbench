@@ -47,6 +47,7 @@ class DenoiserMADE(nn.Module):
         self.input_dim = input_dim
         self.num_categories = num_categories
         self.num_timesteps = num_timesteps
+        self.mask_token_id = num_categories
         net = []
         ch_prev = 2 * input_dim + timestep_dim
         degrees_prev = torch.cat(
