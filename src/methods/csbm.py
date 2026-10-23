@@ -69,10 +69,14 @@ class CSBM(BaseMethod):
 
     @property
     def fb(self) -> Literal['forward', 'backward']:
+        if self.training_phase.direction == 'both':
+            raise ValueError("CSBM does not support fb='both'.")
         return self.training_phase.direction
 
     @property
     def bf(self) -> Literal['forward', 'backward']:
+        if self.training_phase.direction == 'both':
+            raise ValueError("CSBM does not support fb='both'.")
         return self.training_phase.opposite_direction
 
     @property
@@ -125,6 +129,8 @@ class CSBM(BaseMethod):
         true_x_start: torch.Tensor,
         true_x_end: torch.Tensor,
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:  
+        if fb == 'both':
+            raise ValueError("CSBM does not support fb='both'.")
         batch_size = true_x_start.shape[0]
         t = torch.randint(
             low=1, high=self.hparams.num_timesteps + 2,
@@ -303,17 +309,15 @@ class CSBM(BaseMethod):
             )
 
     def on_predict_start(self) -> None:
-        sampling_direction = self.training_phase.opposite_direction
-        directions = self.models if sampling_direction == 'both' else (sampling_direction,)
-        for direction in directions:
-            if direction in self._ema_active_directions:
-                continue
-            model = self.models[direction]
-            self._ema_training_modes[direction] = model.training
-            self.emas[direction].store()
-            self.emas[direction].copy_to()
-            self._ema_active_directions.add(direction)
-            model.eval()
+        direction = self.bf
+        if direction in self._ema_active_directions:
+            return
+        model = self.models[direction]
+        self._ema_training_modes[direction] = model.training
+        self.emas[direction].store()
+        self.emas[direction].copy_to()
+        self._ema_active_directions.add(direction)
+        model.eval()
 
     def predict_step(
         self,
@@ -321,13 +325,7 @@ class CSBM(BaseMethod):
         batch_idx: int,
         dataloader_idx: int = 0,
     ):
-        sampling_direction = self.training_phase.opposite_direction
-        if sampling_direction == 'both':
-            x_end, x_start = batch
-            return (
-                self.sample(x_start, fb='backward'),
-                self.sample(x_end, fb='forward'),
-            )
+        sampling_direction = self.bf
 
         # input is always in the batch[0]
         # contract with datamodule classes
@@ -388,6 +386,8 @@ class CSBM(BaseMethod):
         fb: Optional[Literal['forward', 'backward']] = None
     ) -> torch.Tensor:
         fb = fb or self.fb
+        if fb == 'both':
+            raise ValueError("CSBM does not support fb='both'.")
         was_training = self.models[fb].training
         self.models[fb].eval()
 
@@ -415,6 +415,8 @@ class CSBM(BaseMethod):
         return_transitions: bool = False
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         # we don't use here get_transition_logits avoid multiple EMA calls     
+        if fb == 'both':
+            raise ValueError("CSBM does not support fb='both'.")
         pred_x_start_logits = self.models[fb](x_t, t)
         pred_transition_logits = self.prior.posterior_logits(pred_x_start_logits, x_t, t, logits=True)
         samples = gumbel_sample(
@@ -436,6 +438,8 @@ class CSBM(BaseMethod):
     ) -> torch.Tensor:
         """Sample from the model starting from `x` returning the final sample."""
         fb = fb or self.fb
+        if fb == 'both':
+            raise ValueError("CSBM does not support fb='both'.")
 
         was_training = self.models[fb].training
         self.models[fb].eval()
@@ -463,6 +467,8 @@ class CSBM(BaseMethod):
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Sample from the model starting from `x` returning the full trajectory."""
         fb = fb or self.fb
+        if fb == 'both':
+            raise ValueError("CSBM does not support fb='both'.")
 
         trajectory, transitions = [x], []
         
