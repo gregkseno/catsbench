@@ -155,11 +155,39 @@ class DLightSB(BaseMethod):
         frac = min(1.0, self.global_step / self.hparams.entropy_warmup_steps)
         return self.hparams.entropy_lambda * (1.0 - frac)
 
+    def precompute_log_u_table(
+        self,
+        log_p_cum: torch.Tensor,
+    ) -> torch.Tensor:
+        return lse_matmul(
+            log_p_cum[:, None, :, :],
+            self.log_cp_cores[None, :, :, :],
+            implementation="triton",
+            eps=0.0,
+        ) # [T, D, S, K]
+
+    def lookup_log_u(
+        self,
+        log_u_table: torch.Tensor,
+        x_t: torch.Tensor,
+        t: torch.Tensor,
+    ) -> torch.Tensor:
+        batch_size, dim = x_t.shape
+        if t.numel() == 1:
+            t = t.expand(batch_size)
+        dim_index = torch.arange(dim, device=x_t.device).view(1, dim)
+        return log_u_table[
+            t.reshape(batch_size, 1).long(), dim_index, x_t.long()
+        ] # [B, D, K]
+
     def _log_u_t(
         self, 
         x_t: torch.Tensor, # [B, D]
-        t: torch.Tensor
+        t: torch.Tensor,
+        log_u_table: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        if log_u_table is not None:
+            return self.lookup_log_u(log_u_table, x_t, t)
         log_pi_ref_t = self.prior.extract("cumulative", t, row_id=x_t) # [B, D, S]
         log_u_t = lse_matmul( 
             log_pi_ref_t.unsqueeze(-2), # [B, D, 1, S]
@@ -245,12 +273,11 @@ class DLightSB(BaseMethod):
 
     def get_log_c(self, x_start: torch.Tensor) -> torch.Tensor:
         x_start = x_start.flatten(start_dim=1)
-        last_timestep = torch.full(
-            size=(x_start.shape[0],), 
-            fill_value=self.hparams.num_timesteps + 1, 
-            device=self.device 
+        log_u_table = self.precompute_log_u_table(self.prior.log_p_cum[-1:])
+        timestep = torch.zeros(
+            x_start.shape[0], device=x_start.device, dtype=torch.long
         )
-        log_u = self._log_u_t(x_start, last_timestep) # [B, D, K]
+        log_u = self.lookup_log_u(log_u_table, x_start, timestep) # [B, D, K]
         log_z = log_u.sum(dim=1) # [B, K]
         return torch.logsumexp(self.log_alpha[None, :] + log_z, dim=1) # [B]
     
@@ -261,18 +288,20 @@ class DLightSB(BaseMethod):
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
 
         log_v = self.get_log_v(true_x_end).mean()
-        log_c = self.get_log_c(true_x_start).mean()
+        x_start = true_x_start.flatten(start_dim=1)
+        log_u_table = self.precompute_log_u_table(self.prior.log_p_cum[-1:])
+        timestep = torch.zeros(
+            x_start.shape[0], device=x_start.device, dtype=torch.long
+        )
+        log_z = self.lookup_log_u(log_u_table, x_start, timestep).sum(dim=1)
+        log_c = torch.logsumexp(
+            self.log_alpha[None, :] + log_z, dim=1
+        ).mean()
         loss = log_c - log_v
 
         ent_lambda = self._ent_lambda()
         track_entropy_grad = torch.is_grad_enabled() and ent_lambda > 0
         with torch.set_grad_enabled(track_entropy_grad):
-            last_timestep = torch.full(
-                size=(true_x_start.shape[0],), 
-                fill_value=self.hparams.num_timesteps + 1, 
-                device=self.device 
-            )
-            log_z = self._log_u_t(true_x_start, last_timestep).sum(dim=1) # [B, K]
             ent = self.entropy_loss(self.log_alpha[None, :] + log_z, dim=-1)
 
         if ent_lambda > 0:
