@@ -894,8 +894,10 @@ class UnCondition2ImageTransformer(nn.Module):
             ]
             return optim_groups
 
-    def forward(self, input, t, context=None, mask=None):
+    def forward(self, input, t, context=None, mask=None, direction_embedding=None):
         emb = self.content_emb(input) # type: ignore
+        if direction_embedding is not None:
+            emb = emb + direction_embedding[:, None, :]
         if context is not None:
             if context.shape != emb.shape:
                 raise ValueError(

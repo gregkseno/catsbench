@@ -15,9 +15,11 @@ class LatentTransformer(nn.Module):
         num_layers: int = 18,
         num_att_heads: int = 16,
         dropout: float = 0.0,
+        direction_conditioning: bool = False,
     ) -> None:
         super().__init__()
         self.input_dim = input_dim
+        self.direction_conditioning = direction_conditioning
         self.num_categories = num_categories
         self.content_seq_len = input_dim * input_dim
         self.mask_token_id = num_categories
@@ -51,15 +53,23 @@ class LatentTransformer(nn.Module):
         causal_mask = torch.cat((state_mask, prefix_mask), dim=-1)
         self.register_buffer("causal_mask", causal_mask, persistent=False)
         self._decode_cache = None
+        self.direction_embedding = nn.Embedding(2, hidden_dim) if direction_conditioning else None
+        if self.direction_embedding is not None:
+            nn.init.normal_(self.direction_embedding.weight, mean=0.0, std=0.02)
 
     def forward(
         self,
         x: torch.Tensor,
         t: torch.Tensor,
         x_prev: torch.Tensor | None = None,
+        direction: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if x_prev is None:
-            return self.model(x, t)
+            direction_embedding = (
+                self.direction_embedding(direction)
+                if self.direction_embedding is not None else None
+            )
+            return self.model(x, t, direction_embedding=direction_embedding)
         if x.shape != x_prev.shape:
             raise ValueError(
                 f"x and x_prev must have equal shapes, got "
