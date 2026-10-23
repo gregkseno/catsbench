@@ -44,6 +44,7 @@ def get_cum_matrices(
                 log_cum_matrices[timestep-1], 
                 log_onestep_matrix,
                 implementation="triton",
+                eps=0.0,
             )
     return log_cum_matrices
     
@@ -124,6 +125,7 @@ def gaussian_onestep(
             log_p_onestep_mat,
             log_p_onestep_mat_orig,
             implementation="triton",
+            eps=0.0,
         )
     return log_p_onestep_mat
 
@@ -172,19 +174,12 @@ class Prior(nn.Module):
                 dtype=dtype, device=device
             )
         elif prior_type == 'uniform':
-            if eps > 0:
-                retention = 1 - (alpha * num_categories) / (num_categories - 1)
-                retention /= (1 + num_categories * eps) ** (1 / num_skip_steps)
-                alpha = (1 - retention) * (num_categories - 1) / num_categories
             log_p_onestep = uniform_onestep(
                 alpha, num_categories, num_skip_steps, 
                 dtype=dtype, device=device
             )
         else:
             raise NotImplementedError(f'Got unknown prior: {prior_type}!')
-        if prior_type == 'gaussian' and eps > 0:
-            log_p_onestep = self.add_eps(log_p_onestep)
-            log_p_onestep -= log_p_onestep.logsumexp(dim=-1, keepdim=True)
         log_p_cum = get_cum_matrices(
             prior_type, alpha, num_timesteps, 
             num_skip_steps, log_p_onestep
@@ -193,16 +188,6 @@ class Prior(nn.Module):
         # register as non-persistent buffer to avoid saving in checkpoints
         self.register_buffer('log_p_onestep', log_p_onestep, persistent=False)
         self.register_buffer('log_p_cum', log_p_cum, persistent=False)
-
-    def _reduction_eps(
-        self,
-        tensor1: torch.Tensor,
-        tensor2: torch.Tensor,
-    ) -> float:
-        if self.implementation != "normalized" or self.eps != 0:
-            return 0.0
-        dtype = torch.promote_types(tensor1.dtype, tensor2.dtype)
-        return torch.finfo(dtype).tiny
 
     @property
     def dtype(self) -> torch.dtype:
@@ -289,8 +274,8 @@ class Prior(nn.Module):
         If logits is True, the output is summed over x_0 and transition matrix returned.''' 
         if not logits:
             x_start_logits = torch.log(
-                torch.nn.functional.one_hot(x_start, self.num_categories)
-                + torch.finfo(self.dtype).tiny
+                torch.nn.functional.one_hot(x_start, self.num_categories).to(self.dtype)
+                + (self.eps if self.eps > 0 else torch.finfo(self.dtype).tiny)
             )
         else:
             x_start_logits = x_start.clone()
@@ -299,6 +284,7 @@ class Prior(nn.Module):
         x_start_logits = x_start_logits.to(self.dtype)
         # fact1 is 'guess of x_{t}' from x_{t-1}
         log_fact1 = self.extract('onestep', t, row_id=x_t)
+        log_fact1 = self.add_eps(log_fact1)
 
         # fact2 is 'guess of x_{t-1}' from x_{0}
         x_start_logits = x_start_logits.log_softmax(dim=-1)  # bs, ..., num_categories
@@ -309,7 +295,8 @@ class Prior(nn.Module):
             x_start_logits,
             log_p_cum,
             implementation=self.implementation,
-            eps=self._reduction_eps(x_start_logits, log_p_cum),
+            eps=(self.eps or torch.finfo(torch.float32).tiny)
+            if self.implementation == "normalized" else self.eps,
         )
 
         p_posterior_logits = log_fact1 + log_fact2
@@ -329,8 +316,8 @@ class Prior(nn.Module):
         If logits is True, the output is summed over x_1 and transition matrix returned.''' 
         if not logits:
             x_end_logits = torch.log(
-                torch.nn.functional.one_hot(x_end, self.num_categories)
-                + torch.finfo(self.dtype).tiny
+                torch.nn.functional.one_hot(x_end, self.num_categories).to(self.dtype)
+                + (self.eps if self.eps > 0 else torch.finfo(self.dtype).tiny)
             )
         else:
             x_end_logits = x_end.clone()
@@ -338,6 +325,7 @@ class Prior(nn.Module):
             f'x_end_logits.shape: {x_end_logits.shape}, x_t.shape: {x_t.shape}'
 
         log_fact1 = self.extract('onestep', t+1, row_id=x_t)
+        log_fact1 = self.add_eps(log_fact1)
 
         x_end_logits = x_end_logits.log_softmax(dim=-1)
         is_last_step = broadcast(t, x_t.dim()) == self.num_timesteps
@@ -351,7 +339,8 @@ class Prior(nn.Module):
             x_end_logits,
             log_p_cum,
             implementation=self.implementation,
-            eps=self._reduction_eps(x_end_logits, log_p_cum),
+            eps=(self.eps or torch.finfo(torch.float32).tiny)
+            if self.implementation == "normalized" else self.eps,
         )
 
         p_posterior_logits = log_fact1 + log_fact2
