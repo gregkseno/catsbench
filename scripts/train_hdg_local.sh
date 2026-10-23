@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=train-hgd
 #SBATCH --partition=ais-gpu
-#SBATCH --reservation=HPC-2966
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
 #SBATCH --nodes=1
