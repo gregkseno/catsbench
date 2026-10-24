@@ -9,9 +9,9 @@ notebooks/test_*.ipynb
 data/*
 .venv
 *.out
-images
 build
 **/*.egg-info
 dist
 checkpoints
 artifacts
+docs
